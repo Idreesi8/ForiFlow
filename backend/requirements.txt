@@ -1,0 +1,21 @@
+# ForiFlow backend dependencies (Python 3.11+)
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+sqlalchemy>=2.0.30
+pydantic>=2.9.0
+
+# Model serving: required to score with the trained ensemble. Without these the
+# API falls back to the linear surrogate in services/scoring_service.py.
+numpy>=1.26.0
+scikit-learn>=1.5.0
+xgboost>=2.1.0
+shap>=0.46.0
+joblib>=1.4.0
+
+# Model training only (python -m ml.train_real_model)
+pandas>=2.2.0
+imbalanced-learn>=0.12.0
+
+# Testing
+pytest>=8.3.0
+httpx>=0.27.0

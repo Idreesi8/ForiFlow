@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Local SQLite databases
+*.db
+*.db-journal
+*.sqlite3
+
+# Trained model artefacts and training logs. Regenerate with
+# `python -m ml.train_real_model`; the API falls back to the linear surrogate
+# when they are absent.
+ml/*.pkl
+ml/feature_names.json
+ml/train_log.txt
+
+# Raw training data (large, and licensed by its original publishers)
+ml/data/*.csv
