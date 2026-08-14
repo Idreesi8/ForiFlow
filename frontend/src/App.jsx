@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 
-import { API_BASE_URL, fetchHealth } from "./api/client.js";
+import { API_BASE_LABEL, fetchHealth } from "./api/client.js";
 import AlertsPage from "./pages/AlertsPage.jsx";
 import ApplicationsPage from "./pages/ApplicationsPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
@@ -143,7 +143,7 @@ export default function App() {
         </main>
 
         <footer className="border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500">
-          ForiFlow v1.0 · API {API_BASE_URL} · All amounts in PKR
+          ForiFlow v1.0 · API {API_BASE_LABEL} · All amounts in PKR
         </footer>
       </div>
     </div>
@@ -162,7 +162,7 @@ function HealthPill({ state, onRetry }) {
     <button
       type="button"
       onClick={onRetry}
-      title={`Backend: ${API_BASE_URL}`}
+      title={`Backend: ${API_BASE_LABEL}`}
       className={`badge border border-slate-200 bg-white ${styles.text}`}
     >
       <span className={`h-2 w-2 rounded-full ${styles.dot}`} aria-hidden="true" />

@@ -1,0 +1,65 @@
+# ForiFlow demo stack: FastAPI + trained ensemble on :8000, React dashboard
+# behind nginx on :3000. Start it with ./start.sh, .\start.ps1, or directly:
+#
+#   docker compose up -d --build
+#
+# The dashboard calls /api on its own origin and nginx forwards that to the
+# backend container, so nothing depends on the host's CORS configuration.
+
+services:
+  backend:
+    build:
+      context: ./backend
+    image: foriflow-backend:1.0.0
+    container_name: foriflow-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Four slashes = absolute path: /data is the persistent volume below.
+      FORIFLOW_DATABASE_URL: sqlite:////data/foriflow.db
+      # "auto" prefers the trained ensemble and degrades to the linear surrogate
+      # if its artefacts are missing. Use "ml" to refuse to start without them.
+      FORIFLOW_SCORING_ENGINE: auto
+      FORIFLOW_LOG_LEVEL: INFO
+    volumes:
+      - foriflow-data:/data
+    healthcheck:
+      # No curl in python:3.11-slim, and adding it just for this would grow the
+      # image; the interpreter is already there.
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request, sys; sys.exit(0 if urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=5).status == 200 else 1)
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      # Startup loads the ensemble, scaler and SHAP explainer (~34 MB of
+      # artefacts) before the first request, which takes tens of seconds.
+      start_period: 120s
+
+  frontend:
+    build:
+      context: ./frontend
+    image: foriflow-frontend:1.0.0
+    container_name: foriflow-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      # nginx resolves "backend" on startup, and a dashboard that loads before
+      # the model is ready would greet the officer with "API offline".
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  # Survives "docker compose down"; remove with "docker compose down -v".
+  foriflow-data:
+    name: foriflow-data

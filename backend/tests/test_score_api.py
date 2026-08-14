@@ -20,18 +20,28 @@ def test_health_endpoint_reports_ok(client: TestClient) -> None:
     assert body["database"] == "connected"
 
 
-def test_cors_allows_the_react_dev_server(client: TestClient) -> None:
-    """The React app on port 3000 must be able to call the API."""
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:5173",
+    ],
+)
+def test_cors_allows_the_react_dev_server(client: TestClient, origin: str) -> None:
+    """The dashboard must reach the API on whichever dev port Vite ended up on."""
     response = client.options(
         "/score",
         headers={
-            "Origin": "http://localhost:3000",
+            "Origin": origin,
             "Access-Control-Request-Method": "POST",
         },
     )
 
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert response.headers["access-control-allow-origin"] == origin
 
 
 def test_score_persists_application_and_returns_decision(client: TestClient) -> None:

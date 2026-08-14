@@ -1,0 +1,33 @@
+# Build context for the backend image.
+#
+# Note: ml/*.pkl and ml/feature_names.json are deliberately NOT excluded here.
+# They are gitignored, but the trained ensemble has to be baked into the image
+# for the demo to score with the real model rather than the linear surrogate.
+
+.git
+.gitignore
+.dockerignore
+Dockerfile
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+.venv/
+venv/
+env/
+
+# Local database: demo data belongs on the /data volume, not in the image.
+*.db
+*.db-journal
+*.sqlite3
+
+# Raw training data (large, and never read at inference time).
+ml/data/
+ml/train_log.txt
+
+# Scratch diagnostics.
+ml/_*.py

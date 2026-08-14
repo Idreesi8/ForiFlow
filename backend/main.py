@@ -33,10 +33,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("foriflow")
 
-# The React dashboard runs on port 3000 in development.
+# The React dashboard runs on port 3000 by default, 3001 when that port is
+# already taken, and 5173 if started through Vite's own default.
 ALLOWED_ORIGINS: list[str] = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:5173",
 ]
 
 

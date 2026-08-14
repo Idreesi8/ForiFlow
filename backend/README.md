@@ -17,7 +17,8 @@ uvicorn main:app --reload --port 8000
 
 - Swagger UI: http://localhost:8000/docs
 - Health probe: http://localhost:8000/health
-- CORS is pre-configured for the React dashboard on `http://localhost:3000`.
+- CORS is pre-configured for the React dashboard on ports `3000`, `3001` and
+  `5173` (both `localhost` and `127.0.0.1` for 3000/3001).
 
 Run the tests from the same directory:
 

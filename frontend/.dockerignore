@@ -1,0 +1,21 @@
+# Build context for the frontend image.
+#
+# node_modules must stay out: Tailwind v4 and Rollup ship platform-specific
+# native binaries, and host (Windows/macOS) builds cannot run in a Linux image.
+# The build stage runs "npm ci" instead.
+
+node_modules
+dist
+
+.git
+.gitignore
+.dockerignore
+Dockerfile
+
+# Vite inlines env values at build time; the image is built for /api instead.
+.env
+.env.*
+
+npm-debug.log*
+yarn-error.log*
+.vite/

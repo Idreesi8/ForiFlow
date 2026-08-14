@@ -23,10 +23,16 @@ npm install
 npm run dev
 ```
 
-The app is served at **http://localhost:3000** — the port is fixed in
-`vite.config.js` because the FastAPI service only allows CORS from that origin.
+The app is served at **http://localhost:3000**, the port fixed in
+`vite.config.js`.
 
-To point the UI at a different API host, create `frontend/.env.local`:
+API calls go to the relative path `/api`, which Vite proxies to
+`http://127.0.0.1:8000` in development and nginx proxies to the backend
+container in Docker. Because the request is same-origin either way, CORS never
+enters the picture. Point the dev proxy elsewhere with `VITE_DEV_API_TARGET`.
+
+To bypass the proxy and call an absolute API host instead, create
+`frontend/.env.local`:
 
 ```
 VITE_API_BASE_URL=http://127.0.0.1:8000

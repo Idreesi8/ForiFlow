@@ -1,7 +1,15 @@
 import axios from "axios";
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+// Relative by default so the dashboard works unchanged in both deployments:
+// nginx proxies /api to the backend container, and `vite dev` proxies the same
+// prefix to localhost:8000. Set VITE_API_BASE_URL to point at an absolute host.
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+
+/** Absolute URL for display, since "/api" alone tells an officer nothing. */
+export const API_BASE_LABEL =
+  API_BASE_URL.startsWith("/") && typeof window !== "undefined"
+    ? `${window.location.origin}${API_BASE_URL}`
+    : API_BASE_URL;
 
 const client = axios.create({
   baseURL: API_BASE_URL,
@@ -22,7 +30,7 @@ export function apiErrorMessage(error, fallback = "Something went wrong.") {
   }
 
   if (!error.response) {
-    return `Cannot reach the ForiFlow API at ${API_BASE_URL}. Start the backend with "uvicorn main:app --port 8000".`;
+    return `Cannot reach the ForiFlow API at ${API_BASE_LABEL}. Check the backend is up ("docker compose ps", or "uvicorn main:app --port 8000" for a local run).`;
   }
 
   const { status, data } = error.response;
