@@ -3,7 +3,8 @@
   "private": true,
   "description": "ForiFlow SME credit intelligence — screenshot capture and repo scripts",
   "scripts": {
-    "capture": "node scripts/auto-capture.js"
+    "capture": "node scripts/auto-capture.js",
+    "automate": "node scripts/full-automation.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

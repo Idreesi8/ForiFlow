@@ -68,9 +68,6 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 
 ## 📸 Screenshots
 
-Screenshots auto-captured from running application (`npm run capture` or
-`python scripts/auto-capture.py`).
-
 ![Dashboard](docs/screenshots/01-dashboard.png)
 ![Credit Scoring](docs/screenshots/02-scoring-form.png)
 ![Score Result](docs/screenshots/03-score-result.png)
@@ -78,6 +75,7 @@ Screenshots auto-captured from running application (`npm run capture` or
 ![EWS Alerts](docs/screenshots/05-ews-alerts.png)
 ![Applications](docs/screenshots/06-applications.png)
 ![API Docs](docs/screenshots/07-swagger.png)
+
 
 ## 🚀 Quick Start
 

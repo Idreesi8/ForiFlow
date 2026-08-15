@@ -87,7 +87,12 @@ async function main() {
 
   fs.mkdirSync(OUT, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true });
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+  } catch {
+    browser = await chromium.launch({ headless: true, channel: "chrome" });
+  }
   const page = await browser.newPage({
     viewport: { width: 1920, height: 1080 },
     colorScheme: "light",
