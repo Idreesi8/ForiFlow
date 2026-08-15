@@ -135,7 +135,7 @@ foriflow/
 
 **Ramzan Idreesi** — AI Software Engineer | Full-Stack Developer
 
-[GitHub](https://github.com/Idreesi8) · [LinkedIn](https://www.linkedin.com/in/ramzan-idreesi)
+[GitHub](https://github.com/Idreesi8) · [LinkedIn](https://www.linkedin.com/in/ramzan-idreesi-0b0245328)
 
 ## 📄 License
 

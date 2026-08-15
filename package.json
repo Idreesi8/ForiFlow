@@ -5,7 +5,7 @@
   "scripts": {
     "capture": "node scripts/auto-capture.js",
     "automate": "node scripts/full-automation.js",
-    "linkedin": "node scripts/linkedin-automation.js"
+    "linkedin": "node scripts/linkedin-automation.js || start linkedin-helper.html"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"

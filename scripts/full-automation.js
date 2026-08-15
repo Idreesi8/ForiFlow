@@ -163,8 +163,8 @@ function gitCommitAndPush() {
 
 function openLinkedIn() {
   const urls = [
-    "https://www.linkedin.com/in/ramzan-idreesi/edit/about/",
-    "https://www.linkedin.com/in/ramzan-idreesi/edit/featured/",
+    "https://www.linkedin.com/in/ramzan-idreesi-0b0245328/details/about/",
+    "https://www.linkedin.com/in/ramzan-idreesi-0b0245328/details/featured/",
   ];
   for (const url of urls) {
     if (process.platform === "win32") {

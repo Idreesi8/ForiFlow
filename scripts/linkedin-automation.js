@@ -8,16 +8,18 @@
 
 const { spawnSync } = require("child_process");
 const fs = require("fs");
+const https = require("https");
 const path = require("path");
 const readline = require("readline");
 
 const ROOT = path.resolve(__dirname, "..");
-const TEMP_HTML = path.join(ROOT, "temp", "linkedin-helper.html");
+const HELPER_HTML = path.join(ROOT, "linkedin-helper.html");
+const PROFILE = "https://www.linkedin.com/in/ramzan-idreesi-0b0245328";
 
 const STEPS = [
   {
     name: "About Section",
-    url: "https://www.linkedin.com/in/ramzan-idreesi/edit/about/",
+    url: `${PROFILE}/details/about/`,
     text: `AI Software Engineer | Building Credit Intelligence Systems for Emerging Markets
 
 I build AI-powered fintech solutions that make financial services accessible to the underserved.
@@ -32,7 +34,7 @@ I'm passionate about using Machine Learning and Full-Stack Development to solve 
   },
   {
     name: "Featured Project",
-    url: "https://www.linkedin.com/in/ramzan-idreesi/edit/featured/",
+    url: `${PROFILE}/details/featured/`,
     title: "ForiFlow — SME Credit Intelligence Platform",
     desc: "AI-powered credit scoring system for Pakistani banks. Features XGBoost+RF ensemble, SHAP explainability for SBP compliance, Early Warning System, and Docker deployment. Built with FastAPI, React, and Python.",
     link: "https://github.com/Idreesi8/ForiFlow",
@@ -103,56 +105,59 @@ function copyWithPowerShell(text) {
   return result.status === 0;
 }
 
-function writeHelperHtml() {
-  const blocks = STEPS.map((step, index) => {
-    const body = escapeHtml(clipboardPayload(step));
-    return `<section>
-  <h2>${index + 1}. ${escapeHtml(step.name)}</h2>
-  <p><a href="${escapeHtml(step.url)}" target="_blank">${escapeHtml(step.url)}</a></p>
-  <textarea readonly onclick="this.select()">${body}</textarea>
-</section>`;
-  }).join("\n");
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>ForiFlow LinkedIn helper</title>
-  <style>
-    body { font-family: Segoe UI, sans-serif; max-width: 720px; margin: 2rem auto; color: #0f172a; }
-    textarea { width: 100%; min-height: 180px; font: 14px/1.45 Consolas, monospace; }
-    h1 { font-size: 1.4rem; }
-    section { margin: 1.5rem 0; }
-  </style>
-</head>
-<body>
-  <h1>ForiFlow LinkedIn copy</h1>
-  <p>Click a box, Ctrl+A, Ctrl+C, then paste on the LinkedIn page.</p>
-  ${blocks}
-</body>
-</html>`;
-
-  fs.mkdirSync(path.dirname(TEMP_HTML), { recursive: true });
-  fs.writeFileSync(TEMP_HTML, html, "utf8");
-  return TEMP_HTML;
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function openUrl(url) {
+function openUrl(target) {
   if (process.platform === "win32") {
-    spawnSync("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" });
+    spawnSync("cmd", ["/c", "start", "", target], { detached: true, stdio: "ignore" });
   } else if (process.platform === "darwin") {
-    spawnSync("open", [url], { detached: true, stdio: "ignore" });
+    spawnSync("open", [target], { detached: true, stdio: "ignore" });
   } else {
-    spawnSync("xdg-open", [url], { detached: true, stdio: "ignore" });
+    spawnSync("xdg-open", [target], { detached: true, stdio: "ignore" });
   }
+}
+
+function openHelper() {
+  openUrl(HELPER_HTML);
+  console.log(color("32", "✅ LinkedIn Helper opened in browser!"));
+  console.log("👉 Click 'Copy' buttons and paste into LinkedIn");
+  console.log(color("36", `🌐 Your LinkedIn: ${PROFILE}`));
+}
+
+function pageLooksMissing(status, body) {
+  const snippet = String(body || "").toLowerCase();
+  return (
+    status === 404 ||
+    snippet.includes("this page doesn't exist") ||
+    snippet.includes("this page doesn&#39;t exist") ||
+    snippet.includes("page not found")
+  );
+}
+
+function checkPage(url) {
+  return new Promise((resolve) => {
+    const req = https.get(
+      url,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "text/html",
+        },
+        timeout: 8000,
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => {
+          if (body.length < 8000) body += chunk.toString("utf8");
+        });
+        res.on("end", () => resolve(!pageLooksMissing(res.statusCode, body)));
+      },
+    );
+    req.on("error", () => resolve(true));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(true);
+    });
+  });
 }
 
 function copyText(text) {
@@ -176,7 +181,10 @@ function waitForEnter(prompt) {
 }
 
 async function main() {
-  let helperOpened = false;
+  if (!fs.existsSync(HELPER_HTML)) {
+    console.log(color("31", "linkedin-helper.html is missing from the project root."));
+    process.exit(1);
+  }
 
   for (let index = 0; index < STEPS.length; index += 1) {
     const step = STEPS[index];
@@ -189,16 +197,24 @@ async function main() {
     if (method) {
       console.log(color("32", "✅ Text copied to clipboard!"));
     } else {
-      const htmlPath = writeHelperHtml();
-      console.log(color("33", "Clipboard API unavailable — opened a helper page with selectable text."));
-      if (!helperOpened) {
-        openUrl(htmlPath);
-        helperOpened = true;
-      }
+      console.log(color("33", "Clipboard API unavailable — opening the HTML helper."));
+      openHelper();
     }
 
-    openUrl(step.url);
-    console.log(color("36", `🌐 Browser opened: ${step.url}`));
+    const reachable = await checkPage(step.url);
+    if (!reachable) {
+      console.log(
+        color(
+          "33",
+          "⚠️ LinkedIn page not accessible. Opening fallback HTML helper instead...",
+        ),
+      );
+      openHelper();
+    } else {
+      openUrl(step.url);
+      console.log(color("36", `🌐 Browser opened: ${step.url}`));
+    }
+
     console.log("👉 Just press Ctrl+V to paste");
     if (step.title) {
       console.log(color("33", "Featured fields on clipboard: Title, Description, and URL (one block)."));
