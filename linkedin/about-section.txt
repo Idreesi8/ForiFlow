@@ -1,0 +1,13 @@
+AI Software Engineer | Building Credit Intelligence Systems for Emerging Markets
+
+I build production AI systems for financial institutions — the kind a credit officer can defend in an SBP audit, not a notebook that dies at the demo.
+
+For the last three months I have been the sole engineer on ForiFlow, an end-to-end credit intelligence platform for Pakistani banks. I care about the gap between what machine learning can do and what a relationship manager is allowed to put in a credit file. That gap is where most “fintech AI” projects fail. I work there on purpose.
+
+The problem is blunt. About 60% of SME loan applications in Pakistan are rejected for lack of collateral, not because the business is unviable. Banks have no bureau depth on unbanked traders, NPLs in microfinance sit at 14–17%, and portfolio deterioration is often spotted only after 90 days. SBP also expects explainable AI on every automated credit decision. ForiFlow scores thin-file SMEs on alternative data — Raast and POS receipts, ECIB payment history, inventory turnover, order consistency — with an XGBoost + Random Forest ensemble. Every decision ships a SHAP waterfall a credit officer can file. After disbursement, an Early Warning System re-scores the borrower each month and raises an alert on a drop of more than 15 points, typically 60–90 days before a default would show on the book. The stack runs on-premise in Docker so a bank never has to send applicant data to a public cloud.
+
+I work full-stack through to deployment: FastAPI and Pydantic on the API, React 18 and Recharts on the officer dashboard, XGBoost / SHAP / scikit-learn for the model, SQLAlchemy on SQLite today and PostgreSQL on the roadmap, Docker Compose for a one-command bank demo. I train, serve, explain, and containerise the same artefacts.
+
+I am open to full-time AI / machine-learning and full-stack roles, freelance fintech builds, and collaborations with Pakistani banks that want a 30-day on-premise pilot. If you underwrite SMEs, run model risk, or hire engineers who can ship explainable credit scoring — send a message.
+
+Keywords: AI, Machine Learning, Fintech, FastAPI, React, XGBoost, SHAP, Credit Scoring, SBP Compliance, Pakistani Banks, Explainable AI, Full-Stack Development, Docker, PostgreSQL

@@ -1,0 +1,16 @@
+Why XGBoost + Random Forest instead of a neural network for credit scoring?
+
+Because a bank does not buy AUC. It buys a decision it can defend.
+
+A neural net will fit the public default datasets. It will not give you a TreeExplainer that adds up, feature by feature, to the score on the page. SBP’s expectation for automated credit is explainable AI — adverse-action language, not a saliency heatmap a relationship manager cannot file.
+
+So ForiFlow uses a soft-voting ensemble: XGBoost for the non-linear splits, Random Forest to keep a second opinion, probabilities averaged. SHAP runs on the trees. The officer sees a waterfall: facility-to-turnover +20, clean ECIB history +6, short operating life −3. Those numbers sum to the gauge.
+
+I also put monotone constraints on the XGBoost member. A cleaner payment history is not allowed to increase predicted risk. That is a modelling choice you cannot audit inside a black box.
+
+Interpretability is not a nice-to-have in this market. It is the licence to put the model in production.
+
+Full architecture on GitHub:
+https://github.com/Idreesi8/foriflow
+
+#XGBoost #SHAP #ExplainableAI #FastAPI #MLOps

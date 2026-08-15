@@ -1,0 +1,11 @@
+{
+  "name": "foriflow-scripts",
+  "private": true,
+  "description": "Screenshot capture for ForiFlow docs",
+  "scripts": {
+    "capture": "node capture-screenshots.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

@@ -1,0 +1,17 @@
+What does it take to build a bank-grade AI system as a solo developer?
+
+Fewer frameworks. More boring decisions.
+
+FastAPI over Flask because Pydantic ranges reject a bad loan amount before it touches the model. React over Vue because Recharts and the hiring market I am in already speak it. SQLite on the laptop, PostgreSQL when a bank asks — not a cloud bill on day one.
+
+Docker was not optional. A credit head will not install Python 3.11. One compose file, nginx in front, /api on the same origin, CORS out of the demo path.
+
+SHAP was the hard part. XGBoost 3 enables categorical splits by default; TreeExplainer does not. First-request latency was 49 seconds until I loaded the ensemble at startup. A “strong” applicant came back Rejected until I stopped treating credit-history length as repayment quality.
+
+Lesson: the model is 30% of the work. The other 70% is making it operable for someone who does not care what a pickle file is.
+
+Building in public. Follow for updates.
+
+https://github.com/Idreesi8/foriflow
+
+#FullStack #DeveloperJourney #BuildInPublic #OpenSource #FastAPI #React

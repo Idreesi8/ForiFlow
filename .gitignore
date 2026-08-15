@@ -1,0 +1,67 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# --- Node ---
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Databases ---
+*.db
+*.db-journal
+*.sqlite3
+
+# --- Docker ---
+*.tar
+
+# --- IDE & OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Cursor / local agent ---
+.cursorrules.txt
+.cursor/
+
+# --- Trained model artefacts ---
+# Generate using: python -m ml.train_real_model
+# (from backend/). The API falls back to the linear surrogate when these
+# files are absent. Do not commit pickles unless a maintainer asks you to.
+backend/ml/*.pkl
+backend/ml/feature_names.json
+backend/ml/train_log.txt
+backend/ml/data/*.csv
+
+# Uncomment the next line if you need the trained ensemble inside a public
+# clone for Docker demos (the files are large and machine-specific):
+# !backend/ml/*.pkl
+
+# --- Capture / scratch ---
+scripts/node_modules/
+*.png.bak

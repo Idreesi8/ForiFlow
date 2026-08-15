@@ -1,0 +1,16 @@
+I spent 3 months building an AI system that could save Pakistani banks millions...
+
+Not a slide deck. A running credit desk.
+
+The brief I gave myself: score SMEs that have no collateral file, explain the decision in language an SBP auditor will accept, and warn the bank before the account goes bad.
+
+The journey was messy in the useful ways. Public datasets are in USD; ForiFlow underwrites in PKR, so every feature had to be a ratio. SHAP and XGBoost 3 disagreed about categorical splits. The first “good borrower” I scored came back Rejected because I had encoded payment history the wrong way. Docker on a Windows laptop taught me more about PATH than I wanted to know.
+
+What shipped: an XGBoost + Random Forest ensemble, a React officer dashboard, SHAP waterfalls on every file, and an Early Warning System that alerts on a drop of more than 15 points. One command — docker compose up — and a bank laptop is a demo.
+
+If you work in credit, model risk, or fintech hiring, the repo is public.
+
+Check it out 👇
+https://github.com/Idreesi8/foriflow
+
+#AI #Fintech #Pakistan #MachineLearning #CreditScoring #ExplainableAI
