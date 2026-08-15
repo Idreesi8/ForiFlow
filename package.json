@@ -1,0 +1,11 @@
+{
+  "name": "foriflow",
+  "private": true,
+  "description": "ForiFlow SME credit intelligence — screenshot capture and repo scripts",
+  "scripts": {
+    "capture": "node scripts/auto-capture.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

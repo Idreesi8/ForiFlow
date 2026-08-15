@@ -1,0 +1,19 @@
+Why did I choose XGBoost + Random Forest over a neural network for credit scoring?
+
+3 reasons:
+
+1️⃣ Interpretability > Black Box
+Banks need to explain WHY a loan was rejected. SHAP works beautifully with tree-based models. Try explaining a neural network to SBP regulators 😅
+
+2️⃣ Ensemble Robustness
+XGBoost catches non-linear patterns. Random Forest reduces overfitting. Together they give stable, reliable scores.
+
+3️⃣ Production Simplicity
+Tree models are fast, lightweight, and easy to retrain. No GPU needed. Perfect for on-premise bank servers.
+
+Result: AUC-ROC 0.774 on public data → targeting 0.85+ with real bank data.
+
+Full architecture on GitHub 👇
+https://github.com/Idreesi8/ForiFlow
+
+#XGBoost #SHAP #ExplainableAI #FastAPI #MLOps #MachineLearning

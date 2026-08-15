@@ -68,14 +68,16 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 
 ## 📸 Screenshots
 
-Screenshots are captured into [`docs/screenshots/`](docs/screenshots/). Run
-`npm run capture` from `frontend/` or `python scripts/capture.py` once the
-stack is up.
+Screenshots auto-captured from running application (`npm run capture` or
+`python scripts/auto-capture.py`).
 
-- Dashboard Overview
-- Credit Scoring Form
-- SHAP Waterfall Chart
-- EWS Alerts Panel
+![Dashboard](docs/screenshots/01-dashboard.png)
+![Credit Scoring](docs/screenshots/02-scoring-form.png)
+![Score Result](docs/screenshots/03-score-result.png)
+![SHAP Chart](docs/screenshots/04-shap-chart.png)
+![EWS Alerts](docs/screenshots/05-ews-alerts.png)
+![Applications](docs/screenshots/06-applications.png)
+![API Docs](docs/screenshots/07-swagger.png)
 
 ## 🚀 Quick Start
 
