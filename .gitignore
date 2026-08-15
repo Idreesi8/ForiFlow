@@ -64,4 +64,5 @@ backend/ml/data/*.csv
 
 # --- Capture / scratch ---
 scripts/node_modules/
+temp/
 *.png.bak
