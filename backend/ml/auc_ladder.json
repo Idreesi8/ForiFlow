@@ -773,6 +773,71 @@
       ],
       "improved": true,
       "recorded_at": "2026-08-19T23:24:38"
+    },
+    {
+      "name": "final",
+      "features": [
+        "loan_to_income",
+        "payment_history_score",
+        "years_in_operation"
+      ],
+      "imbalance": "class_weight",
+      "xgb_overrides": {
+        "max_depth": 7,
+        "learning_rate": 0.04700987898877509,
+        "min_child_weight": 12,
+        "subsample": 0.7176966401771597,
+        "colsample_bytree": 0.976482595477513,
+        "n_jobs": 2
+      },
+      "rf_overrides": {
+        "n_estimators": 300,
+        "max_depth": 12,
+        "min_samples_leaf": 10,
+        "n_jobs": 2
+      },
+      "weights": [
+        0.65,
+        0.35
+      ],
+      "auc_roc_mean": 0.7775762198241348,
+      "auc_roc_std": 0.006684260554510838,
+      "f1_mean": 0.5429176696025639,
+      "per_fold": [
+        {
+          "auc": 0.7780711488746173,
+          "f1": 0.5373875271486193,
+          "pr_auc": 0.5649053864873096,
+          "seconds": 55.46392460000061
+        },
+        {
+          "auc": 0.7891696582449665,
+          "f1": 0.5593434343434344,
+          "pr_auc": 0.5925857185360244,
+          "seconds": 51.15210940000543
+        },
+        {
+          "auc": 0.7776719612218561,
+          "f1": 0.5408131106208636,
+          "pr_auc": 0.5737279385338171,
+          "seconds": 50.87632440000016
+        },
+        {
+          "auc": 0.7687907933638076,
+          "f1": 0.5392030848329049,
+          "pr_auc": 0.5576616843144666,
+          "seconds": 46.45134500000859
+        },
+        {
+          "auc": 0.7741775374154264,
+          "f1": 0.5378411910669976,
+          "pr_auc": 0.5576993427173638,
+          "seconds": 47.728527999992366
+        }
+      ],
+      "delta_vs_baseline": 0.0018003818297738228,
+      "unstable": false,
+      "recorded_at": "2026-08-19T23:34:41"
     }
   ]
 }
