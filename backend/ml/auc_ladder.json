@@ -1,0 +1,205 @@
+{
+  "steps": [
+    {
+      "name": "baseline",
+      "features": [
+        "loan_to_income",
+        "payment_history_score",
+        "years_in_operation"
+      ],
+      "class_balance": {
+        "label": "credit_risk_shared (raw)",
+        "n": 32581,
+        "n_neg": 25473,
+        "n_pos": 7108,
+        "pos_rate": 0.21816396059052823,
+        "neg_to_pos": 3.5837084974676423
+      },
+      "imbalance": "SMOTE inside each CV fold, 50/50 after resample",
+      "ensemble": {
+        "type": "VotingClassifier soft",
+        "weights": [
+          0.6,
+          0.4
+        ]
+      },
+      "auc_roc_mean": 0.775775837994361,
+      "auc_roc_std": 0.007532206804265033,
+      "f1_mean": 0.5403675355003172,
+      "per_fold": [
+        {
+          "auc": 0.7754942312655881,
+          "f1": 0.5341047503045067,
+          "pr_auc": 0.5644640247329206,
+          "seconds": 2.5827598000032594
+        },
+        {
+          "auc": 0.7887809739485576,
+          "f1": 0.5552460538532962,
+          "pr_auc": 0.5910320641608086,
+          "seconds": 12.83327950000239
+        },
+        {
+          "auc": 0.777354580579894,
+          "f1": 0.5395839801303943,
+          "pr_auc": 0.5738590991595964,
+          "seconds": 12.064908600004856
+        },
+        {
+          "auc": 0.7664238027788692,
+          "f1": 0.5350358143880412,
+          "pr_auc": 0.5566349005434644,
+          "seconds": 10.084945299997344
+        },
+        {
+          "auc": 0.770825601398896,
+          "f1": 0.5378670788253478,
+          "pr_auc": 0.5541708418695699,
+          "seconds": 9.504838300010306
+        }
+      ],
+      "recorded_at": "2026-08-19T21:49:29"
+    },
+    {
+      "name": "features",
+      "added": [],
+      "skipped": {
+        "debt_to_income": "Not on the winning dataset. credit_risk_dataset.csv has no existing-debt column. Loan_default.csv has DTIRatio but that candidate's CV AUC is 0.62 and is not served.",
+        "cash_flow_volatility": "Not derivable. Neither CSV is a panel: one income snapshot per row, no rolling revenue series.",
+        "revenue_trend_slope": "Not derivable. No date index and no repeated revenue observations.",
+        "payment_delay_frequency": "Not derivable. credit_risk has only cb_person_default_on_file (Y/N); Loan_default has a 300-850 CreditScore. No DPD or late-count."
+      },
+      "auc_roc_mean": 0.775775837994361,
+      "auc_roc_std": 0.007532206804265033,
+      "f1_mean": 0.5403675355003172,
+      "note": "No columns added. AUC copied from baseline because the model is unchanged.",
+      "improved": false,
+      "recorded_at": "2026-08-19T21:50:52"
+    },
+    {
+      "name": "class_weight",
+      "features": [
+        "loan_to_income",
+        "payment_history_score",
+        "years_in_operation"
+      ],
+      "class_balance_before": {
+        "label": "before (natural distribution used in every train fold)",
+        "n": 32581,
+        "n_neg": 25473,
+        "n_pos": 7108,
+        "pos_rate": 0.21816396059052823,
+        "neg_to_pos": 3.5837084974676423
+      },
+      "class_balance_after_training": {
+        "note": "No resampling. Each train fold keeps the natural ~21.82% default rate.",
+        "scale_pos_weight": 3.5837084974676423,
+        "rf_class_weight": "balanced",
+        "pos_rate": 0.21816396059052823
+      },
+      "auc_roc_mean": 0.776524310090232,
+      "auc_roc_std": 0.007050002000417146,
+      "f1_mean": 0.5389618047069746,
+      "per_fold": [
+        {
+          "auc": 0.7768782030312943,
+          "f1": 0.5344722391702258,
+          "pr_auc": 0.5659440267385338,
+          "seconds": 5.811411500006216
+        },
+        {
+          "auc": 0.7889352466181498,
+          "f1": 0.5480471171729696,
+          "pr_auc": 0.592160165585665,
+          "seconds": 5.844377200002782
+        },
+        {
+          "auc": 0.7767313466050625,
+          "f1": 0.5356586733104952,
+          "pr_auc": 0.573316554926773,
+          "seconds": 5.496634399998584
+        },
+        {
+          "auc": 0.7677824363138372,
+          "f1": 0.5366929133858268,
+          "pr_auc": 0.5521725842132578,
+          "seconds": 6.16211970000586
+        },
+        {
+          "auc": 0.7722943178828162,
+          "f1": 0.5399380804953561,
+          "pr_auc": 0.5539555925277373,
+          "seconds": 5.484175800011144
+        }
+      ],
+      "improved": true,
+      "delta_vs_baseline": 0.0007484720958710334,
+      "recorded_at": "2026-08-19T21:53:02"
+    },
+    {
+      "name": "shap_rank",
+      "ranking": [
+        {
+          "feature": "loan_to_income",
+          "mean_abs_shap": 0.13234600931063323
+        },
+        {
+          "feature": "payment_history_score",
+          "mean_abs_shap": 0.05910587988035852
+        },
+        {
+          "feature": "years_in_operation",
+          "mean_abs_shap": 0.04344715184511262
+        }
+      ],
+      "shap_holdout_rows": 1000,
+      "proposed_drop": "years_in_operation",
+      "dropped": [],
+      "features_kept": [
+        "loan_to_income",
+        "payment_history_score",
+        "years_in_operation"
+      ],
+      "ablation_auc_roc_mean": 0.7753369528765255,
+      "ablation_auc_roc_std": 0.00764992815434005,
+      "ablation_f1_mean": 0.5412719199052092,
+      "ablation_per_fold": [
+        {
+          "auc": 0.7746094251417167,
+          "f1": 0.545625,
+          "pr_auc": 0.5485087796850753,
+          "seconds": 12.296307399999932
+        },
+        {
+          "auc": 0.7895067112407692,
+          "f1": 0.5543478260869565,
+          "pr_auc": 0.5832101219769701,
+          "seconds": 13.136353699999745
+        },
+        {
+          "auc": 0.7748968478400722,
+          "f1": 0.5281733746130031,
+          "pr_auc": 0.5565446893006398,
+          "seconds": 13.285102699999698
+        },
+        {
+          "auc": 0.7670228363417378,
+          "f1": 0.5337205550177476,
+          "pr_auc": 0.5463969731972091,
+          "seconds": 13.094024600010016
+        },
+        {
+          "auc": 0.7706489438183313,
+          "f1": 0.5444928438083385,
+          "pr_auc": 0.5413664428704469,
+          "seconds": 13.952163800000562
+        }
+      ],
+      "auc_roc_mean": 0.776524310090232,
+      "auc_roc_std": 0.007050002000417146,
+      "improved": false,
+      "note": "Kept all three features; dropping years_in_operation did not help.",
+      "recorded_at": "2026-08-19T22:11:15"
+    }
+  ]
+}

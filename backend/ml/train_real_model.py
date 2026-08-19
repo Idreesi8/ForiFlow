@@ -354,60 +354,138 @@ def build_candidates(mapped: dict[str, pd.DataFrame]) -> list[Candidate]:
     return candidates
 
 
-def build_ensemble(features: list[str]) -> VotingClassifier:
+def scale_pos_weight_from(y: pd.Series | np.ndarray) -> float:
+    """neg/pos ratio for XGBoost ``scale_pos_weight`` on a training fold."""
+    values = np.asarray(y)
+    n_pos = float(values.sum())
+    n_neg = float(len(values) - n_pos)
+    if n_pos == 0:
+        return 1.0
+    return n_neg / n_pos
+
+
+def build_ensemble(
+    features: list[str],
+    *,
+    scale_pos_weight: float = 1.0,
+    rf_class_weight: str | dict | None = None,
+    xgb_overrides: dict | None = None,
+    rf_overrides: dict | None = None,
+    weights: tuple[float, float] = ENSEMBLE_WEIGHTS,
+) -> VotingClassifier:
     """Create the XGBoost + RandomForest soft-voting ensemble.
 
     ``features`` fixes the column order so the monotone constraints line up with
     the columns the booster actually receives.
     """
     constraints = tuple(FEATURE_MONOTONE_CONSTRAINTS[name] for name in features)
-    xgb = XGBClassifier(
-        monotone_constraints=constraints,
-        n_estimators=300,
-        max_depth=5,
-        learning_rate=0.08,
-        subsample=0.9,
-        colsample_bytree=0.9,
-        reg_lambda=1.0,
-        min_child_weight=5,
-        objective="binary:logistic",
-        eval_metric="logloss",
-        tree_method="hist",
+    xgb_params = {
+        "monotone_constraints": constraints,
+        "n_estimators": 300,
+        "max_depth": 5,
+        "learning_rate": 0.08,
+        "subsample": 0.9,
+        "colsample_bytree": 0.9,
+        "reg_lambda": 1.0,
+        "min_child_weight": 5,
+        "scale_pos_weight": scale_pos_weight,
+        "objective": "binary:logistic",
+        "eval_metric": "logloss",
+        "tree_method": "hist",
         # Every feature is numeric. XGBoost >= 3.0 enables categorical support by
         # default, and shap then refuses to build interventional TreeExplainers
         # even when no categorical split exists.
-        enable_categorical=False,
-        random_state=RANDOM_STATE,
-        n_jobs=-1,
-    )
-    forest = RandomForestClassifier(
-        n_estimators=250,
-        max_depth=12,
-        min_samples_leaf=40,
-        max_features="sqrt",
-        random_state=RANDOM_STATE,
-        n_jobs=-1,
-    )
+        "enable_categorical": False,
+        "random_state": RANDOM_STATE,
+        "n_jobs": -1,
+    }
+    if xgb_overrides:
+        xgb_params.update(xgb_overrides)
+    rf_params = {
+        "n_estimators": 250,
+        "max_depth": 12,
+        "min_samples_leaf": 40,
+        "max_features": "sqrt",
+        "class_weight": rf_class_weight,
+        "random_state": RANDOM_STATE,
+        "n_jobs": -1,
+    }
+    if rf_overrides:
+        rf_params.update(rf_overrides)
+    xgb = XGBClassifier(**xgb_params)
+    forest = RandomForestClassifier(**rf_params)
     return VotingClassifier(
         estimators=[("xgb", xgb), ("rf", forest)],
         voting="soft",
-        weights=list(ENSEMBLE_WEIGHTS),
+        weights=list(weights),
     )
 
 
-def build_pipeline(features: list[str]) -> ImbPipeline:
-    """Scaler -> SMOTE -> ensemble, so SMOTE only ever sees training folds."""
-    return ImbPipeline(
+def build_pipeline(
+    features: list[str],
+    *,
+    y_train: pd.Series | np.ndarray | None = None,
+    imbalance: str = "smote",
+    xgb_overrides: dict | None = None,
+    rf_overrides: dict | None = None,
+    weights: tuple[float, float] = ENSEMBLE_WEIGHTS,
+):
+    """Build the train-time pipeline.
+
+    ``imbalance='smote'`` is the production recipe (50/50 resample inside the
+    fold). ``imbalance='class_weight'`` uses XGBoost ``scale_pos_weight`` and
+    RandomForest ``class_weight='balanced'`` with no oversampling.
+    """
+    if imbalance == "smote":
+        return ImbPipeline(
+            steps=[
+                ("scaler", StandardScaler()),
+                ("smote", SMOTE(random_state=RANDOM_STATE, k_neighbors=5)),
+                (
+                    "model",
+                    build_ensemble(
+                        features,
+                        xgb_overrides=xgb_overrides,
+                        rf_overrides=rf_overrides,
+                        weights=weights,
+                    ),
+                ),
+            ]
+        )
+    if imbalance != "class_weight":
+        raise ValueError(f"Unknown imbalance mode: {imbalance}")
+    if y_train is None:
+        raise ValueError("class_weight mode needs y_train to set scale_pos_weight")
+    spw = scale_pos_weight_from(y_train)
+    from sklearn.pipeline import Pipeline as SkPipeline
+
+    return SkPipeline(
         steps=[
             ("scaler", StandardScaler()),
-            ("smote", SMOTE(random_state=RANDOM_STATE, k_neighbors=5)),
-            ("model", build_ensemble(features)),
+            (
+                "model",
+                build_ensemble(
+                    features,
+                    scale_pos_weight=spw,
+                    rf_class_weight="balanced",
+                    xgb_overrides=xgb_overrides,
+                    rf_overrides=rf_overrides,
+                    weights=weights,
+                ),
+            ),
         ]
     )
 
 
 def cross_validate(
-    X: pd.DataFrame, y: pd.Series, label: str
+    X: pd.DataFrame,
+    y: pd.Series,
+    label: str,
+    *,
+    imbalance: str = "smote",
+    xgb_overrides: dict | None = None,
+    rf_overrides: dict | None = None,
+    weights: tuple[float, float] = ENSEMBLE_WEIGHTS,
 ) -> tuple[float, float, float, list[dict[str, float]]]:
     """Run stratified 5-fold CV, printing AUC-ROC and F1 per fold."""
     splitter = StratifiedKFold(n_splits=N_SPLITS, shuffle=True, random_state=RANDOM_STATE)
@@ -418,8 +496,16 @@ def cross_validate(
 
     for index, (train_index, test_index) in enumerate(splitter.split(X, y), start=1):
         started = time.perf_counter()
-        pipeline = build_pipeline(list(X.columns))
-        pipeline.fit(X.iloc[train_index], y.iloc[train_index])
+        y_train = y.iloc[train_index]
+        pipeline = build_pipeline(
+            list(X.columns),
+            y_train=y_train,
+            imbalance=imbalance,
+            xgb_overrides=xgb_overrides,
+            rf_overrides=rf_overrides,
+            weights=weights,
+        )
+        pipeline.fit(X.iloc[train_index], y_train)
 
         probabilities = pipeline.predict_proba(X.iloc[test_index])[:, 1]
         predictions = (probabilities >= 0.5).astype(int)
