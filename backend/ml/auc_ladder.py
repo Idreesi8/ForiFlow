@@ -410,11 +410,13 @@ def step_blend() -> None:
         "min_child_weight": params["xgb_min_child_weight"],
         "subsample": params["xgb_subsample"],
         "colsample_bytree": params["xgb_colsample_bytree"],
+        "n_jobs": 2,
     }
     rf_overrides = {
         "n_estimators": params["rf_n_estimators"],
         "max_depth": params["rf_max_depth"],
         "min_samples_leaf": params["rf_min_samples_leaf"],
+        "n_jobs": 2,
     }
     print("Collecting out-of-fold member probabilities...")
     p_xgb, p_rf, y_np = _oof_member_probs(
@@ -472,11 +474,13 @@ def step_final() -> None:
         "min_child_weight": params["xgb_min_child_weight"],
         "subsample": params["xgb_subsample"],
         "colsample_bytree": params["xgb_colsample_bytree"],
+        "n_jobs": 2,
     }
     rf_overrides = {
         "n_estimators": params["rf_n_estimators"],
         "max_depth": params["rf_max_depth"],
         "min_samples_leaf": params["rf_min_samples_leaf"],
+        "n_jobs": 2,
     }
     weights = (blend_step["optimal_xgb_weight"], blend_step["optimal_rf_weight"])
     mean_auc, std_auc, mean_f1, folds = cross_validate(
