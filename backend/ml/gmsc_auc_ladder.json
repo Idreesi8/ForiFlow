@@ -1,0 +1,1482 @@
+{
+  "dataset": "Give Me Some Credit (cs-training.csv)",
+  "domain": "consumer_not_sme",
+  "steps": [
+    {
+      "name": "baseline",
+      "features": [
+        "RevolvingUtilizationOfUnsecuredLines",
+        "age",
+        "NumberOfTime30-59DaysPastDueNotWorse",
+        "DebtRatio",
+        "MonthlyIncome",
+        "NumberOfOpenCreditLinesAndLoans",
+        "NumberOfTimes90DaysLate",
+        "NumberRealEstateLoansOrLines",
+        "NumberOfTime60-89DaysPastDueNotWorse",
+        "NumberOfDependents"
+      ],
+      "imputation": "fold-wise median on MonthlyIncome and NumberOfDependents",
+      "dpd_96_98": "raw counts, not recoded",
+      "income_missing_flag": false,
+      "winsorize_util": false,
+      "imbalance": "SMOTE inside each CV fold (production architecture)",
+      "ensemble": {
+        "type": "VotingClassifier soft",
+        "weights": [
+          0.6,
+          0.4
+        ]
+      },
+      "class_balance": {
+        "label": "GMSC cs-training (raw labels)",
+        "n": 150000,
+        "n_neg": 139974,
+        "n_pos": 10026,
+        "pos_rate": 0.06684,
+        "neg_to_pos": 13.961101137043686
+      },
+      "auc_roc_mean": 0.8533178199927558,
+      "auc_roc_std": 0.004065905987569449,
+      "f1_mean": 0.399335458737793,
+      "per_fold": [
+        {
+          "auc": 0.8491470914825716,
+          "f1": 0.3977657413676371,
+          "pr_auc": 0.36248248054126425,
+          "seconds": 447.1319865999976
+        },
+        {
+          "auc": 0.8543534092078252,
+          "f1": 0.40181879420680366,
+          "pr_auc": 0.3834227707315117,
+          "seconds": 417.7293854000018
+        },
+        {
+          "auc": 0.8594697040217815,
+          "f1": 0.4029377399432482,
+          "pr_auc": 0.3870217939040811,
+          "seconds": 740.5768747999973
+        },
+        {
+          "auc": 0.8485083504847455,
+          "f1": 0.39188964600299153,
+          "pr_auc": 0.36580339665256445,
+          "seconds": 72.38946779999242
+        },
+        {
+          "auc": 0.8551105447668559,
+          "f1": 0.4022653721682848,
+          "pr_auc": 0.37359744262806427,
+          "seconds": 396.6617899000121
+        }
+      ],
+      "recorded_at": "2026-08-20T00:28:57"
+    },
+    {
+      "name": "features",
+      "baseline_auc_roc_mean": 0.8533178199927558,
+      "trials": [
+        {
+          "key": "a_income_missing",
+          "label": "(a) income_missing flag",
+          "features": [
+            "RevolvingUtilizationOfUnsecuredLines",
+            "age",
+            "NumberOfTime30-59DaysPastDueNotWorse",
+            "DebtRatio",
+            "MonthlyIncome",
+            "NumberOfOpenCreditLinesAndLoans",
+            "NumberOfTimes90DaysLate",
+            "NumberRealEstateLoansOrLines",
+            "NumberOfTime60-89DaysPastDueNotWorse",
+            "NumberOfDependents",
+            "income_missing"
+          ],
+          "auc_roc_mean": 0.85408,
+          "auc_roc_std": 0.004030583084368797,
+          "f1_mean": 0.40122,
+          "delta_vs_baseline": 0.0007621800072441509,
+          "keep": true,
+          "per_fold": [
+            {
+              "auc": 0.8507,
+              "f1": 0.4032,
+              "pr_auc": 0.3644,
+              "seconds": 358.0
+            },
+            {
+              "auc": 0.8551,
+              "f1": 0.4026,
+              "pr_auc": 0.3809,
+              "seconds": 303.7
+            },
+            {
+              "auc": 0.86,
+              "f1": 0.4054,
+              "pr_auc": 0.3849,
+              "seconds": 309.6
+            },
+            {
+              "auc": 0.8486,
+              "f1": 0.392,
+              "pr_auc": 0.3665,
+              "seconds": 403.7
+            },
+            {
+              "auc": 0.856,
+              "f1": 0.4029,
+              "pr_auc": 0.3756,
+              "seconds": 549.5
+            }
+          ],
+          "precision_note": "Fold metrics as printed (4 d.p.) from the completed CV; process died before JSON write."
+        },
+        {
+          "key": "b_dpd_sentinel",
+          "label": "(b) DPD 96/98 recode",
+          "features": [
+            "RevolvingUtilizationOfUnsecuredLines",
+            "age",
+            "NumberOfTime30-59DaysPastDueNotWorse",
+            "DebtRatio",
+            "MonthlyIncome",
+            "NumberOfOpenCreditLinesAndLoans",
+            "NumberOfTimes90DaysLate",
+            "NumberRealEstateLoansOrLines",
+            "NumberOfTime60-89DaysPastDueNotWorse",
+            "NumberOfDependents",
+            "dpd_sentinel"
+          ],
+          "auc_roc_mean": 0.85168,
+          "auc_roc_std": 0.004212077872024673,
+          "f1_mean": 0.3933000000000001,
+          "delta_vs_baseline": -0.0016378199927558068,
+          "keep": false,
+          "per_fold": [
+            {
+              "auc": 0.8477,
+              "f1": 0.3919,
+              "pr_auc": 0.3571,
+              "seconds": 479.6
+            },
+            {
+              "auc": 0.8508,
+              "f1": 0.3922,
+              "pr_auc": 0.3685,
+              "seconds": 480.0
+            },
+            {
+              "auc": 0.8592,
+              "f1": 0.3961,
+              "pr_auc": 0.3823,
+              "seconds": 65.1
+            },
+            {
+              "auc": 0.8479,
+              "f1": 0.3919,
+              "pr_auc": 0.36,
+              "seconds": 194.7
+            },
+            {
+              "auc": 0.8528,
+              "f1": 0.3944,
+              "pr_auc": 0.3655,
+              "seconds": 185.4
+            }
+          ],
+          "precision_note": "Fold metrics as printed (4 d.p.) from the completed CV; process died before JSON write."
+        },
+        {
+          "key": "c_winsorize_util",
+          "label": "(c) util winsorize 99th",
+          "features": [
+            "RevolvingUtilizationOfUnsecuredLines",
+            "age",
+            "NumberOfTime30-59DaysPastDueNotWorse",
+            "DebtRatio",
+            "MonthlyIncome",
+            "NumberOfOpenCreditLinesAndLoans",
+            "NumberOfTimes90DaysLate",
+            "NumberRealEstateLoansOrLines",
+            "NumberOfTime60-89DaysPastDueNotWorse",
+            "NumberOfDependents"
+          ],
+          "auc_roc_mean": 0.85976,
+          "auc_roc_std": 0.0038866952543259886,
+          "f1_mean": 0.42566,
+          "delta_vs_baseline": 0.006442180007244169,
+          "keep": true,
+          "per_fold": [
+            {
+              "auc": 0.8552,
+              "f1": 0.4234,
+              "pr_auc": 0.3713,
+              "seconds": 190.4
+            },
+            {
+              "auc": 0.8599,
+              "f1": 0.4244,
+              "pr_auc": 0.3883,
+              "seconds": 210.4
+            },
+            {
+              "auc": 0.8646,
+              "f1": 0.431,
+              "pr_auc": 0.3902,
+              "seconds": 206.5
+            },
+            {
+              "auc": 0.8556,
+              "f1": 0.4136,
+              "pr_auc": 0.3705,
+              "seconds": 117.4
+            },
+            {
+              "auc": 0.8635,
+              "f1": 0.4359,
+              "pr_auc": 0.3832,
+              "seconds": 123.3
+            }
+          ],
+          "precision_note": "Fold metrics as printed (4 d.p.) from the completed CV; process died before JSON write."
+        }
+      ],
+      "kept_keys": [
+        "a_income_missing",
+        "c_winsorize_util"
+      ],
+      "combined": {
+        "features": [
+          "RevolvingUtilizationOfUnsecuredLines",
+          "age",
+          "NumberOfTime30-59DaysPastDueNotWorse",
+          "DebtRatio",
+          "MonthlyIncome",
+          "NumberOfOpenCreditLinesAndLoans",
+          "NumberOfTimes90DaysLate",
+          "NumberRealEstateLoansOrLines",
+          "NumberOfTime60-89DaysPastDueNotWorse",
+          "NumberOfDependents",
+          "income_missing"
+        ],
+        "auc_roc_mean": 0.8604746967243825,
+        "auc_roc_std": 0.0038067795150829677,
+        "f1_mean": 0.4254879166447811,
+        "delta_vs_baseline": 0.007156876731626682,
+        "per_fold": [
+          {
+            "auc": 0.8568211027416429,
+            "f1": 0.4252986097513217,
+            "pr_auc": 0.37254374183384975,
+            "seconds": 339.9882957000227
+          },
+          {
+            "auc": 0.8606367453397227,
+            "f1": 0.4215967834577829,
+            "pr_auc": 0.38588376271811453,
+            "seconds": 78.75513969999156
+          },
+          {
+            "auc": 0.8650534852367207,
+            "f1": 0.43079256731133864,
+            "pr_auc": 0.39193208635346416,
+            "seconds": 247.0259654999827
+          },
+          {
+            "auc": 0.8555994190269994,
+            "f1": 0.41389728096676737,
+            "pr_auc": 0.372990110818114,
+            "seconds": 312.08108080000966
+          },
+          {
+            "auc": 0.8642627312768267,
+            "f1": 0.4358543417366947,
+            "pr_auc": 0.3865486693706709,
+            "seconds": 407.3602490000194
+          }
+        ],
+        "flags": {
+          "income_missing_flag": true,
+          "recode_dpd_sentinel": false,
+          "winsorize_util": true
+        }
+      },
+      "auc_roc_mean": 0.8604746967243825,
+      "auc_roc_std": 0.0038067795150829677,
+      "improved": true,
+      "recorded_at": "2026-08-20T19:33:35"
+    },
+    {
+      "name": "class_weight",
+      "features": [
+        "RevolvingUtilizationOfUnsecuredLines",
+        "age",
+        "NumberOfTime30-59DaysPastDueNotWorse",
+        "DebtRatio",
+        "MonthlyIncome",
+        "NumberOfOpenCreditLinesAndLoans",
+        "NumberOfTimes90DaysLate",
+        "NumberRealEstateLoansOrLines",
+        "NumberOfTime60-89DaysPastDueNotWorse",
+        "NumberOfDependents",
+        "income_missing"
+      ],
+      "class_balance_before": {
+        "label": "before (natural distribution used in every train fold)",
+        "n": 150000,
+        "n_neg": 139974,
+        "n_pos": 10026,
+        "pos_rate": 0.06684,
+        "neg_to_pos": 13.961101137043686
+      },
+      "class_balance_after_training": {
+        "note": "No resampling. Each train fold keeps the natural ~6.684% event rate.",
+        "scale_pos_weight": 13.961101137043686,
+        "rf_class_weight": "balanced",
+        "pos_rate": 0.06684
+      },
+      "auc_roc_mean": 0.8644659462874902,
+      "auc_roc_std": 0.003354693507221968,
+      "f1_mean": 0.3458266396287672,
+      "per_fold": [
+        {
+          "auc": 0.8618158705280172,
+          "f1": 0.3476041304095603,
+          "pr_auc": 0.3871135831699038,
+          "seconds": 147.4288789999846
+        },
+        {
+          "auc": 0.8645060148343197,
+          "f1": 0.3482374141232121,
+          "pr_auc": 0.39996440192572164,
+          "seconds": 196.41457510000328
+        },
+        {
+          "auc": 0.8692971536153365,
+          "f1": 0.34983192303234034,
+          "pr_auc": 0.41311973121072976,
+          "seconds": 211.9205609000055
+        },
+        {
+          "auc": 0.8599320505665645,
+          "f1": 0.33820173436786855,
+          "pr_auc": 0.3890832862900108,
+          "seconds": 178.00479890001589
+        },
+        {
+          "auc": 0.8667786418932132,
+          "f1": 0.3452579962108548,
+          "pr_auc": 0.4010361544111917,
+          "seconds": 90.96412729998701
+        }
+      ],
+      "improved": true,
+      "delta_vs_kept_features": 0.003991249563107702,
+      "recorded_at": "2026-08-20T20:46:33"
+    },
+    {
+      "name": "shap_rank",
+      "ranking": [
+        {
+          "feature": "RevolvingUtilizationOfUnsecuredLines",
+          "mean_abs_shap": 0.10845402838623511
+        },
+        {
+          "feature": "NumberOfTime30-59DaysPastDueNotWorse",
+          "mean_abs_shap": 0.05749840566031375
+        },
+        {
+          "feature": "age",
+          "mean_abs_shap": 0.048572802051430386
+        },
+        {
+          "feature": "DebtRatio",
+          "mean_abs_shap": 0.03160057831667752
+        },
+        {
+          "feature": "NumberOfOpenCreditLinesAndLoans",
+          "mean_abs_shap": 0.028899252078106778
+        },
+        {
+          "feature": "NumberOfTimes90DaysLate",
+          "mean_abs_shap": 0.028571028509507868
+        },
+        {
+          "feature": "NumberOfTime60-89DaysPastDueNotWorse",
+          "mean_abs_shap": 0.026532450094845506
+        },
+        {
+          "feature": "NumberRealEstateLoansOrLines",
+          "mean_abs_shap": 0.020832764122803285
+        },
+        {
+          "feature": "MonthlyIncome",
+          "mean_abs_shap": 0.019223686626317495
+        },
+        {
+          "feature": "income_missing",
+          "mean_abs_shap": 0.018490322564146695
+        },
+        {
+          "feature": "NumberOfDependents",
+          "mean_abs_shap": 0.009196525275161346
+        }
+      ],
+      "shap_holdout_rows": 1000,
+      "proposed_drop": "NumberOfDependents",
+      "dropped": [],
+      "features_kept": [
+        "RevolvingUtilizationOfUnsecuredLines",
+        "age",
+        "NumberOfTime30-59DaysPastDueNotWorse",
+        "DebtRatio",
+        "MonthlyIncome",
+        "NumberOfOpenCreditLinesAndLoans",
+        "NumberOfTimes90DaysLate",
+        "NumberRealEstateLoansOrLines",
+        "NumberOfTime60-89DaysPastDueNotWorse",
+        "NumberOfDependents",
+        "income_missing"
+      ],
+      "ablation_auc_roc_mean": 0.8642317313708847,
+      "ablation_auc_roc_std": 0.0032260882798987047,
+      "ablation_f1_mean": 0.34498492783842344,
+      "ablation_per_fold": [
+        {
+          "auc": 0.8618884808032143,
+          "f1": 0.3465003465003465,
+          "pr_auc": 0.38909533919819417,
+          "seconds": 160.28118459999678
+        },
+        {
+          "auc": 0.864297311730497,
+          "f1": 0.3469776830772681,
+          "pr_auc": 0.3986436227995308,
+          "seconds": 188.53378800000064
+        },
+        {
+          "auc": 0.8686016428833258,
+          "f1": 0.34958601655933763,
+          "pr_auc": 0.4118709531309121,
+          "seconds": 189.09288620000007
+        },
+        {
+          "auc": 0.8596318633671224,
+          "f1": 0.3376652986776106,
+          "pr_auc": 0.39036795587912043,
+          "seconds": 200.70087600001716
+        },
+        {
+          "auc": 0.8667393580702647,
+          "f1": 0.3441952943775544,
+          "pr_auc": 0.40313013349098115,
+          "seconds": 174.88855009997496
+        }
+      ],
+      "auc_roc_mean": 0.8644659462874902,
+      "auc_roc_std": 0.003354693507221968,
+      "improved": false,
+      "note": "Kept all features; dropping NumberOfDependents did not help.",
+      "recorded_at": "2026-08-20T21:24:58"
+    },
+    {
+      "name": "optuna",
+      "features": [
+        "RevolvingUtilizationOfUnsecuredLines",
+        "age",
+        "NumberOfTime30-59DaysPastDueNotWorse",
+        "DebtRatio",
+        "MonthlyIncome",
+        "NumberOfOpenCreditLinesAndLoans",
+        "NumberOfTimes90DaysLate",
+        "NumberRealEstateLoansOrLines",
+        "NumberOfTime60-89DaysPastDueNotWorse",
+        "NumberOfDependents",
+        "income_missing"
+      ],
+      "dropped": [],
+      "n_trials": 20,
+      "best_trial": 6,
+      "best_params": {
+        "xgb_max_depth": 6,
+        "xgb_learning_rate": 0.030611488731000357,
+        "xgb_min_child_weight": 20,
+        "xgb_subsample": 0.9100531293444458,
+        "xgb_colsample_bytree": 0.9757995766256756,
+        "rf_n_estimators": 400,
+        "rf_max_depth": 14,
+        "rf_min_samples_leaf": 75
+      },
+      "trials": [
+        {
+          "trial": 0,
+          "auc_roc_mean": 0.8623568140840993,
+          "auc_roc_std": 0.004048490531514445,
+          "params": {
+            "xgb_max_depth": 5,
+            "xgb_learning_rate": 0.1785436060870726,
+            "xgb_min_child_weight": 15,
+            "xgb_subsample": 0.8394633936788146,
+            "xgb_colsample_bytree": 0.6624074561769746,
+            "rf_n_estimators": 150,
+            "rf_max_depth": 6,
+            "rf_min_samples_leaf": 71
+          }
+        },
+        {
+          "trial": 1,
+          "auc_roc_mean": 0.862413601773849,
+          "auc_roc_std": 0.0036308068740477295,
+          "params": {
+            "xgb_max_depth": 6,
+            "xgb_learning_rate": 0.10211806418789517,
+            "xgb_min_child_weight": 1,
+            "xgb_subsample": 0.9879639408647978,
+            "xgb_colsample_bytree": 0.9329770563201687,
+            "rf_n_estimators": 150,
+            "rf_max_depth": 8,
+            "rf_min_samples_leaf": 23
+          }
+        },
+        {
+          "trial": 2,
+          "auc_roc_mean": 0.864813637759366,
+          "auc_roc_std": 0.0033808822125813136,
+          "params": {
+            "xgb_max_depth": 4,
+            "xgb_learning_rate": 0.06695552617031866,
+            "xgb_min_child_weight": 9,
+            "xgb_subsample": 0.7164916560792167,
+            "xgb_colsample_bytree": 0.8447411578889518,
+            "rf_n_estimators": 100,
+            "rf_max_depth": 10,
+            "rf_min_samples_leaf": 36
+          }
+        },
+        {
+          "trial": 3,
+          "auc_roc_mean": 0.8629619049978661,
+          "auc_roc_std": 0.0036895606153441196,
+          "params": {
+            "xgb_max_depth": 5,
+            "xgb_learning_rate": 0.12195678219063029,
+            "xgb_min_child_weight": 4,
+            "xgb_subsample": 0.8056937753654446,
+            "xgb_colsample_bytree": 0.836965827544817,
+            "rf_n_estimators": 100,
+            "rf_max_depth": 15,
+            "rf_min_samples_leaf": 22
+          }
+        },
+        {
+          "trial": 4,
+          "auc_roc_mean": 0.8650424979598981,
+          "auc_roc_std": 0.0034164194527546965,
+          "params": {
+            "xgb_max_depth": 3,
+            "xgb_learning_rate": 0.1777933581403786,
+            "xgb_min_child_weight": 20,
+            "xgb_subsample": 0.9233589392465844,
+            "xgb_colsample_bytree": 0.7218455076693483,
+            "rf_n_estimators": 100,
+            "rf_max_depth": 16,
+            "rf_min_samples_leaf": 41
+          }
+        },
+        {
+          "trial": 5,
+          "auc_roc_mean": 0.8649968109033057,
+          "auc_roc_std": 0.0034232931638961423,
+          "params": {
+            "xgb_max_depth": 3,
+            "xgb_learning_rate": 0.06254706073560744,
+            "xgb_min_child_weight": 1,
+            "xgb_subsample": 0.9637281608315128,
+            "xgb_colsample_bytree": 0.7035119926400067,
+            "rf_n_estimators": 300,
+            "rf_max_depth": 10,
+            "rf_min_samples_leaf": 46
+          }
+        },
+        {
+          "trial": 6,
+          "auc_roc_mean": 0.8656250015102677,
+          "auc_roc_std": 0.003360939518254288,
+          "params": {
+            "xgb_max_depth": 6,
+            "xgb_learning_rate": 0.030611488731000357,
+            "xgb_min_child_weight": 20,
+            "xgb_subsample": 0.9100531293444458,
+            "xgb_colsample_bytree": 0.9757995766256756,
+            "rf_n_estimators": 400,
+            "rf_max_depth": 14,
+            "rf_min_samples_leaf": 75
+          }
+        },
+        {
+          "trial": 7,
+          "auc_roc_mean": 0.8650002071511759,
+          "auc_roc_std": 0.0034183136655452613,
+          "params": {
+            "xgb_max_depth": 3,
+            "xgb_learning_rate": 0.03140601675761342,
+            "xgb_min_child_weight": 1,
+            "xgb_subsample": 0.7301321323053057,
+            "xgb_colsample_bytree": 0.7554709158757928,
+            "rf_n_estimators": 150,
+            "rf_max_depth": 18,
+            "rf_min_samples_leaf": 35
+          }
+        },
+        {
+          "trial": 8,
+          "auc_roc_mean": 0.8654407221816267,
+          "auc_roc_std": 0.0031257380939690048,
+          "params": {
+            "xgb_max_depth": 4,
+            "xgb_learning_rate": 0.06977921490278444,
+            "xgb_min_child_weight": 3,
+            "xgb_subsample": 0.9208787923016158,
+            "xgb_colsample_bytree": 0.6298202574719083,
+            "rf_n_estimators": 400,
+            "rf_max_depth": 17,
+            "rf_min_samples_leaf": 24
+          }
+        },
+        {
+          "trial": 9,
+          "auc_roc_mean": 0.8646821781300591,
+          "auc_roc_std": 0.003601358330479207,
+          "params": {
+            "xgb_max_depth": 3,
+            "xgb_learning_rate": 0.13076497169036086,
+            "xgb_min_child_weight": 15,
+            "xgb_subsample": 0.8916028672163949,
+            "xgb_colsample_bytree": 0.9085081386743783,
+            "rf_n_estimators": 100,
+            "rf_max_depth": 11,
+            "rf_min_samples_leaf": 18
+          }
+        },
+        {
+          "trial": 10,
+          "auc_roc_mean": 0.8651320528169043,
+          "auc_roc_std": 0.003430276154506466,
+          "params": {
+            "xgb_max_depth": 8,
+            "xgb_learning_rate": 0.02027809618076176,
+            "xgb_min_child_weight": 9,
+            "xgb_subsample": 0.6071847502459279,
+            "xgb_colsample_bytree": 0.9906561731354215,
+            "rf_n_estimators": 300,
+            "rf_max_depth": 20,
+            "rf_min_samples_leaf": 78
+          }
+        },
+        {
+          "trial": 11,
+          "auc_roc_mean": 0.8654670236558623,
+          "auc_roc_std": 0.0034284271125890756,
+          "params": {
+            "xgb_max_depth": 7,
+            "xgb_learning_rate": 0.03973166433884165,
+            "xgb_min_child_weight": 20,
+            "xgb_subsample": 0.8718378732402433,
+            "xgb_colsample_bytree": 0.6230942926740962,
+            "rf_n_estimators": 400,
+            "rf_max_depth": 14,
+            "rf_min_samples_leaf": 59
+          }
+        },
+        {
+          "trial": 12,
+          "auc_roc_mean": 0.8653993281747454,
+          "auc_roc_std": 0.003499597321539233,
+          "params": {
+            "xgb_max_depth": 7,
+            "xgb_learning_rate": 0.03505825872416656,
+            "xgb_min_child_weight": 20,
+            "xgb_subsample": 0.834269667554605,
+            "xgb_colsample_bytree": 0.8055004232932348,
+            "rf_n_estimators": 400,
+            "rf_max_depth": 13,
+            "rf_min_samples_leaf": 60
+          }
+        },
+        {
+          "trial": 13,
+          "auc_roc_mean": 0.8653398414475306,
+          "auc_roc_std": 0.0033033222345614024,
+          "params": {
+            "xgb_max_depth": 7,
+            "xgb_learning_rate": 0.036488558875415716,
+            "xgb_min_child_weight": 17,
+            "xgb_subsample": 0.8695456595762008,
+            "xgb_colsample_bytree": 0.9895996054542221,
+            "rf_n_estimators": 350,
+            "rf_max_depth": 13,
+            "rf_min_samples_leaf": 59
+          }
+        },
+        {
+          "trial": 14,
+          "auc_roc_mean": 0.865230318702172,
+          "auc_roc_std": 0.0035075198203841375,
+          "params": {
+            "xgb_max_depth": 7,
+            "xgb_learning_rate": 0.022793793146712135,
+            "xgb_min_child_weight": 17,
+            "xgb_subsample": 0.7818263010758927,
+            "xgb_colsample_bytree": 0.6052561262871233,
+            "rf_n_estimators": 350,
+            "rf_max_depth": 14,
+            "rf_min_samples_leaf": 62
+          }
+        },
+        {
+          "trial": 16,
+          "auc_roc_mean": 0.8646498034633898,
+          "auc_roc_std": 0.003593657152659294,
+          "params": {
+            "xgb_max_depth": 8,
+            "xgb_learning_rate": 0.051324117740840926,
+            "xgb_min_child_weight": 17,
+            "xgb_subsample": 0.9481974559098771,
+            "xgb_colsample_bytree": 0.7749967289190438,
+            "rf_n_estimators": 350,
+            "rf_max_depth": 12,
+            "rf_min_samples_leaf": 79
+          }
+        },
+        {
+          "trial": 17,
+          "auc_roc_mean": 0.8654142514890232,
+          "auc_roc_std": 0.0033947407894656984,
+          "params": {
+            "xgb_max_depth": 6,
+            "xgb_learning_rate": 0.04445612639569262,
+            "xgb_min_child_weight": 20,
+            "xgb_subsample": 0.7570788171956702,
+            "xgb_colsample_bytree": 0.8941421382689204,
+            "rf_n_estimators": 400,
+            "rf_max_depth": 19,
+            "rf_min_samples_leaf": 51
+          }
+        },
+        {
+          "trial": 18,
+          "auc_roc_mean": 0.8654256856823637,
+          "auc_roc_std": 0.003476567177625345,
+          "params": {
+            "xgb_max_depth": 6,
+            "xgb_learning_rate": 0.025975176199652162,
+            "xgb_min_child_weight": 12,
+            "xgb_subsample": 0.6659890500207509,
+            "xgb_colsample_bytree": 0.6737210156185316,
+            "rf_n_estimators": 250,
+            "rf_max_depth": 15,
+            "rf_min_samples_leaf": 68
+          }
+        },
+        {
+          "trial": 19,
+          "auc_roc_mean": 0.8656129073656572,
+          "auc_roc_std": 0.003288675055926598,
+          "params": {
+            "xgb_max_depth": 7,
+            "xgb_learning_rate": 0.028099066071236776,
+            "xgb_min_child_weight": 18,
+            "xgb_subsample": 0.8847911208853647,
+            "xgb_colsample_bytree": 0.8604063212686379,
+            "rf_n_estimators": 300,
+            "rf_max_depth": 17,
+            "rf_min_samples_leaf": 54
+          }
+        },
+        {
+          "trial": 20,
+          "auc_roc_mean": 0.865457920045394,
+          "auc_roc_std": 0.0034862637451239663,
+          "params": {
+            "xgb_max_depth": 5,
+            "xgb_learning_rate": 0.025848967070580934,
+            "xgb_min_child_weight": 14,
+            "xgb_subsample": 0.9986073021141966,
+            "xgb_colsample_bytree": 0.9542783048914624,
+            "rf_n_estimators": 250,
+            "rf_max_depth": 17,
+            "rf_min_samples_leaf": 72
+          }
+        }
+      ],
+      "best_so_far": [
+        {
+          "trial": 0,
+          "auc_roc_mean": 0.8623568140840993,
+          "auc_roc_std": 0.004048490531514445,
+          "params": {
+            "xgb_max_depth": 5,
+            "xgb_learning_rate": 0.1785436060870726,
+            "xgb_min_child_weight": 15,
+            "xgb_subsample": 0.8394633936788146,
+            "xgb_colsample_bytree": 0.6624074561769746,
+            "rf_n_estimators": 150,
+            "rf_max_depth": 6,
+            "rf_min_samples_leaf": 71
+          }
+        },
+        {
+          "trial": 1,
+          "auc_roc_mean": 0.862413601773849,
+          "auc_roc_std": 0.0036308068740477295,
+          "params": {
+            "xgb_max_depth": 6,
+            "xgb_learning_rate": 0.10211806418789517,
+            "xgb_min_child_weight": 1,
+            "xgb_subsample": 0.9879639408647978,
+            "xgb_colsample_bytree": 0.9329770563201687,
+            "rf_n_estimators": 150,
+            "rf_max_depth": 8,
+            "rf_min_samples_leaf": 23
+          }
+        },
+        {
+          "trial": 2,
+          "auc_roc_mean": 0.864813637759366,
+          "auc_roc_std": 0.0033808822125813136,
+          "params": {
+            "xgb_max_depth": 4,
+            "xgb_learning_rate": 0.06695552617031866,
+            "xgb_min_child_weight": 9,
+            "xgb_subsample": 0.7164916560792167,
+            "xgb_colsample_bytree": 0.8447411578889518,
+            "rf_n_estimators": 100,
+            "rf_max_depth": 10,
+            "rf_min_samples_leaf": 36
+          }
+        },
+        {
+          "trial": 4,
+          "auc_roc_mean": 0.8650424979598981,
+          "auc_roc_std": 0.0034164194527546965,
+          "params": {
+            "xgb_max_depth": 3,
+            "xgb_learning_rate": 0.1777933581403786,
+            "xgb_min_child_weight": 20,
+            "xgb_subsample": 0.9233589392465844,
+            "xgb_colsample_bytree": 0.7218455076693483,
+            "rf_n_estimators": 100,
+            "rf_max_depth": 16,
+            "rf_min_samples_leaf": 41
+          }
+        },
+        {
+          "trial": 6,
+          "auc_roc_mean": 0.8656250015102677,
+          "auc_roc_std": 0.003360939518254288,
+          "params": {
+            "xgb_max_depth": 6,
+            "xgb_learning_rate": 0.030611488731000357,
+            "xgb_min_child_weight": 20,
+            "xgb_subsample": 0.9100531293444458,
+            "xgb_colsample_bytree": 0.9757995766256756,
+            "rf_n_estimators": 400,
+            "rf_max_depth": 14,
+            "rf_min_samples_leaf": 75
+          }
+        }
+      ],
+      "auc_roc_mean": 0.8656250015102677,
+      "auc_roc_std": 0.003360939518254288,
+      "improved": true,
+      "recorded_at": "2026-08-21T02:53:04"
+    },
+    {
+      "name": "blend",
+      "features": [
+        "RevolvingUtilizationOfUnsecuredLines",
+        "age",
+        "NumberOfTime30-59DaysPastDueNotWorse",
+        "DebtRatio",
+        "MonthlyIncome",
+        "NumberOfOpenCreditLinesAndLoans",
+        "NumberOfTimes90DaysLate",
+        "NumberRealEstateLoansOrLines",
+        "NumberOfTime60-89DaysPastDueNotWorse",
+        "NumberOfDependents",
+        "income_missing"
+      ],
+      "optimal_xgb_weight": 0.55,
+      "optimal_rf_weight": 0.44999999999999996,
+      "grid": [
+        {
+          "xgb_weight": 0.0,
+          "rf_weight": 1.0,
+          "auc": 0.8644035940634963
+        },
+        {
+          "xgb_weight": 0.05,
+          "rf_weight": 0.95,
+          "auc": 0.864611239277457
+        },
+        {
+          "xgb_weight": 0.1,
+          "rf_weight": 0.9,
+          "auc": 0.8647991799115319
+        },
+        {
+          "xgb_weight": 0.15000000000000002,
+          "rf_weight": 0.85,
+          "auc": 0.8649668836791271
+        },
+        {
+          "xgb_weight": 0.2,
+          "rf_weight": 0.8,
+          "auc": 0.865112696715204
+        },
+        {
+          "xgb_weight": 0.25,
+          "rf_weight": 0.75,
+          "auc": 0.865238639143582
+        },
+        {
+          "xgb_weight": 0.30000000000000004,
+          "rf_weight": 0.7,
+          "auc": 0.865343456136026
+        },
+        {
+          "xgb_weight": 0.35000000000000003,
+          "rf_weight": 0.6499999999999999,
+          "auc": 0.8654275716691405
+        },
+        {
+          "xgb_weight": 0.4,
+          "rf_weight": 0.6,
+          "auc": 0.8654909201868789
+        },
+        {
+          "xgb_weight": 0.45,
+          "rf_weight": 0.55,
+          "auc": 0.8655353885632706
+        },
+        {
+          "xgb_weight": 0.5,
+          "rf_weight": 0.5,
+          "auc": 0.8655590022787025
+        },
+        {
+          "xgb_weight": 0.55,
+          "rf_weight": 0.44999999999999996,
+          "auc": 0.8655628137927448
+        },
+        {
+          "xgb_weight": 0.6000000000000001,
+          "rf_weight": 0.3999999999999999,
+          "auc": 0.8655479033550304
+        },
+        {
+          "xgb_weight": 0.65,
+          "rf_weight": 0.35,
+          "auc": 0.8655135633877987
+        },
+        {
+          "xgb_weight": 0.7000000000000001,
+          "rf_weight": 0.29999999999999993,
+          "auc": 0.8654584642434135
+        },
+        {
+          "xgb_weight": 0.75,
+          "rf_weight": 0.25,
+          "auc": 0.8653847165415413
+        },
+        {
+          "xgb_weight": 0.8,
+          "rf_weight": 0.19999999999999996,
+          "auc": 0.8652946019176209
+        },
+        {
+          "xgb_weight": 0.8500000000000001,
+          "rf_weight": 0.1499999999999999,
+          "auc": 0.8651837437929932
+        },
+        {
+          "xgb_weight": 0.9,
+          "rf_weight": 0.09999999999999998,
+          "auc": 0.8650527535490469
+        },
+        {
+          "xgb_weight": 0.9500000000000001,
+          "rf_weight": 0.04999999999999993,
+          "auc": 0.8649027256867295
+        },
+        {
+          "xgb_weight": 1.0,
+          "rf_weight": 0.0,
+          "auc": 0.8647329800620606
+        }
+      ],
+      "logistic_stack_auc_optimistic": 0.8655612383099354,
+      "auc_roc_mean": 0.8656432762838341,
+      "auc_roc_std": 0.0033490059594683576,
+      "oof_auc_global_weight": 0.8655628137927448,
+      "per_fold": [
+        {
+          "auc": 0.8633735946550575
+        },
+        {
+          "auc": 0.8652828991995811
+        },
+        {
+          "auc": 0.8704057947647402
+        },
+        {
+          "auc": 0.860982425165876
+        },
+        {
+          "auc": 0.8681716676339158
+        }
+      ],
+      "improved": true,
+      "recorded_at": "2026-08-21T03:16:03"
+    },
+    {
+      "name": "final",
+      "features": [
+        "RevolvingUtilizationOfUnsecuredLines",
+        "age",
+        "NumberOfTime30-59DaysPastDueNotWorse",
+        "DebtRatio",
+        "MonthlyIncome",
+        "NumberOfOpenCreditLinesAndLoans",
+        "NumberOfTimes90DaysLate",
+        "NumberRealEstateLoansOrLines",
+        "NumberOfTime60-89DaysPastDueNotWorse",
+        "NumberOfDependents",
+        "income_missing"
+      ],
+      "imbalance": "class_weight",
+      "xgb_overrides": {
+        "max_depth": 6,
+        "learning_rate": 0.030611488731000357,
+        "min_child_weight": 20,
+        "subsample": 0.9100531293444458,
+        "colsample_bytree": 0.9757995766256756
+      },
+      "rf_overrides": {
+        "n_estimators": 400,
+        "max_depth": 14,
+        "min_samples_leaf": 75
+      },
+      "weights": [
+        0.55,
+        0.44999999999999996
+      ],
+      "auc_roc_mean": 0.8656432762838341,
+      "auc_roc_std": 0.0033490059594683576,
+      "f1_mean": 0.34466659775927483,
+      "train_auc_mean": 0.8847921409953093,
+      "train_test_gap": 0.019148864711475255,
+      "per_fold": [
+        {
+          "auc": 0.8633735946550575,
+          "f1": 0.3432988518813232,
+          "pr_auc": 0.38660336601099266,
+          "seconds": 245.5368972000142,
+          "train_auc": 0.8853910867143625
+        },
+        {
+          "auc": 0.8652828991995811,
+          "f1": 0.347681014347681,
+          "pr_auc": 0.39922963366600034,
+          "seconds": 239.2962009999901,
+          "train_auc": 0.8846716793443331
+        },
+        {
+          "auc": 0.8704057947647402,
+          "f1": 0.34837831707870265,
+          "pr_auc": 0.41069137291038305,
+          "seconds": 228.46796770000947,
+          "train_auc": 0.8838505526463327
+        },
+        {
+          "auc": 0.860982425165876,
+          "f1": 0.3409426462237365,
+          "pr_auc": 0.3887411502739456,
+          "seconds": 248.3080895000021,
+          "train_auc": 0.885896089977305
+        },
+        {
+          "auc": 0.8681716676339158,
+          "f1": 0.3430321592649311,
+          "pr_auc": 0.4022215971176664,
+          "seconds": 243.72242899998673,
+          "train_auc": 0.8841512962942133
+        }
+      ],
+      "delta_vs_production_schema": 0.08806705645969926,
+      "delta_vs_gmsc_kept_features": 0.005168579559451603,
+      "unstable": false,
+      "domain": "consumer_not_sme",
+      "recorded_at": "2026-08-21T03:39:36"
+    },
+    {
+      "name": "train_gaps",
+      "gaps": {
+        "class_weight": {
+          "test_auc_mean": 0.8644659462874902,
+          "test_auc_std": 0.003354693507221968,
+          "train_auc_mean": 0.8862927628638655,
+          "train_test_gap": 0.021826816576375307,
+          "f1_mean": 0.3458266396287672,
+          "per_fold": [
+            {
+              "auc": 0.8618158705280172,
+              "f1": 0.3476041304095603,
+              "pr_auc": 0.3871135831699038,
+              "seconds": 256.58854930000234,
+              "train_auc": 0.886766177519231
+            },
+            {
+              "auc": 0.8645060148343197,
+              "f1": 0.3482374141232121,
+              "pr_auc": 0.39996440192572164,
+              "seconds": 198.10751909999817,
+              "train_auc": 0.8861915891515444
+            },
+            {
+              "auc": 0.8692971536153365,
+              "f1": 0.34983192303234034,
+              "pr_auc": 0.41311973121072976,
+              "seconds": 184.85486010000022,
+              "train_auc": 0.8852966245399734
+            },
+            {
+              "auc": 0.8599320505665645,
+              "f1": 0.33820173436786855,
+              "pr_auc": 0.3890832862900108,
+              "seconds": 165.7915703000035,
+              "train_auc": 0.8874699024634451
+            },
+            {
+              "auc": 0.8667786418932132,
+              "f1": 0.3452579962108548,
+              "pr_auc": 0.4010361544111917,
+              "seconds": 179.90750420000404,
+              "train_auc": 0.8857395206451335
+            }
+          ]
+        },
+        "optuna": {
+          "test_auc_mean": 0.8656250015102677,
+          "test_auc_std": 0.003360939518254288,
+          "train_auc_mean": 0.8838010775331423,
+          "train_test_gap": 0.018176076022874632,
+          "f1_mean": 0.344310640037128,
+          "per_fold": [
+            {
+              "auc": 0.8633279182955526,
+              "f1": 0.34299954689623924,
+              "pr_auc": 0.38661766143936116,
+              "seconds": 304.8097759000011,
+              "train_auc": 0.8844143726235403
+            },
+            {
+              "auc": 0.8652918783591119,
+              "f1": 0.3475657092159255,
+              "pr_auc": 0.39953099952987664,
+              "seconds": 317.3454858999976,
+              "train_auc": 0.8836648094334579
+            },
+            {
+              "auc": 0.8704308259535124,
+              "f1": 0.34853457055561843,
+              "pr_auc": 0.41109108359237434,
+              "seconds": 449.5682149999993,
+              "train_auc": 0.8828441414390218
+            },
+            {
+              "auc": 0.8609574296086895,
+              "f1": 0.34011299435028247,
+              "pr_auc": 0.38910617216101506,
+              "seconds": 300.2912912999964,
+              "train_auc": 0.8849126852031367
+            },
+            {
+              "auc": 0.8681169553344715,
+              "f1": 0.34234037916757465,
+              "pr_auc": 0.40222529252787464,
+              "seconds": 157.3380812999967,
+              "train_auc": 0.8831693789665549
+            }
+          ]
+        },
+        "baseline": {
+          "test_auc_mean": 0.8533178199927558,
+          "test_auc_std": 0.004065905987569449,
+          "train_auc_mean": 0.8686835142111224,
+          "train_test_gap": 0.015365694218366643,
+          "f1_mean": 0.399335458737793,
+          "per_fold": [
+            {
+              "auc": 0.8491470914825716,
+              "f1": 0.3977657413676371,
+              "pr_auc": 0.36248248054126425,
+              "seconds": 168.1304044999997,
+              "train_auc": 0.868690482447213
+            },
+            {
+              "auc": 0.8543534092078252,
+              "f1": 0.40181879420680366,
+              "pr_auc": 0.3834227707315117,
+              "seconds": 405.0013194999992,
+              "train_auc": 0.8689122932387142
+            },
+            {
+              "auc": 0.8594697040217815,
+              "f1": 0.4029377399432482,
+              "pr_auc": 0.3870217939040811,
+              "seconds": 315.3863855000018,
+              "train_auc": 0.8675779852478906
+            },
+            {
+              "auc": 0.8485083504847455,
+              "f1": 0.39188964600299153,
+              "pr_auc": 0.36580339665256445,
+              "seconds": 63.53551449999941,
+              "train_auc": 0.8706229424535703
+            },
+            {
+              "auc": 0.8551105447668559,
+              "f1": 0.4022653721682848,
+              "pr_auc": 0.37359744262806427,
+              "seconds": 111.920123099997,
+              "train_auc": 0.8676138676682235
+            }
+          ]
+        },
+        "a_income_missing": {
+          "test_auc_mean": 0.8540816156252621,
+          "test_auc_std": 0.004013216691287812,
+          "train_auc_mean": 0.8691390767313681,
+          "train_test_gap": 0.015057461106106063,
+          "f1_mean": 0.401217764922957,
+          "per_fold": [
+            {
+              "auc": 0.8507381958575226,
+              "f1": 0.40321202801981887,
+              "pr_auc": 0.36440422634166536,
+              "seconds": 116.52481740000076,
+              "train_auc": 0.8692275105681054
+            },
+            {
+              "auc": 0.8551291889939376,
+              "f1": 0.4025710419485792,
+              "pr_auc": 0.3809253232886639,
+              "seconds": 109.163919300001,
+              "train_auc": 0.8692294622596183
+            },
+            {
+              "auc": 0.8599747817454042,
+              "f1": 0.4054189663823382,
+              "pr_auc": 0.3848794846353734,
+              "seconds": 112.30577529999573,
+              "train_auc": 0.8680914365300691
+            },
+            {
+              "auc": 0.8486050546076317,
+              "f1": 0.39202546490199364,
+              "pr_auc": 0.3664746773995383,
+              "seconds": 127.7892342999985,
+              "train_auc": 0.8710390010601385
+            },
+            {
+              "auc": 0.8559608569218141,
+              "f1": 0.40286132336205493,
+              "pr_auc": 0.3756436642705955,
+              "seconds": 134.1770295000024,
+              "train_auc": 0.8681079732389089
+            }
+          ]
+        },
+        "b_dpd_sentinel": {
+          "test_auc_mean": 0.8516705366133962,
+          "test_auc_std": 0.004209827131570033,
+          "train_auc_mean": 0.8670740079450784,
+          "train_test_gap": 0.015403471331682184,
+          "f1_mean": 0.3933036807484002,
+          "per_fold": [
+            {
+              "auc": 0.8476801057141498,
+              "f1": 0.3918963799402192,
+              "pr_auc": 0.3570650030878813,
+              "seconds": 232.68779290000384,
+              "train_auc": 0.8671386077581542
+            },
+            {
+              "auc": 0.8507592779081051,
+              "f1": 0.39220221377829173,
+              "pr_auc": 0.3684745762476993,
+              "seconds": 136.78481260000262,
+              "train_auc": 0.8666816272685748
+            },
+            {
+              "auc": 0.8591722159149368,
+              "f1": 0.396078431372549,
+              "pr_auc": 0.3823475939888819,
+              "seconds": 113.87205339999491,
+              "train_auc": 0.8664057259814527
+            },
+            {
+              "auc": 0.8479003063870953,
+              "f1": 0.3919165148252443,
+              "pr_auc": 0.3600348805227487,
+              "seconds": 155.32023710000067,
+              "train_auc": 0.8686996401589668
+            },
+            {
+              "auc": 0.8528407771426942,
+              "f1": 0.3944248638256969,
+              "pr_auc": 0.36548932974329656,
+              "seconds": 212.6367048999964,
+              "train_auc": 0.8664444385582436
+            }
+          ]
+        },
+        "c_winsorize_util": {
+          "test_auc_mean": 0.8597702487472706,
+          "test_auc_std": 0.003873728813589491,
+          "train_auc_mean": 0.8770833711363188,
+          "train_test_gap": 0.017313122389048252,
+          "f1_mean": 0.4256620962640623,
+          "per_fold": [
+            {
+              "auc": 0.855233381800729,
+              "f1": 0.42336338690709524,
+              "pr_auc": 0.3713115793286532,
+              "seconds": 232.56046929999866,
+              "train_auc": 0.8775972708877922
+            },
+            {
+              "auc": 0.8598893461114138,
+              "f1": 0.4244410177332305,
+              "pr_auc": 0.38834427918575937,
+              "seconds": 180.692544000005,
+              "train_auc": 0.8773498508226423
+            },
+            {
+              "auc": 0.8646152256436958,
+              "f1": 0.4310377537469171,
+              "pr_auc": 0.39020195762925347,
+              "seconds": 218.7572153000001,
+              "train_auc": 0.8760305748370973
+            },
+            {
+              "auc": 0.8556281291769682,
+              "f1": 0.41357088703563305,
+              "pr_auc": 0.37052240038615347,
+              "seconds": 202.8429679000037,
+              "train_auc": 0.8780731667790415
+            },
+            {
+              "auc": 0.8634851610035459,
+              "f1": 0.4358974358974359,
+              "pr_auc": 0.38317531451907094,
+              "seconds": 236.7347837999987,
+              "train_auc": 0.8763659923550216
+            }
+          ]
+        },
+        "features_combined": {
+          "test_auc_mean": 0.8604746967243825,
+          "test_auc_std": 0.0038067795150829677,
+          "train_auc_mean": 0.8777424559691391,
+          "train_test_gap": 0.017267759244756653,
+          "f1_mean": 0.4254879166447811,
+          "per_fold": [
+            {
+              "auc": 0.8568211027416429,
+              "f1": 0.4252986097513217,
+              "pr_auc": 0.37254374183384975,
+              "seconds": 249.32061870000325,
+              "train_auc": 0.8780186305311912
+            },
+            {
+              "auc": 0.8606367453397227,
+              "f1": 0.4215967834577829,
+              "pr_auc": 0.38588376271811453,
+              "seconds": 222.70539049999934,
+              "train_auc": 0.8778151515908564
+            },
+            {
+              "auc": 0.8650534852367207,
+              "f1": 0.43079256731133864,
+              "pr_auc": 0.39193208635346416,
+              "seconds": 221.6464347000001,
+              "train_auc": 0.8769190480138815
+            },
+            {
+              "auc": 0.8555994190269994,
+              "f1": 0.41389728096676737,
+              "pr_auc": 0.372990110818114,
+              "seconds": 194.76096430000325,
+              "train_auc": 0.8788873210715272
+            },
+            {
+              "auc": 0.8642627312768267,
+              "f1": 0.4358543417366947,
+              "pr_auc": 0.3865486693706709,
+              "seconds": 180.26695699999982,
+              "train_auc": 0.8770721286382397
+            }
+          ]
+        },
+        "blend_final": {
+          "test_auc_mean": 0.8656432762838341,
+          "test_auc_std": 0.0033490059594683576,
+          "train_auc_mean": 0.8847921409953093,
+          "train_test_gap": 0.019148864711475255,
+          "note": "Copied from final: Optuna params + 0.55/0.45 blend. SHAP equals class_weight (no features dropped).",
+          "per_fold": [
+            {
+              "auc": 0.8633735946550575,
+              "f1": 0.3432988518813232,
+              "pr_auc": 0.38660336601099266,
+              "seconds": 245.5368972000142,
+              "train_auc": 0.8853910867143625
+            },
+            {
+              "auc": 0.8652828991995811,
+              "f1": 0.347681014347681,
+              "pr_auc": 0.39922963366600034,
+              "seconds": 239.2962009999901,
+              "train_auc": 0.8846716793443331
+            },
+            {
+              "auc": 0.8704057947647402,
+              "f1": 0.34837831707870265,
+              "pr_auc": 0.41069137291038305,
+              "seconds": 228.46796770000947,
+              "train_auc": 0.8838505526463327
+            },
+            {
+              "auc": 0.860982425165876,
+              "f1": 0.3409426462237365,
+              "pr_auc": 0.3887411502739456,
+              "seconds": 248.3080895000021,
+              "train_auc": 0.885896089977305
+            },
+            {
+              "auc": 0.8681716676339158,
+              "f1": 0.3430321592649311,
+              "pr_auc": 0.4022215971176664,
+              "seconds": 243.72242899998673,
+              "train_auc": 0.8841512962942133
+            }
+          ]
+        }
+      },
+      "recorded_at": "2026-08-21T18:09:59"
+    }
+  ]
+}
