@@ -287,3 +287,27 @@ class HealthResponse(BaseModel):
     service: str
     version: str
     database: str
+
+
+class UserRole(StrEnum):
+    """On-premise officer roles. Both may use scoring and EWS."""
+
+    ADMIN = "admin"
+    ANALYST = "analyst"
+
+
+class LoginRequest(BaseModel):
+    """Credentials for ``POST /auth/login``."""
+
+    username: str = Field(..., min_length=1, max_length=64)
+    password: str = Field(..., min_length=1, max_length=72)
+
+
+class TokenResponse(BaseModel):
+    """JWT issued after a successful login."""
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    username: str
+    role: UserRole

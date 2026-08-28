@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { API_BASE_LABEL, fetchHealth } from "./api/client.js";
+import { clearSession, getStoredRole, getStoredUsername, isLoggedIn } from "./api/auth.js";
 import AlertsPage from "./pages/AlertsPage.jsx";
 import ApplicationsPage from "./pages/ApplicationsPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
+import LoginPage from "./pages/LoginPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import ScoringPage from "./pages/ScoringPage.jsx";
 import ShapReportsPage from "./pages/ShapReportsPage.jsx";
@@ -22,6 +24,40 @@ const NAV_ITEMS = [
  * five routed workspaces used by credit officers.
  */
 export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        element={
+          <RequireAuth>
+            <OfficerShell />
+          </RequireAuth>
+        }
+      >
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/scoring" element={<ScoringPage />} />
+        <Route path="/shap" element={<ShapReportsPage />} />
+        <Route path="/shap/:applicationId" element={<ShapReportsPage />} />
+        <Route path="/alerts" element={<AlertsPage />} />
+        <Route path="/applications" element={<ApplicationsPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
+  );
+}
+
+function RequireAuth({ children }) {
+  const location = useLocation();
+  if (!isLoggedIn()) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+  return children;
+}
+
+function OfficerShell() {
+  const navigate = useNavigate();
+  const username = getStoredUsername();
+  const role = getStoredRole();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [health, setHealth] = useState({ state: "checking", detail: null });
 
@@ -120,26 +156,27 @@ export default function App() {
             <div className="flex items-center gap-4">
               <HealthPill state={health.state} onRetry={checkHealth} />
               <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-slate-900">Risk Desk</p>
-                <p className="text-xs text-slate-500">Commercial Banking Group</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  {username || "Officer"}
+                </p>
+                <p className="text-xs text-slate-500 capitalize">{role || "signed in"}</p>
               </div>
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-800">
-                RD
-              </span>
+              <button
+                type="button"
+                className="btn-secondary px-3 py-1.5 text-xs"
+                onClick={() => {
+                  clearSession();
+                  navigate("/login", { replace: true });
+                }}
+              >
+                Sign out
+              </button>
             </div>
           </div>
         </header>
 
         <main className="flex-1 px-5 py-6">
-          <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/scoring" element={<ScoringPage />} />
-            <Route path="/shap" element={<ShapReportsPage />} />
-            <Route path="/shap/:applicationId" element={<ShapReportsPage />} />
-            <Route path="/alerts" element={<AlertsPage />} />
-            <Route path="/applications" element={<ApplicationsPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
+          <Outlet />
         </main>
 
         <footer className="border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500">

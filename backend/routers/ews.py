@@ -16,9 +16,14 @@ from schemas import (
     EWSMonitorResponse,
     EWSTrackingResponse,
 )
+from services.auth_service import get_current_user
 from services.ews_service import EWSService, get_ews_service
 
-router = APIRouter(prefix="/ews", tags=["Early Warning System"])
+router = APIRouter(
+    prefix="/ews",
+    tags=["Early Warning System"],
+    dependencies=[Depends(get_current_user)],
+)
 
 DbSession = Annotated[Session, Depends(get_db)]
 Monitor = Annotated[EWSService, Depends(get_ews_service)]

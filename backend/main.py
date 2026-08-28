@@ -20,8 +20,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from config import env_flag
 from models.database import DATABASE_URL, engine, init_db
-from routers import ews, explain, score
+from routers import auth, ews, explain, score
 from schemas import HealthResponse
 from services.scoring_service import get_scoring_service
 
@@ -46,20 +47,24 @@ ALLOWED_ORIGINS: list[str] = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Create the SQLite schema on startup and dispose the pool on shutdown.
+    """Prepare the database on startup and dispose the pool on shutdown.
 
     The scoring engine is resolved here rather than on first request: loading the
     trained ensemble pulls in xgboost, shap and scikit-learn, which costs tens of
     seconds on a cold filesystem cache and would otherwise stall the first
     applicant a credit officer submits.
     """
-    logger.info("Starting ForiFlow API v%s (database: %s)", API_VERSION, DATABASE_URL)
+    logger.info("Starting ForiFlow API v%s", API_VERSION)
+    if not os.getenv("JWT_SECRET_KEY", "").strip():
+        logger.warning("JWT_SECRET_KEY is not set; POST /auth/login will fail.")
     init_db()
     logger.info("Scoring engine ready: %s", get_scoring_service().model_version)
     yield
     engine.dispose()
     logger.info("ForiFlow API stopped.")
 
+
+_ENABLE_DOCS = env_flag("FORIFLOW_ENABLE_DOCS", "true")
 
 app = FastAPI(
     title="ForiFlow API",
@@ -70,6 +75,9 @@ app = FastAPI(
     ),
     version=API_VERSION,
     lifespan=lifespan,
+    docs_url="/docs" if _ENABLE_DOCS else None,
+    redoc_url="/redoc" if _ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if _ENABLE_DOCS else None,
 )
 
 app.add_middleware(
@@ -80,6 +88,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(score.router)
 app.include_router(explain.router)
 app.include_router(ews.router)
@@ -110,7 +119,7 @@ async def root() -> dict[str, str | list[str]]:
 
 @app.get("/health", response_model=HealthResponse, tags=["Meta"], summary="Health check")
 async def health() -> HealthResponse:
-    """Report liveness together with SQLite connectivity."""
+    """Report liveness together with database connectivity."""
     database_status = "connected"
     try:
         with engine.connect() as connection:

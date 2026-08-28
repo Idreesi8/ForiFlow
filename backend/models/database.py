@@ -7,11 +7,20 @@ stored in PKR and all timestamps are timezone-aware UTC values.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Generator
 from datetime import datetime, timezone
+from pathlib import Path
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+)
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -21,15 +30,23 @@ from sqlalchemy.orm import (
     sessionmaker,
 )
 
-DATABASE_URL: str = os.getenv("FORIFLOW_DATABASE_URL", "sqlite:///./foriflow.db")
+from config import database_url, is_sqlite_url
+
+DATABASE_URL: str = database_url()
 
 # SQLite guards each connection against cross-thread use; FastAPI serves
 # requests from a thread pool, so the check has to be relaxed.
+_IS_SQLITE = is_sqlite_url(DATABASE_URL)
 _CONNECT_ARGS: dict[str, object] = (
-    {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+    {"check_same_thread": False} if _IS_SQLITE else {}
 )
 
-engine = create_engine(DATABASE_URL, connect_args=_CONNECT_ARGS, future=True)
+engine = create_engine(
+    DATABASE_URL,
+    connect_args=_CONNECT_ARGS,
+    pool_pre_ping=not _IS_SQLITE,
+    future=True,
+)
 
 SessionLocal = sessionmaker(
     bind=engine,
@@ -167,9 +184,50 @@ class EWSTracking(Base):
         )
 
 
+class User(Base):
+    """An on-premise officer account. Roles are ``admin`` or ``analyst``."""
+
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin', 'analyst')", name="ck_users_role"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging helper
+        return f"<User id={self.id} username={self.username!r} role={self.role!r}>"
+
+
+def _run_alembic_upgrade() -> None:
+    """Apply Alembic migrations to the configured non-SQLite database."""
+    from alembic import command
+    from alembic.config import Config
+
+    ini_path = Path(__file__).resolve().parents[1] / "alembic.ini"
+    cfg = Config(str(ini_path))
+    # ConfigParser interpolates `%`; URL-encoded passwords must be escaped.
+    cfg.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
+    cfg.attributes["configure_logger"] = False
+    command.upgrade(cfg, "head")
+
+
 def init_db() -> None:
-    """Create every table that does not exist yet."""
-    Base.metadata.create_all(bind=engine)
+    """Create tables (SQLite) or run Alembic (PostgreSQL).
+
+    ``create_all`` is limited to SQLite so tests and a laptop-only fallback
+    keep working. Postgres schema is owned by Alembic and must not be
+    created ad hoc, or the migration history would drift from the live DB.
+    """
+    if _IS_SQLITE:
+        Base.metadata.create_all(bind=engine)
+        return
+    _run_alembic_upgrade()
 
 
 def get_db() -> Generator[Session, None, None]:
