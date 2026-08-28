@@ -3,8 +3,8 @@
     FORIFLOW_ADMIN_PASSWORD=... python -m scripts.seed_admin
 
 Optional: ``FORIFLOW_ADMIN_USERNAME`` (default ``admin``),
-``FORIFLOW_ADMIN_ROLE`` (default ``admin``). Does not overwrite an existing
-user. Never logs the password.
+``FORIFLOW_ADMIN_ROLE`` (default ``admin``). Pass ``--reset-password`` to
+replace the hash of an existing user. Never logs the password.
 """
 
 from __future__ import annotations
@@ -24,8 +24,9 @@ def seed_admin(
     username: str,
     password: str,
     role: str,
+    reset_password: bool = False,
 ) -> str:
-    """Insert the user if missing. Returns ``created`` or ``exists``."""
+    """Insert the user if missing. Returns ``created``, ``exists``, or ``updated``."""
     if not password:
         raise ValueError("FORIFLOW_ADMIN_PASSWORD is empty.")
     if role not in ALLOWED_ROLES:
@@ -39,7 +40,13 @@ def seed_admin(
     try:
         existing = db.scalar(select(User).where(User.username == username))
         if existing is not None:
-            return "exists"
+            if not reset_password:
+                return "exists"
+            existing.hashed_password = hash_password(password)
+            if role in ALLOWED_ROLES:
+                existing.role = role
+            db.commit()
+            return "updated"
         db.add(
             User(
                 username=username,
@@ -65,6 +72,11 @@ def main(argv: list[str] | None = None) -> int:
         default=os.getenv("FORIFLOW_ADMIN_ROLE", "admin"),
         help="admin or analyst (default: FORIFLOW_ADMIN_ROLE or admin).",
     )
+    parser.add_argument(
+        "--reset-password",
+        action="store_true",
+        help="Replace the password hash if the username already exists.",
+    )
     args = parser.parse_args(argv)
     password = os.getenv("FORIFLOW_ADMIN_PASSWORD", "")
     if not password:
@@ -79,12 +91,15 @@ def main(argv: list[str] | None = None) -> int:
             username=args.username,
             password=password,
             role=args.role,
+            reset_password=args.reset_password,
         )
     except ValueError as exc:
         print(f"SEED STOPPED: {exc}", file=sys.stderr)
         return 1
     if outcome == "exists":
         print(f"User {args.username!r} already exists; password unchanged.")
+    elif outcome == "updated":
+        print(f"Updated password for {args.role} user {args.username!r}.")
     else:
         print(f"Created {args.role} user {args.username!r}.")
     return 0

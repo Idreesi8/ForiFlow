@@ -47,7 +47,7 @@ services:
       FORIFLOW_SCORING_ENGINE: ${FORIFLOW_SCORING_ENGINE:-auto}
       FORIFLOW_LOG_LEVEL: ${FORIFLOW_LOG_LEVEL:-INFO}
       FORIFLOW_ENABLE_DOCS: ${FORIFLOW_ENABLE_DOCS:-true}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
     volumes:
       # Legacy SQLite file (if any) stays readable for the one-time copy script.
       - foriflow-data:/data
