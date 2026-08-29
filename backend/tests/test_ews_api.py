@@ -137,7 +137,7 @@ def test_default_status_reports_zero_runway(
 def test_resubmitting_a_month_overwrites_the_observation(
     client: TestClient, borrower: dict[str, Any]
 ) -> None:
-    """A late ECIB refresh updates the month instead of duplicating it."""
+    """A corrected typed bureau balance updates the month instead of duplicating it."""
     client.post("/ews/monitor", json=_healthy_month(borrower["id"], 4))
     client.post(
         "/ews/monitor",

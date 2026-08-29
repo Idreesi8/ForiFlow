@@ -70,7 +70,8 @@ class Application(Base):
 
     Holds the raw applicant features, the model output (``risk_score`` and
     ``decision``) and the serialised SHAP explanation so that a credit officer
-    can reproduce the rationale for an SBP audit at any later point.
+    can retrieve the stored rationale later for an SBP-oriented review.
+    ForiFlow is not SBP-certified.
     """
 
     __tablename__ = "applications"
@@ -155,10 +156,10 @@ class Alert(Base):
 class EWSTracking(Base):
     """One monthly post-disbursement observation for a borrower.
 
-    Combines ECIB bureau data (``bureau_balance``), point-of-sale settlement
-    cash (``pos_cash_balance``) and repayment behaviour into the recomputed
-    ``monthly_score``. ``data_source_primary`` records which feed dominated the
-    observation, which matters when bureau refreshes lag behind POS data.
+    Combines an officer-entered bureau balance (``bureau_balance``), point-of-sale
+    settlement cash (``pos_cash_balance``) and repayment behaviour into the
+    recomputed ``monthly_score``. ``data_source_primary`` is an officer-selected
+    label (``ECIB`` means a typed extract, not a live pull).
     """
 
     __tablename__ = "ews_tracking"

@@ -21,8 +21,8 @@ Pakistani SMEs face a critical financing gap:
 
 ForiFlow is an end-to-end AI credit intelligence platform that:
 
-- Scores unbanked SMEs using **alternative data** (digital payments, ECIB, inventory turnover)
-- Provides **SHAP explainability** for every decision — fully SBP audit-compliant
+- Scores unbanked SMEs using **alternative data** (digital payments and other officer-entered signals)
+- Provides **SHAP explainability** for every decision, stored on-premise to support an SBP-oriented review (ForiFlow is not SBP-certified and has no live ECIB connector)
 - Monitors approved borrowers with an **Early Warning System** that detects defaults 60-90 days in advance
 
 ## 🏗️ Architecture

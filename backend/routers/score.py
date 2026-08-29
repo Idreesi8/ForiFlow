@@ -69,8 +69,8 @@ async def score_application(
     explanation = scorer.build_explanation(
         result, application_id=application.id, business_name=application.business_name
     )
-    # Persisted so the rationale can be reproduced during an SBP audit even if
-    # the model is retrained later.
+    # Persisted so the rationale can be retrieved later even if the model
+    # is retrained. Not an SBP certification.
     application.shap_explanation_json = json.dumps(explanation.model_dump(mode="json"))
 
     db.commit()

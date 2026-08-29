@@ -52,8 +52,8 @@ export default function ShapReportsPage() {
         <h2 className="text-xl font-bold text-slate-900">SHAP Reports</h2>
         <p className="mt-1 text-sm text-slate-500">
           Feature attributions are additive: the base value plus every contribution
-          reconstructs the score, which is what makes the decision defensible under SBP
-          adverse-action requirements.
+          reconstructs the score, so a bank can file an SBP-oriented adverse-action
+          note. ForiFlow is not SBP-certified.
         </p>
       </header>
 

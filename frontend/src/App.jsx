@@ -124,9 +124,10 @@ function OfficerShell() {
         </nav>
 
         <div className="border-t border-brand-800 px-5 py-4 text-xs text-brand-200">
-          <p className="font-semibold text-brand-100">SBP compliance mode</p>
+          <p className="font-semibold text-brand-100">On-premise explainability</p>
           <p className="mt-1 leading-relaxed">
-            Every decision stores its SHAP rationale for audit. Bureau data via ECIB.
+            Every decision stores its SHAP rationale. Bureau-balance fields are
+            officer-typed — there is no live ECIB feed. Not SBP-certified.
           </p>
         </div>
       </aside>

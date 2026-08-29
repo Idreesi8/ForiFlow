@@ -97,7 +97,7 @@ Query: `include_explanation` (default `true`).
     "top_positive_factors": ["Facility size vs annual turnover"],
     "top_negative_factors": [],
     "narrative": "Score 79.4/100 (Low Risk) resulted in a 'Approved' outcome.",
-    "compliance_note": "SHAP values are additive in score space for SBP adverse-action files.",
+    "compliance_note": "SHAP values are stored on-premise so a bank can support an SBP-oriented adverse-action file. Payment-history and bureau-balance fields are officer-entered; there is no live ECIB connector. ForiFlow is not SBP-certified.",
     "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-08-11T23:51:28"
   },
   "created_at": "2026-08-15T08:12:01.441000Z"

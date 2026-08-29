@@ -59,7 +59,7 @@ const FIELD_GROUPS = [
   {
     title: "Alternative data signals",
     description:
-      "Digital footprint and bureau signals used in place of formal financial statements.",
+      "Digital footprint and officer-entered bureau-style signals (not a live bureau feed).",
     fields: [
       {
         name: "monthly_digital_payments",
@@ -78,7 +78,7 @@ const FIELD_GROUPS = [
         min: 0,
         max: 100,
         step: 1,
-        hint: "Repayment behaviour from ECIB (0-100).",
+        hint: "Officer-entered 0–100 score on an ECIB-oriented scale. Not pulled from a live bureau.",
       },
       {
         name: "inventory_turnover",
@@ -314,7 +314,7 @@ export default function ApplicationForm({ onScored }) {
           <div>
             <h2 className="card-title">New credit assessment</h2>
             <p className="mt-1 text-sm text-slate-500">
-              All amounts in PKR. Bureau fields reference ECIB.
+              All amounts in PKR. Bureau-style fields are typed in by the officer — not a live ECIB connection.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -365,7 +365,7 @@ export default function ApplicationForm({ onScored }) {
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4">
           <p className="text-xs text-slate-500">
-            Submitting records the assessment and its SHAP rationale for SBP audit.
+            Submitting stores the assessment and its SHAP rationale on-premise for later review. Not SBP-certified.
           </p>
           <div className="flex gap-2">
             <button type="button" onClick={handleReset} className="btn-secondary">

@@ -66,7 +66,7 @@ async def monitor_borrower(
         expected_monthly_cash_flow=borrower.cash_flow_proxy,
     )
 
-    # Re-submitting a month (e.g. after a late ECIB refresh) overwrites it.
+    # Re-submitting a month (e.g. after correcting a typed bureau balance) overwrites it.
     tracking = db.scalars(
         select(EWSTracking).where(
             EWSTracking.borrower_id == payload.borrower_id,

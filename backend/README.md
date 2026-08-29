@@ -1,9 +1,10 @@
 # ForiFlow Backend
 
 FastAPI service powering **ForiFlow** — alternative-data SME credit scoring and an
-Early Warning System (EWS) for Pakistani banks. All amounts are in PKR, bureau
-features reference **ECIB**, and decisions are explainable for **SBP**
-fair-lending and adverse-action reporting.
+Early Warning System (EWS) for Pakistani banks. All amounts are in PKR.
+Bureau-style fields are officer-entered (there is no live **ECIB** connector).
+SHAP explanations are stored to support an **SBP**-oriented review; ForiFlow
+is not SBP-certified.
 
 ## Quick start
 
@@ -62,11 +63,12 @@ The score runs from 0 (worst) to 100 (best):
 ### EWS alerting
 
 The origination score is the borrower's baseline. Each monitored month is
-re-scored from the repayment ageing bucket, the ECIB bureau balance and POS
-settlement inflows. A drop of **more than 15 points** raises an alert with an
-estimated runway to default. An unresolved alert is updated in place rather than
-duplicated, and re-submitting a month (e.g. after a late bureau refresh)
-overwrites that observation.
+re-scored from the officer-entered repayment ageing bucket, an officer-typed
+bureau balance, and POS settlement inflows. There is no live bureau pull. A
+drop of **more than 15 points** raises an alert with an estimated runway to
+default. An unresolved alert is updated in place rather than duplicated, and
+re-submitting a month (e.g. after a corrected typed balance) overwrites that
+observation.
 
 ## Layout
 

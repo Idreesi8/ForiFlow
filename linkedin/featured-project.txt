@@ -1,4 +1,4 @@
 Title: ForiFlow — SME Credit Intelligence Platform
-Description: AI-powered credit scoring system for Pakistani banks. Features XGBoost+RF ensemble, SHAP explainability for SBP compliance, Early Warning System, and Docker deployment. Built with FastAPI, React, and Python.
+Description: AI-powered credit scoring system for Pakistani banks. Features XGBoost+RF ensemble, SHAP explainability built with SBP review in mind (not certified), Early Warning System, and Docker deployment. Built with FastAPI, React, and Python. Bureau-style fields are officer-entered — there is no live ECIB connector.
 URL: https://github.com/Idreesi8/ForiFlow
 Skills: FastAPI, React, XGBoost, SHAP, Docker, Machine Learning, Fintech

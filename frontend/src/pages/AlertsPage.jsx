@@ -13,7 +13,8 @@ export default function AlertsPage() {
         <h2 className="text-xl font-bold text-slate-900">EWS Alerts</h2>
         <p className="mt-1 text-sm text-slate-500">
           Post-disbursement surveillance. Each borrower is re-scored monthly from
-          repayment behaviour, ECIB balances and POS settlements.
+          officer-entered repayment status, an officer-typed bureau balance, and
+          POS figures. There is no live ECIB connector.
         </p>
       </header>
 

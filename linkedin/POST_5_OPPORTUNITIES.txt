@@ -2,7 +2,7 @@ ForiFlow is now demo-ready for Pakistani banks! 🏦🚀
 
 What it does:
 🎯 AI credit scoring (0-100) using alternative data
-📊 SHAP explainability — SBP compliant
+📊 SHAP explainability — built with SBP review in mind (not certified)
 🚨 Early Warning System — 60-90 days before default
 🐳 Docker deployment — runs on bank servers
 

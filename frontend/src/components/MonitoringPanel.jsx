@@ -87,7 +87,8 @@ export default function MonitoringPanel({ onMonitored }) {
         <div>
           <h2 className="card-title">Run monthly monitoring</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Feeds ECIB balances and POS settlements into the EWS model.
+            Uses officer-typed bureau balance and POS figures. ForiFlow does not
+            connect to a live ECIB or other bureau feed.
           </p>
         </div>
       </div>
@@ -168,6 +169,9 @@ export default function MonitoringPanel({ onMonitored }) {
             required
             className="field-input"
           />
+          <p className="mt-1 text-xs text-slate-500">
+            Typed from a bureau extract if you have one. Not a live ECIB pull.
+          </p>
           {form.bureau_balance ? (
             <p className="tabular mt-1 text-xs text-slate-500">
               {formatPKR(form.bureau_balance)}
@@ -214,6 +218,9 @@ export default function MonitoringPanel({ onMonitored }) {
               </option>
             ))}
           </select>
+          <p className="mt-1 text-xs text-slate-500">
+            “ECIB” here means you keyed figures from an extract. There is no live bureau connector.
+          </p>
         </div>
 
         <div className="md:col-span-3 flex flex-wrap items-center justify-between gap-3">

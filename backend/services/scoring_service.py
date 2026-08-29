@@ -68,7 +68,7 @@ FEATURE_WEIGHTS: dict[str, float] = {
 }
 
 FEATURE_LABELS: dict[str, str] = {
-    "payment_history_score": "Repayment history (ECIB)",
+    "payment_history_score": "Repayment history (officer-entered)",
     "loan_affordability": "Installment affordability vs cash flow",
     "debt_burden": "Existing debt burden",
     "monthly_digital_payments": "Monthly digital payment volume",
@@ -96,8 +96,10 @@ NEUTRAL_NORMALISED_VALUE: float = 0.5
 BASE_VALUE: float = 50.0
 
 COMPLIANCE_NOTE: str = (
-    "Explanation generated for SBP fair-lending and adverse-action reporting. "
-    "Bureau features are sourced from ECIB; all amounts are in PKR."
+    "SHAP values are stored on-premise so a bank can support an SBP-oriented "
+    "adverse-action file. Payment-history and bureau-balance fields are "
+    "officer-entered; there is no live ECIB or other bureau connector. "
+    "All amounts are in PKR. ForiFlow is not SBP-certified."
 )
 
 

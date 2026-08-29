@@ -70,8 +70,8 @@ app = FastAPI(
     title="ForiFlow API",
     description=(
         "Alternative-data credit scoring and Early Warning System for Pakistani SMEs. "
-        "All amounts are in PKR; bureau features reference ECIB and decisions follow "
-        "SBP fair-lending expectations."
+        "All amounts are in PKR. Bureau-style fields are officer-entered (no live "
+        "ECIB connector). Built with SBP-oriented explainability in mind; not SBP-certified."
     ),
     version=API_VERSION,
     lifespan=lifespan,

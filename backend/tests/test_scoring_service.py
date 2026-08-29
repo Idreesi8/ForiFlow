@@ -159,7 +159,8 @@ def test_build_explanation_returns_narrative_and_factors(
     assert explanation.risk_score == result.risk_score
     assert explanation.top_negative_factors
     assert "Rejected" in explanation.narrative
-    assert "ECIB" in explanation.compliance_note
+    assert "no live ECIB" in explanation.compliance_note
+    assert "not SBP-certified" in explanation.compliance_note
 
 
 def test_invalid_weight_vectors_are_rejected() -> None:

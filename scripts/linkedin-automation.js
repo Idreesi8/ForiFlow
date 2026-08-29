@@ -24,7 +24,7 @@ const STEPS = [
 
 I build AI-powered fintech solutions that make financial services accessible to the underserved.
 
-Over the past 3 months, I developed ForiFlow — an end-to-end SME Credit Scoring & Early Warning System for Pakistani banks. It uses alternative data (digital payments, ECIB, inventory turnover) to score unbanked SMEs without collateral, provides SHAP explainability for SBP compliance, and detects portfolio deterioration 60-90 days before default.
+Over the past 3 months, I developed ForiFlow — an end-to-end SME Credit Scoring & Early Warning System for Pakistani banks. It uses alternative data (digital payments, officer-entered ECIB-style repayment scores, inventory turnover) to score unbanked SMEs without collateral, provides SHAP explainability built with SBP review in mind (not SBP-certified; no live ECIB connector), and detects portfolio deterioration 60-90 days before default.
 
 Tech Stack: FastAPI, React, XGBoost, Random Forest, SHAP, Docker, PostgreSQL
 
@@ -36,7 +36,7 @@ I'm passionate about using Machine Learning and Full-Stack Development to solve 
     name: "Featured Project",
     url: `${PROFILE}/details/featured/`,
     title: "ForiFlow — SME Credit Intelligence Platform",
-    desc: "AI-powered credit scoring system for Pakistani banks. Features XGBoost+RF ensemble, SHAP explainability for SBP compliance, Early Warning System, and Docker deployment. Built with FastAPI, React, and Python.",
+    desc: "AI-powered credit scoring system for Pakistani banks. Features XGBoost+RF ensemble, SHAP explainability built with SBP review in mind (not certified), Early Warning System, and Docker deployment. Built with FastAPI, React, and Python. Bureau-style fields are officer-entered — there is no live ECIB connector.",
     link: "https://github.com/Idreesi8/ForiFlow",
   },
   {
@@ -50,8 +50,8 @@ The Problem:
 • SBP mandates explainable AI for credit decisions
 
 The Solution — ForiFlow:
-✅ Scores SMEs using alternative data (digital payments, ECIB history)
-✅ SHAP explainability for every decision — SBP audit-ready
+✅ Scores SMEs using alternative data (digital payments, officer-entered ECIB-style history)
+✅ SHAP explainability for every decision — built with SBP review in mind (not certified)
 ✅ Early Warning System detects defaults 60-90 days in advance
 ✅ One-command Docker deployment for bank demos
 

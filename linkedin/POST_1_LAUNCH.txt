@@ -6,8 +6,8 @@ The Problem:
 • SBP mandates explainable AI for credit decisions
 
 The Solution — ForiFlow:
-✅ Scores SMEs using alternative data (digital payments, ECIB history)
-✅ SHAP explainability for every decision — SBP audit-ready
+✅ Scores SMEs using alternative data (digital payments, officer-entered ECIB-style history)
+✅ SHAP explainability for every decision — built with SBP review in mind (not certified)
 ✅ Early Warning System detects defaults 60-90 days in advance
 ✅ One-command Docker deployment for bank demos
 
