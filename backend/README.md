@@ -127,9 +127,13 @@ each option has to win on cross-validated AUC:
 
 | Candidate            | Features | Rows    | AUC-ROC | F1    |
 | -------------------- | -------- | ------- | ------- | ----- |
-| `credit_risk_shared` | 3        | 32,581  | 0.774   | 0.550 |
+| `credit_risk_shared` | 3        | 32,581  | 0.7758  | 0.550 |
 | `combined_shared`    | 3        | 287,928 | 0.652   | 0.299 |
 | `loan_default_full`  | 6        | 255,347 | 0.622   | 0.237 |
+
+The served `credit_risk_shared` figure is 5-fold CV 0.7758 ± 0.0075, hold-out
+0.7756 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME
+portfolio). The other two rows are rejected candidates, not production.
 
 `credit_risk_dataset.csv` wins decisively despite being the smallest.
 `Loan_default.csv` is largely synthetic — `CreditScore`, `DTIRatio` and
@@ -165,7 +169,7 @@ adding to it.
   years versus 16-18% at fifteen, correlation −0.018). An earlier version folded
   it in, and the model could only fit it as noise — it charged an applicant with
   an excellent ECIB record 22 points, which is indefensible in an adverse-action
-  letter. Dropping it *improved* hold-out AUC from 0.766 to 0.776. The cost is
+  letter. Dropping it *improved* hold-out AUC from 0.766 to 0.7756. The cost is
   granularity: ECIB scores either side of the midpoint read as clean or adverse
   rather than on a fine scale.
 - **Monotone constraints on the boosted member.** Larger facilities, heavier debt
@@ -181,8 +185,9 @@ adding to it.
 
 ### Accuracy, and an important limitation
 
-5-fold cross-validation gives **AUC-ROC 0.776 ± 0.008** and **F1 0.540**; the
-held-out 20% scores AUC 0.776, F1 0.544, Brier 0.175. Hold-out applicants spread
+5-fold cross-validation gives **AUC-ROC 0.7758 ± 0.0075** and **F1 0.540**; the
+held-out 20% scores AUC 0.7756, F1 0.544, Brier 0.175 (n=32,581, 3 features,
+trained on a public/proxy dataset — not a real SME portfolio). Hold-out applicants spread
 across the policy bands at roughly 20% Rejected, 42% Manual Review and 39%
 Approved, so the bands remain meaningful rather than approving everyone.
 

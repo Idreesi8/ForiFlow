@@ -38,9 +38,11 @@ ForiFlow is an end-to-end AI credit intelligence platform that:
           ┌─────────────┐           ┌─────────────┐           ┌─────────────┐
           │ XGBoost+RF  │           │    SHAP     │           │  PostgreSQL │
           │  Ensemble   │           │TreeExplainer│           │   SQLite    │
-          │ AUC: 0.774+ │           │             │           │   (Dev)     │
+          │ CV 0.7758*  │           │             │           │   (Dev)     │
           └─────────────┘           └─────────────┘           └─────────────┘
 ```
+
+\* 5-fold CV 0.7758 ± 0.0075, hold-out 0.7756 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio).
 
 In Docker the dashboard calls `/api` on its own origin and nginx forwards that
 prefix to FastAPI, so a bank laptop never has to configure CORS.
@@ -104,7 +106,7 @@ in `frontend/`. Vite proxies `/api` to the API.
 
 ## 📊 Performance
 
-- **AUC-ROC:** 0.774 on public datasets (5-fold CV 0.776 ± 0.008) → target 0.85+ with bank data
+- **AUC-ROC:** 5-fold CV 0.7758 ± 0.0075, hold-out 0.7756 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio). 0.85+ remains a bank-data target, not a measured result.
 - **Response time:** under 2 seconds per score after the ensemble is loaded
 - **Concurrent users:** designed for 1,000+ officers behind a reverse proxy
 
