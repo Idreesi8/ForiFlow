@@ -220,14 +220,17 @@ real secrets into tickets or chat logs.
 
 | URL | What |
 |-----|------|
-| http://localhost:3000 | Officer dashboard (nginx on host port **3000**) |
-| http://localhost:8000 | ForiFlow API (uvicorn on host port **8000**) |
-| http://localhost:8000/health | Liveness |
-| http://localhost:8000/docs | Swagger UI (unless docs are disabled) |
-| http://localhost:8000/auth/login | `POST` JSON `{ "username", "password" }` → JWT |
+| http://127.0.0.1:3000 | Officer dashboard (nginx on host port **3000**) |
+| http://127.0.0.1:8000 | ForiFlow API (uvicorn on host port **8000**) |
+| http://127.0.0.1:8000/health | Liveness |
+| http://127.0.0.1:8000/docs | Swagger UI (unless docs are disabled) |
+| http://127.0.0.1:8000/auth/login | `POST` JSON `{ "username", "password" }` → JWT |
 
-PostgreSQL is published as **`127.0.0.1:5432` only** — loopback, not the
-LAN. Other containers reach it as hostname `db` on port 5432.
+The API, dashboard, and PostgreSQL are published as **`127.0.0.1` only** —
+loopback, not the LAN (`127.0.0.1:8000`, `127.0.0.1:3000`, `127.0.0.1:5432`).
+This compose stack is a single-laptop pilot. Other machines on a bank network
+cannot reach it. Other containers still reach Postgres as hostname `db` on
+port 5432.
 
 The dashboard calls `/api` on its own origin; nginx forwards that to the
 backend container.

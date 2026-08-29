@@ -40,7 +40,8 @@ services:
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      # Loopback only — this compose stack is a single-laptop pilot, not LAN.
+      - "127.0.0.1:8000:8000"
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
@@ -76,7 +77,8 @@ services:
     container_name: foriflow-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Loopback only — this compose stack is a single-laptop pilot, not LAN.
+      - "127.0.0.1:3000:3000"
     depends_on:
       # nginx resolves "backend" on startup, and a dashboard that loads before
       # the model is ready would greet the officer with "API offline".
