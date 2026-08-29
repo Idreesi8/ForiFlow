@@ -53,6 +53,7 @@ const FIELD_GROUPS = [
         step: 1,
         integer: true,
         hint: "Between 3 and 84 months.",
+        unusedByModel: true,
       },
     ],
   },
@@ -88,6 +89,7 @@ const FIELD_GROUPS = [
         max: 50,
         step: 0.1,
         hint: "Times stock is sold per year.",
+        unusedByModel: true,
       },
       {
         name: "order_consistency",
@@ -97,6 +99,7 @@ const FIELD_GROUPS = [
         max: 100,
         step: 1,
         hint: "Stability of order volumes over 12 months (0-100).",
+        unusedByModel: true,
       },
       {
         name: "existing_debt_pkr",
@@ -107,6 +110,7 @@ const FIELD_GROUPS = [
         max: 1000000000,
         step: 50000,
         hint: "Outstanding exposure across all lenders.",
+        unusedByModel: true,
       },
       {
         name: "cash_flow_proxy",
@@ -136,6 +140,7 @@ const FIELD_GROUPS = [
         step: 1,
         integer: true,
         hint: "Headcount including owners.",
+        unusedByModel: true,
       },
     ],
   },
@@ -480,6 +485,14 @@ function FormField({ field, value, error, onChange }) {
         <p className="tabular mt-1 text-xs text-slate-500">{formatPKR(value)}</p>
       ) : field.hint ? (
         <p className="mt-1 text-xs text-slate-500">{field.hint}</p>
+      ) : null}
+      {field.unusedByModel ? (
+        <p
+          className="mt-1 text-xs font-semibold text-amber-800"
+          title="Collected for future scoring versions — not currently used in this risk score."
+        >
+          Collected for future scoring versions — not currently used in this risk score.
+        </p>
       ) : null}
     </div>
   );
