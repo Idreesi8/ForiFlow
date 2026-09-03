@@ -1,6 +1,6 @@
 # Screenshots
 
-Screenshots are auto-generated. Run `npm run capture` or `python scripts/auto-capture.py`.
+Screenshots are auto-generated. Run `npm run capture` or `python scripts/capture.py`.
 
 Screenshots auto-captured from running application.
 

@@ -1,1 +1,0 @@
-AI-powered credit scoring system for Pakistani banks. Features XGBoost+RF ensemble, SHAP explainability built with SBP review in mind (not certified), Early Warning System, and Docker deployment. Built with FastAPI, React, and Python. Bureau-style fields are officer-entered — there is no live ECIB connector.

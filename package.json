@@ -3,14 +3,9 @@
   "private": true,
   "description": "ForiFlow SME credit intelligence — screenshot capture and repo scripts",
   "scripts": {
-    "capture": "node scripts/auto-capture.js",
-    "automate": "node scripts/full-automation.js",
-    "linkedin": "node scripts/linkedin-automation.js || start linkedin-helper.html"
+    "capture": "node scripts/capture-screenshots.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"
-  },
-  "dependencies": {
-    "clipboardy": "^5.3.2"
   }
 }
