@@ -87,11 +87,12 @@ cd foriflow
 docker compose up --build -d
 ```
 
-Visit: [http://localhost:3000](http://localhost:3000)
+Visit: [http://127.0.0.1:3000](http://127.0.0.1:3000)
 
-On Windows PowerShell you can also run `.\start.ps1`. The first build downloads
-the scientific Python wheels; later starts reuse the images. Confirm the trained
-ensemble is live with:
+On Windows, double-click `start.bat` (or the desktop **ForiFlow** shortcut
+from `create-shortcut.bat`). That starts existing images without rebuilding.
+After code changes, use `rebuild.bat`.
+Confirm the trained ensemble is live with:
 
 ```bash
 docker compose logs backend | grep "Scoring engine ready"

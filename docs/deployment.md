@@ -143,8 +143,14 @@ docker compose down -v --remove-orphans
 docker compose up -d --build
 ```
 
-`./start.sh` (Linux, macOS, Git Bash) and `.\start.ps1` (Windows) run the
-same `up -d --build` and then wait until `GET /health` returns 200.
+On Windows, double-click `start.bat`, or run `create-shortcut.bat` once to put
+a **ForiFlow** icon on the desktop (it targets `start.bat`). Either starts
+existing images with `docker compose up -d`, waits until **db**, **backend**,
+and **frontend** are healthy, reminds you to seed if the users table is empty,
+and opens http://127.0.0.1:3000. It does **not** rebuild images and does
+**not** run `scripts.seed_admin`. After code changes, use `rebuild.bat` or
+`.\start.ps1 -Rebuild`. Git Bash / Linux / macOS: `./start.sh` (add
+`--rebuild` after code changes).
 
 Startup order follows `docker-compose.yml`: **db** must be healthy before
 **backend** starts; **frontend** waits until **backend** is healthy
@@ -278,4 +284,4 @@ Then seed the admin user as in [First-run setup](#first-run-setup-creating-the-a
 | Login 401 with a password you just set | Seed was not run, or the hash was not rotated (`--reset-password`). |
 | `Scoring engine ready: surrogate-linear-v1` | Artefacts were not baked into the image, or `FORIFLOW_SCORING_ENGINE=surrogate`. Rebuild with artefacts; use `auto` or `ml` for a pilot. |
 | `start.sh: bash\r: No such file` | CRLF line endings. `.gitattributes` prevents this; `git add --renormalize .` if it already happened. |
-| Windows blocks `start.ps1` | `powershell -ExecutionPolicy Bypass -File .\start.ps1` |
+| Windows opens `start.ps1` in Notepad | Double-click `start.bat` or the desktop ForiFlow shortcut (`create-shortcut.bat`). Those call PowerShell with `-ExecutionPolicy Bypass`. |
