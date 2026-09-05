@@ -20,8 +20,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "docs" / "screenshots"
-FRONTEND = "http://localhost:3000"
-BACKEND = "http://localhost:8000"
+FRONTEND = "http://127.0.0.1:3000"
+BACKEND = "http://127.0.0.1:8000"
 
 APPLICANT = {
     "applicant_name": "Ali Khan",
@@ -68,8 +68,8 @@ def wait_for_stack(seconds: int = 15) -> None:
             return
         time.sleep(5)
     raise SystemExit(
-        "Could not reach http://localhost:8000/health and http://localhost:3000/. "
-        "Start the stack and re-run."
+        "Could not reach http://127.0.0.1:8000/health and http://127.0.0.1:3000/. "
+        "Start the stack with start.bat / start.ps1 and re-run."
     )
 
 
@@ -155,13 +155,13 @@ def main() -> int:
             p.goto(f"{BACKEND}/docs", wait_until="networkidle")
             p.locator(".swagger-ui, #swagger-ui").first.wait_for(timeout=20000)
 
-        capture(page, "01-dashboard-overview.png", dashboard)
-        capture(page, "02-credit-scoring-form.png", form)
-        capture(page, "03-credit-scoring-result.png", result)
-        capture(page, "04-shap-waterfall.png", shap)
+        capture(page, "01-dashboard.png", dashboard)
+        capture(page, "02-scoring-form.png", form)
+        capture(page, "03-score-result.png", result)
+        capture(page, "04-shap-chart.png", shap)
         capture(page, "05-ews-alerts.png", alerts)
-        capture(page, "06-applications-table.png", applications)
-        capture(page, "07-swagger-docs.png", swagger)
+        capture(page, "06-applications.png", applications)
+        capture(page, "07-swagger.png", swagger)
 
         browser.close()
         log("ok", "Browser closed. Servers were left running.")
