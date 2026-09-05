@@ -7,7 +7,7 @@ import { formatDateTime, formatRelative } from "../lib/format.js";
 import { AlertStatusBadge } from "./common/Badges.jsx";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "./common/States.jsx";
 
-const STATUS_FILTERS = ["All", "Active", "In Review", "Resolved"];
+const STATUS_FILTERS = ["All", "Active", "Resolved"];
 
 /**
  * Early Warning System alert feed.
@@ -37,9 +37,9 @@ export default function EWSAlertFeed({
     setIsLoading(true);
     setError(null);
     try {
-      const params = { limit };
-      if (statusFilter !== "All") params.alert_status = statusFilter;
-      const data = await fetchAlerts(params);
+      // Load the full queue and filter in the client so tab switches are
+      // instant and Resolve updates Active/Resolved without a refetch.
+      const data = await fetchAlerts({ limit });
       setAlerts(data);
       onAlertsLoadedRef.current?.(data);
     } catch (requestError) {
@@ -47,7 +47,7 @@ export default function EWSAlertFeed({
     } finally {
       setIsLoading(false);
     }
-  }, [limit, statusFilter]);
+  }, [limit]);
 
   useEffect(() => {
     loadAlerts();
@@ -56,8 +56,12 @@ export default function EWSAlertFeed({
   const handleResolve = async (alertId) => {
     setResolvingId(alertId);
     try {
-      await resolveAlert(alertId);
-      await loadAlerts();
+      const updated = await resolveAlert(alertId);
+      setAlerts((previous) => {
+        const next = previous.map((alert) => (alert.id === alertId ? updated : alert));
+        onAlertsLoadedRef.current?.(next);
+        return next;
+      });
     } catch (requestError) {
       setError(apiErrorMessage(requestError, "Could not resolve the alert."));
     } finally {
@@ -65,13 +69,24 @@ export default function EWSAlertFeed({
     }
   };
 
+  const visibleAlerts = useMemo(
+    () =>
+      statusFilter === "All"
+        ? alerts
+        : alerts.filter((alert) => alert.alert_status === statusFilter),
+    [alerts, statusFilter],
+  );
   const activeCount = useMemo(
     () => alerts.filter((alert) => alert.alert_status === "Active").length,
     [alerts],
   );
-  const worstDrop = useMemo(
-    () => alerts.reduce((worst, alert) => Math.max(worst, alert.score_drop), 0),
+  const resolvedCount = useMemo(
+    () => alerts.filter((alert) => alert.alert_status === "Resolved").length,
     [alerts],
+  );
+  const worstDrop = useMemo(
+    () => visibleAlerts.reduce((worst, alert) => Math.max(worst, alert.score_drop), 0),
+    [visibleAlerts],
   );
 
   return (
@@ -109,9 +124,9 @@ export default function EWSAlertFeed({
         </div>
       </div>
 
-      {!compact && alerts.length > 0 ? (
+      {!compact && visibleAlerts.length > 0 ? (
         <div className="grid gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-3">
-          <FeedStat label="Alerts shown" value={alerts.length} />
+          <FeedStat label="Alerts shown" value={visibleAlerts.length} />
           <FeedStat label="Active" value={activeCount} tone="danger" />
           <FeedStat label="Worst score drop" value={`${worstDrop.toFixed(1)} pts`} tone="danger" />
         </div>
@@ -121,14 +136,13 @@ export default function EWSAlertFeed({
         <LoadingState label="Loading alerts…" />
       ) : error ? (
         <ErrorState message={error} onRetry={loadAlerts} />
-      ) : alerts.length === 0 ? (
+      ) : visibleAlerts.length === 0 ? (
         <EmptyState
           title="No alerts in this view"
-          description={
-            statusFilter === "Active"
-              ? "No borrower has dropped more than 15 points below their origination score."
-              : "Nothing recorded for this status yet."
-          }
+          description={emptyStateDescription(statusFilter, {
+            hasAny: alerts.length > 0,
+            resolvedCount,
+          })}
         />
       ) : (
         <div className="overflow-x-auto">
@@ -147,7 +161,7 @@ export default function EWSAlertFeed({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {alerts.map((alert) => {
+              {visibleAlerts.map((alert) => {
                 const severity = alertSeverity(alert.score_drop);
                 const statusStyle = alertStatusStyle(alert.alert_status);
                 const isResolved = alert.alert_status === "Resolved";
@@ -224,6 +238,22 @@ export default function EWSAlertFeed({
       )}
     </section>
   );
+}
+
+function emptyStateDescription(statusFilter, { hasAny, resolvedCount }) {
+  if (statusFilter === "Active") {
+    if (resolvedCount > 0) {
+      return "No active alerts. Closed cases are listed under Resolved.";
+    }
+    return "No borrower has dropped more than 15 points below their origination score.";
+  }
+  if (statusFilter === "Resolved") {
+    return "No resolved alerts yet.";
+  }
+  if (statusFilter === "All" && !hasAny) {
+    return "No borrower has dropped more than 15 points below their origination score.";
+  }
+  return "Nothing recorded for this status yet.";
 }
 
 function FeedStat({ label, value, tone }) {

@@ -161,6 +161,12 @@ export default function ShapWaterfall({
   const negativeTotal = chartData
     .filter((item) => item.contribution < 0)
     .reduce((sum, item) => sum + item.contribution, 0);
+  const summary = displayAdditiveSummary(
+    explanation.base_value,
+    positiveTotal,
+    negativeTotal,
+    explanation.risk_score,
+  );
 
   return (
     <div className="space-y-5">
@@ -177,7 +183,7 @@ export default function ShapWaterfall({
           <DecisionBadge decision={explanation.decision} />
           <div className="text-right">
             <p className="tabular text-2xl leading-none font-bold text-slate-900">
-              {Number(explanation.risk_score).toFixed(1)}
+              {summary.score.toFixed(1)}
             </p>
             <p className="text-[11px] tracking-wide text-slate-500 uppercase">Score</p>
           </div>
@@ -185,20 +191,20 @@ export default function ShapWaterfall({
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SummaryTile label="Base value" value={Number(explanation.base_value).toFixed(1)} />
+        <SummaryTile label="Base value" value={summary.base.toFixed(1)} />
         <SummaryTile
           label="Positive impact"
-          value={`+${positiveTotal.toFixed(1)}`}
+          value={`+${summary.positive.toFixed(1)}`}
           tone="positive"
         />
         <SummaryTile
           label="Negative impact"
-          value={negativeTotal.toFixed(1)}
+          value={summary.negative.toFixed(1)}
           tone="negative"
         />
         <SummaryTile
           label="Final score"
-          value={Number(explanation.risk_score).toFixed(1)}
+          value={summary.score.toFixed(1)}
           emphasis
         />
       </div>
@@ -276,6 +282,40 @@ export default function ShapWaterfall({
       </div>
     </div>
   );
+}
+
+/**
+ * Round SHAP summary cards so a credit officer can add them by hand.
+ *
+ * Independent 1-decimal rounding of base / +impact / −impact / score can
+ * drift by 0.1 even when the unrounded values reconstruct the score.
+ * The largest-magnitude impact card absorbs that single tenth; the
+ * underlying explanation payload is not changed.
+ */
+function displayAdditiveSummary(baseValue, positiveTotal, negativeTotal, riskScore) {
+  const toTenths = (value) => Math.round(Number(value) * 10);
+  const fromTenths = (units) => units / 10;
+
+  const scoreTenths = toTenths(riskScore);
+  const baseTenths = toTenths(baseValue);
+  let positiveTenths = toTenths(positiveTotal);
+  let negativeTenths = toTenths(negativeTotal);
+  const residual = scoreTenths - (baseTenths + positiveTenths + negativeTenths);
+
+  if (residual !== 0) {
+    if (Math.abs(positiveTenths) >= Math.abs(negativeTenths)) {
+      positiveTenths += residual;
+    } else {
+      negativeTenths += residual;
+    }
+  }
+
+  return {
+    base: fromTenths(baseTenths),
+    positive: fromTenths(positiveTenths),
+    negative: fromTenths(negativeTenths),
+    score: fromTenths(scoreTenths),
+  };
 }
 
 function SummaryTile({ label, value, tone, emphasis = false }) {
