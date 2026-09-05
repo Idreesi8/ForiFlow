@@ -69,6 +69,46 @@ function Test-DockerEngine {
     }
 }
 
+function Get-DockerDesktopPath {
+    $candidates = @(
+        (Join-Path $env:LOCALAPPDATA "Programs\DockerDesktop\Docker Desktop.exe"),
+        (Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe")
+    )
+    foreach ($path in $candidates) {
+        if (Test-Path -LiteralPath $path) { return $path }
+    }
+    return $null
+}
+
+function Wait-DockerEngine {
+    param([int]$TimeoutSeconds = 180)
+    if (Test-DockerEngine) {
+        return $true
+    }
+    $desktop = Get-DockerDesktopPath
+    if (-not $desktop) {
+        Write-Step "Docker Desktop is not installed (Docker Desktop.exe was not found)." "Red"
+        return $false
+    }
+    $running = Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue
+    if (-not $running) {
+        Write-Step "Starting Docker Desktop. Wait for the whale icon to settle (up to $TimeoutSeconds seconds)..."
+        Start-Process -FilePath $desktop
+    } else {
+        Write-Step "Docker Desktop is open, but the engine is not ready yet. Waiting up to $TimeoutSeconds seconds..."
+    }
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-DockerEngine) {
+            return $true
+        }
+        $left = [int]($deadline - (Get-Date)).TotalSeconds
+        Write-Host "  still starting... ${left}s left"
+        Start-Sleep -Seconds 5
+    }
+    return $false
+}
+
 function Get-ServiceHealth {
     $raw = & docker compose ps --format json 2>$null
     $map = @{}
@@ -107,9 +147,9 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-if (-not (Test-DockerEngine)) {
-    Write-Step "Docker Desktop is not running (or the engine is still starting)." "Red"
-    Write-Step "Start Docker Desktop, wait for the whale icon to settle, then double-click start.bat again."
+if (-not (Wait-DockerEngine)) {
+    Write-Step "Docker Desktop did not become ready in time." "Red"
+    Write-Step "Open Docker Desktop yourself, wait until the whale icon is idle, then double-click start.bat again."
     exit 1
 }
 
