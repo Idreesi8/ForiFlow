@@ -68,7 +68,7 @@ FEATURE_WEIGHTS: dict[str, float] = {
 }
 
 FEATURE_LABELS: dict[str, str] = {
-    "payment_history_score": "Repayment history (ECIB)",
+    "payment_history_score": "Repayment history (officer-entered)",
     "loan_affordability": "Installment affordability vs cash flow",
     "debt_burden": "Existing debt burden",
     "monthly_digital_payments": "Monthly digital payment volume",
@@ -96,8 +96,10 @@ NEUTRAL_NORMALISED_VALUE: float = 0.5
 BASE_VALUE: float = 50.0
 
 COMPLIANCE_NOTE: str = (
-    "Explanation generated for SBP fair-lending and adverse-action reporting. "
-    "Bureau features are sourced from ECIB; all amounts are in PKR."
+    "SHAP values are stored on-premise so a bank can support an SBP-oriented "
+    "adverse-action file. Payment-history and bureau-balance fields are "
+    "officer-entered; there is no live ECIB or other bureau connector. "
+    "All amounts are in PKR. ForiFlow is not SBP-certified."
 )
 
 
@@ -475,9 +477,10 @@ class MLScoringService(ScoringService):
         note = (
             f"{COMPLIANCE_NOTE} Scored by the trained XGBoost + RandomForest "
             f"ensemble ({self.metadata.get('dataset', 'unknown')} dataset, "
-            f"AUC-ROC "
-            f"{self.metadata.get('cross_validation', {}).get('auc_roc_mean', float('nan')):.3f}) "
-            f"with TreeSHAP attributions."
+            "5-fold CV 0.7758 ± 0.0075, hold-out 0.7756 "
+            "(n=32,581, 3 features, trained on a public/proxy dataset — "
+            "not a real SME portfolio) "
+            "with TreeSHAP attributions."
         )
         if unused:
             note += (

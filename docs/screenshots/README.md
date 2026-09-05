@@ -1,6 +1,6 @@
 # Screenshots
 
-Screenshots are auto-generated. Run `npm run capture` or `python scripts/auto-capture.py`.
+Screenshots are auto-generated. Run `npm run capture` or `python scripts/capture.py`.
 
 Screenshots auto-captured from running application.
 
@@ -13,3 +13,5 @@ Screenshots auto-captured from running application.
 | `05-ews-alerts.png` | EWS Alerts |
 | `06-applications.png` | Applications register |
 | `07-swagger.png` | FastAPI Swagger UI |
+| `architecture-delivered.png` | Proposal architecture figure |
+| `gantt-delivered.png` | Proposal 14-week Gantt |

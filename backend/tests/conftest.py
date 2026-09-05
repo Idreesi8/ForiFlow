@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 import os
+
+# Pin the process *before* importing the app. config.py loads `.env` on import
+# and models.database binds the engine at module load; a developer `.env` with
+# POSTGRES_* would otherwise point TestClient lifespan at a live database.
+os.environ.setdefault("FORIFLOW_SCORING_ENGINE", "surrogate")
+os.environ["FORIFLOW_DATABASE_URL"] = "sqlite://"
+os.environ["JWT_SECRET_KEY"] = "test-jwt-secret-foriflow-32b-min"
+
 from collections.abc import Generator
 from typing import Any
 
@@ -13,13 +21,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from main import app
-from models.database import Base, get_db
+from models.database import Base, User, get_db
+from services.auth_service import create_access_token, hash_password
 from services.scoring_service import ScoringService, get_scoring_service
-
-# The app resolves its scoring engine during startup. Pinning the surrogate keeps
-# the suite fast and deterministic by not loading xgboost and shap for tests that
-# override the dependency anyway; ``ml_service`` loads the real model explicitly.
-os.environ.setdefault("FORIFLOW_SCORING_ENGINE", "surrogate")
 
 STRONG_APPLICANT: dict[str, Any] = {
     "applicant_name": "Ayesha Siddiqui",
@@ -66,6 +70,28 @@ MID_APPLICANT: dict[str, Any] = {
     "num_employees": 8,
 }
 
+TEST_ADMIN_USERNAME = "admin"
+TEST_ADMIN_PASSWORD = "test-admin-password"
+TEST_ADMIN_HASH = hash_password(TEST_ADMIN_PASSWORD)
+
+
+def seed_test_admin(session: Session, *, role: str = "admin") -> User:
+    """Insert the shared test officer. Idempotent for a clean schema."""
+    user = User(
+        username=TEST_ADMIN_USERNAME,
+        hashed_password=TEST_ADMIN_HASH,
+        role=role,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+def bearer_header(username: str = TEST_ADMIN_USERNAME, role: str = "admin") -> dict[str, str]:
+    token = create_access_token(username=username, role=role)
+    return {"Authorization": f"Bearer {token}"}
+
 
 @pytest.fixture(name="db_session_factory")
 def db_session_factory_fixture() -> Generator[sessionmaker[Session], None, None]:
@@ -82,6 +108,11 @@ def db_session_factory_fixture() -> Generator[sessionmaker[Session], None, None]
     )
     Base.metadata.create_all(bind=engine)
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    bootstrap = factory()
+    try:
+        seed_test_admin(bootstrap)
+    finally:
+        bootstrap.close()
     try:
         yield factory
     finally:
@@ -115,8 +146,20 @@ def client_fixture(
     # into request parameters and reject every payload with a 422.
     app.dependency_overrides[get_scoring_service] = lambda: ScoringService()
     with TestClient(app) as test_client:
+        test_client.headers.update(bearer_header())
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(name="anonymous_client")
+def anonymous_client_fixture(client: TestClient) -> Generator[TestClient, None, None]:
+    """Same DB as ``client`` but without an Authorization header."""
+    token = client.headers.pop("Authorization", None)
+    try:
+        yield client
+    finally:
+        if token is not None:
+            client.headers["Authorization"] = token
 
 
 @pytest.fixture(name="ml_service", scope="session")

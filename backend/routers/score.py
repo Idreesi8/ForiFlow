@@ -11,9 +11,14 @@ from sqlalchemy.orm import Session
 
 from models.database import Application, get_db
 from schemas import ApplicationSummary, Decision, SMEApplicant, ScoreResponse
+from services.auth_service import get_current_user
 from services.scoring_service import ScoringService, get_scoring_service
 
-router = APIRouter(prefix="/score", tags=["Scoring"])
+router = APIRouter(
+    prefix="/score",
+    tags=["Scoring"],
+    dependencies=[Depends(get_current_user)],
+)
 
 DbSession = Annotated[Session, Depends(get_db)]
 Scorer = Annotated[ScoringService, Depends(get_scoring_service)]
@@ -64,8 +69,8 @@ async def score_application(
     explanation = scorer.build_explanation(
         result, application_id=application.id, business_name=application.business_name
     )
-    # Persisted so the rationale can be reproduced during an SBP audit even if
-    # the model is retrained later.
+    # Persisted so the rationale can be retrieved later even if the model
+    # is retrained. Not an SBP certification.
     application.shap_explanation_json = json.dumps(explanation.model_dump(mode="json"))
 
     db.commit()

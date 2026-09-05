@@ -1,29 +1,60 @@
 # ForiFlow demo stack: FastAPI + trained ensemble on :8000, React dashboard
-# behind nginx on :3000. Start it with ./start.sh, .\start.ps1, or directly:
+# behind nginx on :3000, PostgreSQL on an internal network. Start with
+# ./start.sh, .\start.ps1, or:
 #
+#   copy .env.example .env   # then set POSTGRES_PASSWORD
 #   docker compose up -d --build
 #
 # The dashboard calls /api on its own origin and nginx forwards that to the
 # backend container, so nothing depends on the host's CORS configuration.
+# Database credentials come from `.env` — never from this file.
 
 services:
+  db:
+    image: postgres:16.6
+    container_name: foriflow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+    volumes:
+      - foriflow-pgdata:/var/lib/postgresql/data
+    ports:
+      # Bound to loopback so host-side Alembic/copy scripts can reach it
+      # without publishing Postgres on the LAN.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   backend:
     build:
       context: ./backend
     image: foriflow-backend:1.0.0
     container_name: foriflow-backend
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
-      - "8000:8000"
+      # Loopback only — this compose stack is a single-laptop pilot, not LAN.
+      - "127.0.0.1:8000:8000"
     environment:
-      # Four slashes = absolute path: /data is the persistent volume below.
-      FORIFLOW_DATABASE_URL: sqlite:////data/foriflow.db
-      # "auto" prefers the trained ensemble and degrades to the linear surrogate
-      # if its artefacts are missing. Use "ml" to refuse to start without them.
-      FORIFLOW_SCORING_ENGINE: auto
-      FORIFLOW_LOG_LEVEL: INFO
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      FORIFLOW_SCORING_ENGINE: ${FORIFLOW_SCORING_ENGINE:-auto}
+      FORIFLOW_LOG_LEVEL: ${FORIFLOW_LOG_LEVEL:-INFO}
+      FORIFLOW_ENABLE_DOCS: ${FORIFLOW_ENABLE_DOCS:-true}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
     volumes:
+      # Legacy SQLite file (if any) stays readable for the one-time copy script.
       - foriflow-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       # No curl in python:3.11-slim, and adding it just for this would grow the
       # image; the interpreter is already there.
@@ -46,7 +77,8 @@ services:
     container_name: foriflow-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Loopback only — this compose stack is a single-laptop pilot, not LAN.
+      - "127.0.0.1:3000:3000"
     depends_on:
       # nginx resolves "backend" on startup, and a dashboard that loads before
       # the model is ready would greet the officer with "API offline".
@@ -63,3 +95,5 @@ volumes:
   # Survives "docker compose down"; remove with "docker compose down -v".
   foriflow-data:
     name: foriflow-data
+  foriflow-pgdata:
+    name: foriflow-pgdata

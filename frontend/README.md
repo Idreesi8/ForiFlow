@@ -2,9 +2,10 @@
 
 React 18 + Vite + Tailwind CSS dashboard for **ForiFlow** — the credit officer
 workspace for SME scoring and Early Warning System (EWS) surveillance at
-Pakistani banks. All amounts are shown in PKR (with crore/lakh shorthand),
-bureau references are ECIB, and every decision is backed by an explainable SHAP
-report for SBP adverse-action reporting.
+Pakistani banks. All amounts are shown in PKR (with crore/lakh shorthand).
+Bureau-style fields are officer-entered (no live ECIB connector). SHAP
+explanations are stored on-premise to support an SBP-oriented review; ForiFlow
+is not SBP-certified.
 
 ## Quick start
 

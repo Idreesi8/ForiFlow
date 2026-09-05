@@ -16,9 +16,14 @@ from schemas import (
     EWSMonitorResponse,
     EWSTrackingResponse,
 )
+from services.auth_service import get_current_user
 from services.ews_service import EWSService, get_ews_service
 
-router = APIRouter(prefix="/ews", tags=["Early Warning System"])
+router = APIRouter(
+    prefix="/ews",
+    tags=["Early Warning System"],
+    dependencies=[Depends(get_current_user)],
+)
 
 DbSession = Annotated[Session, Depends(get_db)]
 Monitor = Annotated[EWSService, Depends(get_ews_service)]
@@ -61,7 +66,7 @@ async def monitor_borrower(
         expected_monthly_cash_flow=borrower.cash_flow_proxy,
     )
 
-    # Re-submitting a month (e.g. after a late ECIB refresh) overwrites it.
+    # Re-submitting a month (e.g. after correcting a typed bureau balance) overwrites it.
     tracking = db.scalars(
         select(EWSTracking).where(
             EWSTracking.borrower_id == payload.borrower_id,

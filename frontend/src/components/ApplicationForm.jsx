@@ -53,13 +53,14 @@ const FIELD_GROUPS = [
         step: 1,
         integer: true,
         hint: "Between 3 and 84 months.",
+        unusedByModel: true,
       },
     ],
   },
   {
     title: "Alternative data signals",
     description:
-      "Digital footprint and bureau signals used in place of formal financial statements.",
+      "Digital footprint and officer-entered bureau-style signals (not a live bureau feed).",
     fields: [
       {
         name: "monthly_digital_payments",
@@ -78,7 +79,7 @@ const FIELD_GROUPS = [
         min: 0,
         max: 100,
         step: 1,
-        hint: "Repayment behaviour from ECIB (0-100).",
+        hint: "Officer-entered 0–100 score on an ECIB-oriented scale. Not pulled from a live bureau.",
       },
       {
         name: "inventory_turnover",
@@ -88,6 +89,7 @@ const FIELD_GROUPS = [
         max: 50,
         step: 0.1,
         hint: "Times stock is sold per year.",
+        unusedByModel: true,
       },
       {
         name: "order_consistency",
@@ -97,6 +99,7 @@ const FIELD_GROUPS = [
         max: 100,
         step: 1,
         hint: "Stability of order volumes over 12 months (0-100).",
+        unusedByModel: true,
       },
       {
         name: "existing_debt_pkr",
@@ -107,6 +110,7 @@ const FIELD_GROUPS = [
         max: 1000000000,
         step: 50000,
         hint: "Outstanding exposure across all lenders.",
+        unusedByModel: true,
       },
       {
         name: "cash_flow_proxy",
@@ -136,6 +140,7 @@ const FIELD_GROUPS = [
         step: 1,
         integer: true,
         hint: "Headcount including owners.",
+        unusedByModel: true,
       },
     ],
   },
@@ -314,7 +319,7 @@ export default function ApplicationForm({ onScored }) {
           <div>
             <h2 className="card-title">New credit assessment</h2>
             <p className="mt-1 text-sm text-slate-500">
-              All amounts in PKR. Bureau fields reference ECIB.
+              All amounts in PKR. Bureau-style fields are typed in by the officer — not a live ECIB connection.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -365,7 +370,7 @@ export default function ApplicationForm({ onScored }) {
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4">
           <p className="text-xs text-slate-500">
-            Submitting records the assessment and its SHAP rationale for SBP audit.
+            Submitting stores the assessment and its SHAP rationale on-premise for later review. Not SBP-certified.
           </p>
           <div className="flex gap-2">
             <button type="button" onClick={handleReset} className="btn-secondary">
@@ -480,6 +485,14 @@ function FormField({ field, value, error, onChange }) {
         <p className="tabular mt-1 text-xs text-slate-500">{formatPKR(value)}</p>
       ) : field.hint ? (
         <p className="mt-1 text-xs text-slate-500">{field.hint}</p>
+      ) : null}
+      {field.unusedByModel ? (
+        <p
+          className="mt-1 text-xs font-semibold text-amber-800"
+          title="Collected for future scoring versions — not currently used in this risk score."
+        >
+          Collected for future scoring versions — not currently used in this risk score.
+        </p>
       ) : null}
     </div>
   );

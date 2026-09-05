@@ -8,6 +8,7 @@ Dockerfile text eol=lf
 
 # PowerShell is happiest with CRLF on Windows.
 *.ps1 text eol=crlf
+*.bat text eol=crlf
 
 # Trained artefacts are binary; never line-ending-normalise or diff them.
 *.pkl binary

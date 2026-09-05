@@ -21,8 +21,8 @@ Pakistani SMEs face a critical financing gap:
 
 ForiFlow is an end-to-end AI credit intelligence platform that:
 
-- Scores unbanked SMEs using **alternative data** (digital payments, ECIB, inventory turnover)
-- Provides **SHAP explainability** for every decision — fully SBP audit-compliant
+- Scores unbanked SMEs using **alternative data** (digital payments and other officer-entered signals)
+- Provides **SHAP explainability** for every decision, stored on-premise to support an SBP-oriented review (ForiFlow is not SBP-certified and has no live ECIB connector)
 - Monitors approved borrowers with an **Early Warning System** that detects defaults 60-90 days in advance
 
 ## 🏗️ Architecture
@@ -38,9 +38,11 @@ ForiFlow is an end-to-end AI credit intelligence platform that:
           ┌─────────────┐           ┌─────────────┐           ┌─────────────┐
           │ XGBoost+RF  │           │    SHAP     │           │  PostgreSQL │
           │  Ensemble   │           │TreeExplainer│           │   SQLite    │
-          │ AUC: 0.774+ │           │             │           │   (Dev)     │
+          │ CV 0.7758*  │           │             │           │   (Dev)     │
           └─────────────┘           └─────────────┘           └─────────────┘
 ```
+
+\* 5-fold CV 0.7758 ± 0.0075, hold-out 0.7756 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio).
 
 In Docker the dashboard calls `/api` on its own origin and nginx forwards that
 prefix to FastAPI, so a bank laptop never has to configure CORS.
@@ -85,11 +87,12 @@ cd foriflow
 docker compose up --build -d
 ```
 
-Visit: [http://localhost:3000](http://localhost:3000)
+Visit: [http://127.0.0.1:3000](http://127.0.0.1:3000)
 
-On Windows PowerShell you can also run `.\start.ps1`. The first build downloads
-the scientific Python wheels; later starts reuse the images. Confirm the trained
-ensemble is live with:
+On Windows, double-click `start.bat` (or the desktop **ForiFlow** shortcut
+from `create-shortcut.bat`). That starts existing images without rebuilding.
+After code changes, use `rebuild.bat`.
+Confirm the trained ensemble is live with:
 
 ```bash
 docker compose logs backend | grep "Scoring engine ready"
@@ -104,7 +107,7 @@ in `frontend/`. Vite proxies `/api` to the API.
 
 ## 📊 Performance
 
-- **AUC-ROC:** 0.774 on public datasets (5-fold CV 0.776 ± 0.008) → target 0.85+ with bank data
+- **AUC-ROC:** 5-fold CV 0.7758 ± 0.0075, hold-out 0.7756 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio). 0.85+ remains a bank-data target, not a measured result.
 - **Response time:** under 2 seconds per score after the ensemble is loaded
 - **Concurrent users:** designed for 1,000+ officers behind a reverse proxy
 

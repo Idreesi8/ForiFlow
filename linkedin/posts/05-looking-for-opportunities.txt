@@ -2,7 +2,7 @@ ForiFlow is now demo-ready for Pakistani banks! 🚀
 
 What you can click through today, on a laptop, no cloud:
 
-• Score a thin-file SME on digital payments, ECIB history, inventory and cash-flow proxies
+• Score a thin-file SME on digital payments, officer-entered ECIB-style history, inventory and cash-flow proxies
 • Read a SHAP waterfall that adds up to the 0–100 score
 • Watch the Early Warning queue after a monthly re-score
 • Run the whole stack with docker compose up

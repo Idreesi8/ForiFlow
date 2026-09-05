@@ -10,9 +10,14 @@ from sqlalchemy.orm import Session
 
 from models.database import Application, get_db
 from schemas import ExplanationResponse
+from services.auth_service import get_current_user
 from services.scoring_service import ScoringService, get_scoring_service
 
-router = APIRouter(prefix="/explain", tags=["Explainability"])
+router = APIRouter(
+    prefix="/explain",
+    tags=["Explainability"],
+    dependencies=[Depends(get_current_user)],
+)
 
 DbSession = Annotated[Session, Depends(get_db)]
 Scorer = Annotated[ScoringService, Depends(get_scoring_service)]

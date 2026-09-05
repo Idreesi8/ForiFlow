@@ -1,0 +1,278 @@
+<!--
+  ForiFlow FYP poster — A1 portrait (594mm × 841mm).
+  Facts from backend/ml/feature_names.json (served artefacts, trained
+  2026-08-11T23:51:28), backend/services, docker-compose.yml,
+  start.ps1, and docs/deployment.md. AUC-ROC 0.85 is a bank-data target,
+  not measured. EWS days-to-default is a heuristic. Not SBP-certified.
+  Everyday start is start.bat / start.ps1. Ports bind to 127.0.0.1.
+
+  Print: Chrome/Edge → Save as PDF → paper A1 → margins None →
+  scale 100% → background graphics On. Do not fit to page.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ForiFlow — FYP Poster A1</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet" />
+  <style>
+    @page { size: 594mm 841mm; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: #d9dde3; }
+    body { font-family: Inter, system-ui, sans-serif; color: #1a2836; }
+    .sheet {
+      width: 594mm;
+      height: 841mm;
+      margin: 0 auto;
+      background: #f4f6f8;
+      display: grid;
+      grid-template-rows: 78mm 1fr 22mm;
+      overflow: hidden;
+    }
+    h1, h2, .brand { font-family: Manrope, Inter, sans-serif; }
+    header {
+      background: #0a2540;
+      color: #fff;
+      padding: 10mm 14mm 9mm;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8mm;
+      align-items: end;
+    }
+    .mark {
+      width: 18mm; height: 18mm; border-radius: 3mm;
+      background: #0f9d74; color: #fff;
+      display: grid; place-items: center;
+      font-family: Manrope, sans-serif; font-weight: 800; font-size: 11mm;
+    }
+    .title-row { display: flex; gap: 6mm; align-items: center; }
+    h1 { font-size: 16mm; font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
+    .tag { color: #9ae6c9; font-size: 4.4mm; font-weight: 600; margin-top: 2.5mm; }
+    .meta { text-align: right; font-size: 3.4mm; line-height: 1.45; color: #c5d0dc; }
+    .meta strong { color: #fff; display: block; font-size: 3.8mm; margin-bottom: 1mm; }
+    main {
+      padding: 8mm 14mm 6mm;
+      display: grid;
+      grid-template-rows: 52mm 118mm 1fr 48mm;
+      gap: 6mm;
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5mm;
+    }
+    .kpi {
+      background: #fff; border-radius: 3mm; padding: 5mm 5.5mm 4.5mm;
+      border: 0.3mm solid #e2e8ee;
+    }
+    .kpi b { display: block; font-family: Manrope, sans-serif; font-size: 9mm; font-weight: 800; color: #0a2540; letter-spacing: -0.03em; line-height: 1; }
+    .kpi span { display: block; margin-top: 2mm; font-size: 3.1mm; color: #5b6b7a; line-height: 1.35; }
+    .kpi em { font-style: normal; color: #0f9d74; font-weight: 600; }
+    .mid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 6mm;
+    }
+    .card {
+      background: #fff; border-radius: 3mm; padding: 5.5mm;
+      border: 0.3mm solid #e2e8ee;
+    }
+    h2 {
+      font-size: 4.2mm; font-weight: 800; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #0a2540; margin-bottom: 4.5mm;
+    }
+    .rail {
+      display: flex; align-items: stretch; gap: 0;
+    }
+    .node {
+      flex: 1; text-align: center; padding: 0 2mm;
+    }
+    .node .dot {
+      width: 11mm; height: 11mm; margin: 0 auto 2.5mm;
+      border-radius: 50%; background: #0f9d74; color: #fff;
+      display: grid; place-items: center;
+      font-weight: 800; font-size: 4mm; font-family: Manrope, sans-serif;
+    }
+    .node p { font-size: 3.1mm; font-weight: 600; color: #0a2540; line-height: 1.25; }
+    .node small { display: block; font-weight: 400; color: #5b6b7a; margin-top: 0.8mm; font-size: 2.7mm; }
+    .connector {
+      width: 8mm; align-self: start; margin-top: 5mm;
+      height: 1.1mm; background: #0f9d74; border-radius: 1mm; flex: 0 0 8mm;
+    }
+    .bands { display: grid; grid-template-columns: 40fr 30fr 30fr; height: 11mm; border-radius: 2mm; overflow: hidden; margin: 5mm 0 3mm; }
+    .bands i { display: grid; place-items: center; color: #fff; font-size: 2.9mm; font-weight: 600; font-style: normal; }
+    .b-r { background: #c23b3b; }
+    .b-a { background: #d28a1a; }
+    .b-g { background: #0f9d74; }
+    .note { font-size: 2.9mm; color: #5b6b7a; line-height: 1.4; }
+    .stack { display: grid; gap: 2.2mm; }
+    .blk {
+      border-radius: 2mm; padding: 3.2mm 4mm;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 3.2mm; font-weight: 600;
+    }
+    .blk span { font-weight: 500; color: #5b6b7a; font-size: 2.8mm; }
+    .ui { background: #e7f6f1; color: #0a2540; }
+    .api { background: #0a2540; color: #fff; }
+    .api span { color: #9ae6c9; }
+    .db { background: #12324f; color: #fff; }
+    .db span { color: #9ec0e0; }
+    .shots {
+      display: grid;
+      grid-template-columns: 1.25fr 0.75fr;
+      gap: 6mm; min-height: 0;
+    }
+    figure {
+      margin: 0; background: #fff; border-radius: 3mm; overflow: hidden;
+      border: 0.3mm solid #e2e8ee; display: flex; flex-direction: column;
+    }
+    figure img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
+    figcaption {
+      padding: 2.5mm 4mm; font-size: 2.8mm; color: #5b6b7a;
+      border-top: 0.3mm solid #e2e8ee; background: #fff;
+    }
+    .bottom {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 0.9fr;
+      gap: 5mm;
+    }
+    ul { list-style: none; font-size: 3.05mm; line-height: 1.45; color: #1a2836; }
+    ul li { padding-left: 4.2mm; position: relative; margin-bottom: 1.4mm; }
+    ul li::before {
+      content: ""; position: absolute; left: 0; top: 1.4mm;
+      width: 2mm; height: 2mm; border-radius: 50%; background: #0f9d74;
+    }
+    footer {
+      background: #0a2540; color: #c5d0dc;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14mm; font-size: 3.1mm;
+    }
+    footer a { color: #9ae6c9; text-decoration: none; font-weight: 600; }
+    @media print {
+      html, body { background: #fff; }
+      .sheet { margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <article class="sheet">
+    <header>
+      <div>
+        <div class="title-row">
+          <div class="mark">F</div>
+          <div>
+            <h1>ForiFlow</h1>
+            <p class="tag">SME credit scoring and Early Warning — on-premise FYP prototype</p>
+          </div>
+        </div>
+      </div>
+      <div class="meta">
+        <strong>COMSATS University Islamabad</strong>
+        BS Business Data Analytics · FYP · 2023–2027<br />
+        Ramzan Ahmed Idreesi · SP23-BBD-056<br />
+        Zakria Saeed Abbasi · SP23-BBD-073<br />
+        Supervisor: Ms. Sarah Tariq
+      </div>
+    </header>
+
+    <main>
+      <section class="kpis">
+        <div class="kpi">
+          <b>0.7758</b>
+          <span>Served 5-fold CV AUC-ROC <em>± 0.0075</em><br />hold-out 0.7756 · F1 0.544 · n = 32,581<br />public/proxy dataset — not a real SME portfolio</span>
+        </div>
+        <div class="kpi">
+          <b>3</b>
+          <span>Served ML features<br /><em>loan_to_income · payment history · years in operation</em></span>
+        </div>
+        <div class="kpi">
+          <b>&gt;15</b>
+          <span>EWS alert if the derived monthly score drops more than 15 points from origination</span>
+        </div>
+        <div class="kpi">
+          <b>JWT</b>
+          <span>On-premise HS256 login · 8 hours<br /><em>admin / analyst · PostgreSQL 16.6</em></span>
+        </div>
+      </section>
+
+      <section class="mid">
+        <div class="card">
+          <h2>Origination pipeline</h2>
+          <div class="rail">
+            <div class="node"><div class="dot">1</div><p>Intake</p><small>12 fields · PKR</small></div>
+            <div class="connector"></div>
+            <div class="node"><div class="dot">2</div><p>Ratios</p><small>currency-invariant</small></div>
+            <div class="connector"></div>
+            <div class="node"><div class="dot">3</div><p>Ensemble</p><small>XGB 0.60 · RF 0.40</small></div>
+            <div class="connector"></div>
+            <div class="node"><div class="dot">4</div><p>SHAP</p><small>TreeExplainer</small></div>
+            <div class="connector"></div>
+            <div class="node"><div class="dot">5</div><p>Decision</p><small>0–100 score</small></div>
+          </div>
+          <div class="bands">
+            <i class="b-r">0–40 Rejected</i>
+            <i class="b-a">41–70 Manual review</i>
+            <i class="b-g">71–100 Approved</i>
+          </div>
+            <p class="note">risk_score = 100 × (1 − PD). Relative ranking after SMOTE-in-CV, not a calibrated default probability. Inventory turnover, order consistency, headcount, existing debt, and tenure are stored and labelled unused on the intake form; they do not move this ensemble. SHAP summary cards are rounded so they add to the displayed score. AUC-ROC 0.85 is a bank-data target — the three-feature ladder ceiling is 0.7776 ± 0.0067 and was not shipped.</p>
+        </div>
+        <div class="card">
+          <h2>On-premise stack</h2>
+          <div class="stack">
+            <div class="blk ui">Officer dashboard<span>nginx · :3000 · /login</span></div>
+            <div class="blk api">FastAPI + ensemble<span>uvicorn · :8000 · /api</span></div>
+            <div class="blk db">PostgreSQL 16.6<span>127.0.0.1:5432 · Alembic</span></div>
+          </div>
+          <p class="note" style="margin-top:4mm">Everyday start is <em>start.bat / start.ps1</em> (starts Docker Desktop if needed; no rebuild). Compose requires POSTGRES_* and JWT_SECRET_KEY. Ports bind to 127.0.0.1 only. Seed with <em>python -m scripts.seed_admin</em> only if start.ps1 reports no officer. GET /health is public; /score and /ews need a Bearer token. Designed for SBP-oriented explainability; not SBP-certified.</p>
+        </div>
+      </section>
+
+      <section class="shots">
+        <figure>
+          <img src="screenshots/03-score-result.png" alt="Credit scoring result with SHAP waterfall" />
+          <figcaption>Fig. 1 — Credit Scoring: 0–100 gauge, unused-field labels, additive SHAP waterfall (docs/screenshots/03-score-result.png).</figcaption>
+        </figure>
+        <figure>
+          <img src="screenshots/01-dashboard.png" alt="Officer dashboard" />
+          <figcaption>Fig. 2 — Dashboard after JWT login: mix, latest score, EWS empty-active copy (docs/screenshots/01-dashboard.png).</figcaption>
+        </figure>
+      </section>
+
+      <section class="bottom">
+        <div class="card">
+          <h2>Early warning</h2>
+          <ul>
+            <li>Officer types a month: ageing bucket, bureau balance, POS inflow (no live ECIB).</li>
+            <li>Current score is a rule on the origination baseline — the ensemble is not re-run.</li>
+            <li>Alert if drop &gt; 15.0. Filters: All / Active / Resolved. Days-to-default is a 7–365 heuristic, not a validated 60–90 day lead time.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h2>What the model uses</h2>
+          <ul>
+            <li>Winner: credit_risk_shared (21.82% default rate).</li>
+            <li>Rejected files: combined_shared 0.652 · loan_default_full 0.622.</li>
+            <li>Give Me Some Credit 0.8656 is a proxy experiment on a different dataset, not the production model's performance.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h2>Pilot access</h2>
+          <ul>
+            <li>http://127.0.0.1:3000 dashboard</li>
+            <li>http://127.0.0.1:8000 API</li>
+            <li>start.bat / start.ps1 · loopback only</li>
+            <li>github.com/Idreesi8/ForiFlow</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>ForiFlow v1.0 · start.bat · 127.0.0.1 · JWT · PKR · officer-typed bureau fields · SHAP stored per decision</span>
+      <a href="https://github.com/Idreesi8/ForiFlow">github.com/Idreesi8/ForiFlow</a>
+    </footer>
+  </article>
+</body>
+</html>

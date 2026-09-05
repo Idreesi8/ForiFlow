@@ -36,13 +36,12 @@ print('Trained ensemble baked into image:', present, '->', MODEL_PATH); \
 sys.exit(0 if present or os.environ['REQUIRE_MODEL'].lower() != 'true' else \
 'ERROR: backend/ml artefacts missing. Run \"python -m ml.train_real_model\" in backend/ before building, or rebuild with --build-arg REQUIRE_MODEL=false.')"
 
-# The database lives on a volume so demo data survives "docker compose down".
+# Schema is owned by Alembic against PostgreSQL. /data is still created so a
+# one-time SQLite copy can read a legacy foriflow.db if the volume has one.
 RUN useradd --create-home --uid 10001 foriflow \
     && mkdir -p /data \
     && chown -R foriflow:foriflow /app /data
 USER foriflow
-
-ENV FORIFLOW_DATABASE_URL=sqlite:////data/foriflow.db
 
 EXPOSE 8000
 

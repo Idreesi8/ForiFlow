@@ -1,7 +1,8 @@
 """Early Warning System (EWS) business logic for ForiFlow.
 
-Each disbursed facility is re-assessed monthly using repayment behaviour, the
-ECIB bureau balance and POS settlement inflows. When the borrower's score falls
+Each disbursed facility is re-assessed monthly using officer-entered repayment
+behaviour, an officer-typed bureau balance, and POS settlement inflows (no live
+bureau connector). When the borrower's score falls
 more than :data:`ALERT_SCORE_DROP_THRESHOLD` points below its origination
 baseline, an alert is raised together with an estimated runway to default so
 that the recovery team can prioritise outreach.
@@ -92,7 +93,7 @@ class EWSService:
             penalty += clamp(leverage - 1.0, 0.0, 1.0) * 12.0
 
         # Shrinking POS inflows are an early liquidity signal, often visible
-        # before the bureau refresh lands.
+        # before an officer updates the typed bureau balance.
         if expected_monthly_cash_flow > 0:
             coverage = payload.pos_cash_balance / expected_monthly_cash_flow
             penalty += clamp(1.0 - coverage, 0.0, 1.0) * 15.0
@@ -126,15 +127,17 @@ class EWSService:
         """Return the next best action for the relationship manager."""
         if installment_status is InstallmentStatus.DEFAULT:
             return (
-                "Classify per SBP Prudential Regulations and hand over to remedial "
-                "management immediately."
+                "Hand over to remedial management immediately. Classification "
+                "under SBP Prudential Regulations is the bank's process — "
+                "ForiFlow does not classify or certify."
             )
         if not alert_triggered:
             return "No action required. Continue routine monthly monitoring."
         if score_drop >= 2 * self.alert_threshold:
             return (
-                "Escalate to the recovery unit within 48 hours, request an ECIB refresh "
-                "and consider restructuring the facility."
+                "Escalate to the recovery unit within 48 hours, obtain an updated "
+                "bureau extract (ForiFlow has no live ECIB feed), and consider "
+                "restructuring the facility."
             )
         return (
             "Relationship manager to contact the borrower within 7 days and verify "

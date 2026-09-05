@@ -37,7 +37,11 @@ class AlertStatus(StrEnum):
 
 
 class InstallmentStatus(StrEnum):
-    """Repayment status for a monitored month, aligned with ECIB ageing buckets."""
+    """Repayment status for a monitored month.
+
+    Labels follow ECIB-style ageing buckets. Values are officer-entered;
+    they are not pulled from a live bureau.
+    """
 
     ON_TIME = "On Time"
     LATE_1_29 = "Late 1-29"
@@ -47,7 +51,11 @@ class InstallmentStatus(StrEnum):
 
 
 class DataSource(StrEnum):
-    """Dominant data feed behind a monthly EWS observation."""
+    """Officer-selected label for which typed source dominated the month.
+
+    ``ECIB`` means the officer keyed figures from a bureau extract. It is not
+    a live connector.
+    """
 
     ECIB = "ECIB"
     POS = "POS"
@@ -95,7 +103,13 @@ class SMEApplicant(BaseModel):
         description="Average monthly digital receipts (Raast, POS, wallets) in PKR.",
     )
     payment_history_score: float = Field(
-        ..., ge=0, le=100, description="Repayment behaviour score derived from ECIB history."
+        ...,
+        ge=0,
+        le=100,
+        description=(
+            "Officer-entered repayment score on a 0–100 ECIB-oriented scale. "
+            "Not pulled from a live bureau."
+        ),
     )
     inventory_turnover: float = Field(
         ..., ge=0, le=50, description="Inventory turnover ratio (times per year)."
@@ -218,7 +232,12 @@ class EWSMonitorRequest(BaseModel):
     month_number: int = Field(..., ge=1, le=84, description="Months since disbursement.")
     installment_status: InstallmentStatus
     bureau_balance: float = Field(
-        ..., ge=0, le=1_000_000_000, description="Outstanding balance per ECIB, in PKR."
+        ...,
+        ge=0,
+        le=1_000_000_000,
+        description=(
+            "Officer-entered outstanding balance in PKR. Not connected to a live ECIB feed."
+        ),
     )
     pos_cash_balance: float = Field(
         ..., ge=0, le=1_000_000_000, description="Monthly POS settlement inflow in PKR."
@@ -287,3 +306,27 @@ class HealthResponse(BaseModel):
     service: str
     version: str
     database: str
+
+
+class UserRole(StrEnum):
+    """On-premise officer roles. Both may use scoring and EWS."""
+
+    ADMIN = "admin"
+    ANALYST = "analyst"
+
+
+class LoginRequest(BaseModel):
+    """Credentials for ``POST /auth/login``."""
+
+    username: str = Field(..., min_length=1, max_length=64)
+    password: str = Field(..., min_length=1, max_length=72)
+
+
+class TokenResponse(BaseModel):
+    """JWT issued after a successful login."""
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    username: str
+    role: UserRole

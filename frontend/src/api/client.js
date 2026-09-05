@@ -1,5 +1,7 @@
 import axios from "axios";
 
+import { clearSession, getToken } from "./auth.js";
+
 // Relative by default so the dashboard works unchanged in both deployments:
 // nginx proxies /api to the backend container, and `vite dev` proxies the same
 // prefix to localhost:8000. Set VITE_API_BASE_URL to point at an absolute host.
@@ -16,6 +18,30 @@ const client = axios.create({
   timeout: 15000,
   headers: { "Content-Type": "application/json" },
 });
+
+client.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    const requestUrl = String(error.config?.url ?? "");
+    const isLogin = requestUrl.includes("/auth/login");
+    if (status === 401 && !isLogin) {
+      clearSession();
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        window.location.assign("/login");
+      }
+    }
+    return Promise.reject(error);
+  },
+);
 
 /**
  * Turn an Axios failure into a sentence a credit officer can act on.
@@ -77,5 +103,8 @@ export const monitorBorrower = (payload) =>
 
 export const fetchHealth = () =>
   client.get("/health", { timeout: 4000 }).then((response) => response.data);
+
+export const login = (username, password) =>
+  client.post("/auth/login", { username, password }).then((response) => response.data);
 
 export default client;
