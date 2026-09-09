@@ -8,6 +8,7 @@ import ApplicationsPage from "./pages/ApplicationsPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
+import PosterPage from "./pages/PosterPage.jsx";
 import ScoringPage from "./pages/ScoringPage.jsx";
 import ShapReportsPage from "./pages/ShapReportsPage.jsx";
 
@@ -27,6 +28,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/poster" element={<PosterPage />} />
       <Route
         element={
           <RequireAuth>
