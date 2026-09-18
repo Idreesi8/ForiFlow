@@ -70,7 +70,7 @@ FEATURE_LABELS: dict[str, str] = {
     "loan_to_income": "Facility size vs annual turnover",
     "installment_to_income": "Installment affordability vs turnover",
     "debt_service_to_income": "Existing debt burden",
-    "payment_history_score": "Repayment history (ECIB)",
+    "payment_history_score": "Repayment history (officer-entered)",
     "years_in_operation": "Years in operation",
     "tenure_months": "Requested tenure",
 }

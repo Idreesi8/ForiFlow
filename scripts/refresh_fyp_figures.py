@@ -7,8 +7,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "screenshots"
-NAVY = (10, 37, 64)
-TEAL = (15, 157, 116)
+NAVY = (7, 26, 20)  # brand-950
+TEAL = (45, 133, 96)  # brand-500
 INK = (26, 40, 54)
 MUTED = (91, 107, 122)
 LINE = (226, 232, 238)

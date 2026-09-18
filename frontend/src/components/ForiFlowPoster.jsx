@@ -1,238 +1,226 @@
-import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { SCORE_BANDS } from "../lib/decisions.js";
 
-const WORKFLOWS = [
-  {
-    id: "score",
-    step: "01",
-    pipe: "Score",
-    title: "Origination score",
-    kicker: "Credit Scoring",
-    summary: "Twelve PKR intake fields. A 0–100 ensemble score on the served model.",
-    detail:
-      "Officers submit applicant, facility, digital receipts, payment history, and cash-flow proxies. The served model uses loan-to-income, payment history, and years in operation. Tenure, inventory, order consistency, existing debt, and headcount are stored and labelled unused. Decisions follow the policy matrix: 0–40 Rejected, 41–70 Manual Review, 71–100 Approved.",
-    Icon: GaugeIcon,
-  },
-  {
-    id: "shap",
-    step: "02",
-    pipe: "SHAP",
-    title: "Stored SHAP file",
-    kicker: "Explainability",
-    summary: "Base plus every contribution reconstructs the displayed score.",
-    detail:
-      "TreeSHAP attributions are written with the application so a credit file can show why the score moved. Summary cards are rounded so an officer can add them by hand. There is no live bureau connector; payment-history and bureau-balance fields are officer-typed.",
-    Icon: ChartIcon,
-  },
-  {
-    id: "ews",
-    step: "03",
-    pipe: "EWS",
-    title: "Early warning",
-    kicker: "Surveillance",
-    summary: "Alert when the monthly score drops more than 15 points from origination.",
-    detail:
-      "After disbursement an officer types ageing, bureau balance, and POS inflow. The current score is a published rule on the origination baseline — the ensemble is not re-run. Filters are All, Active, and Resolved. Days-to-default is a 7–365 heuristic, not a validated 60–90 day forecast.",
-    Icon: BellIcon,
-  },
-  {
-    id: "register",
-    step: "04",
-    pipe: "Workspace",
-    title: "Officer workspace",
-    kicker: "On-premise",
-    summary: "JWT login, five routes, every amount in PKR, loopback-only Docker.",
-    detail:
-      "Dashboard, Credit Scoring, SHAP Reports, EWS Alerts, and Applications share one session. Sign-in issues an 8-hour HS256 token. The stack binds to 127.0.0.1. Designed for SBP-oriented explainability; ForiFlow is not SBP-certified.",
-    Icon: ShieldIcon,
-  },
+const PIPELINE = [
+  { step: "1", title: "Intake", detail: "12 fields · PKR" },
+  { step: "2", title: "Ratios", detail: "currency-invariant" },
+  { step: "3", title: "Ensemble", detail: "XGB 0.60 · RF 0.40" },
+  { step: "4", title: "SHAP", detail: "TreeExplainer" },
+  { step: "5", title: "Decision", detail: "100 × (1 − PD)" },
 ];
 
 /**
- * Vertical marketing poster for the officer product — brand tokens, real
- * workflows, and a CTA into the existing /login flow. No signup product exists.
+ * Complete A1 FYP poster. Copy matches docs/foriflow-poster.html and the
+ * served artefacts in backend/ml/feature_names.json.
  */
 export default function ForiFlowPoster() {
-  const [activeId, setActiveId] = useState(WORKFLOWS[0].id);
-  const active = WORKFLOWS.find((item) => item.id === activeId) ?? WORKFLOWS[0];
-
   return (
-    <article className="relative mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-brand-800 bg-brand-950 text-brand-50 shadow-xl sm:aspect-[3/4]">
-      <div
-        className="pointer-events-none absolute inset-0 opacity-40"
-        aria-hidden="true"
-        style={{
-          background:
-            "radial-gradient(1200px 420px at 10% -10%, rgb(45 133 96 / 0.45), transparent 55%), radial-gradient(800px 360px at 110% 20%, rgb(31 107 76 / 0.35), transparent 50%)",
-        }}
-      />
-
-      <header className="relative z-10 flex items-start justify-between gap-3 px-5 pt-5 sm:px-8 sm:pt-6">
+    <article className="mx-auto flex w-full max-w-[1100px] flex-col overflow-visible rounded-xl border border-slate-200 bg-slate-100 text-slate-800 shadow-xl print:max-w-none print:rounded-none print:border-0 print:shadow-none">
+      <header className="flex flex-col gap-4 bg-brand-950 px-6 py-5 text-white sm:flex-row sm:items-center sm:justify-between sm:px-8">
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 text-lg font-black text-white">
+          <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-500 text-xl font-black">
             F
           </span>
           <div>
-            <p className="text-base leading-tight font-bold text-white">ForiFlow</p>
-            <p className="text-xs text-brand-200">SME Credit Intelligence</p>
+            <h1 className="text-3xl leading-none font-black tracking-tight">ForiFlow</h1>
+            <p className="mt-1 max-w-xl text-xs font-medium text-brand-200 sm:text-sm">
+              On-premise SME credit scoring, stored SHAP, and rule-based early warning
+              for Pakistani credit officers. No live ECIB. Not SBP-certified.
+            </p>
           </div>
         </div>
-        <p className="badge border border-brand-700 bg-brand-900/80 text-brand-100">
-          On-premise · PKR
+        <p className="text-right text-[11px] leading-relaxed text-brand-200 sm:text-xs">
+          <span className="block font-semibold text-white">COMSATS University Islamabad</span>
+          BS Business Data Analytics · FYP · 2023–2027
+          <br />
+          Ramzan Ahmed Idreesi · SP23-BBD-056
+          <br />
+          Zakria Saeed Abbasi · SP23-BBD-073
+          <br />
+          Supervisor: Ms. Sarah Tariq
         </p>
       </header>
 
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col px-5 pt-5 pb-5 sm:px-8 sm:pt-6 sm:pb-6">
-        <p className="text-[11px] font-semibold tracking-[0.18em] text-brand-300 uppercase">
-          For Pakistani credit officers
-        </p>
-        <h1 className="mt-1.5 max-w-lg text-[1.85rem] leading-[1.12] font-black tracking-tight text-white sm:text-[2.15rem]">
-          Score the SMEs your bureau file cannot see.
-        </h1>
-        <p className="mt-2.5 max-w-xl text-sm leading-relaxed text-brand-100">
-          Alternative-data origination, a stored SHAP rationale on every decision,
-          and post-disbursement early warning — in one officer workspace. No live
-          ECIB feed. Not SBP-certified.
-        </p>
+      <div className="flex flex-col gap-4 px-5 py-5 sm:px-7 sm:py-6">
+        <section className="grid grid-cols-2 items-stretch gap-3 lg:grid-cols-4">
+          <Kpi value="0.7758">
+            Served 5-fold CV AUC-ROC <span className="font-semibold text-brand-700">± 0.0075</span>
+            <br />
+            hold-out 0.7756 · F1 0.544 · n = 32,581
+            <br />
+            public/proxy file — not a real SME book
+          </Kpi>
+          <Kpi value="3">
+            Served ensemble features
+            <br />
+            <span className="font-semibold text-brand-700">
+              loan_to_income · payment_history_score · years_in_operation
+            </span>
+          </Kpi>
+          <Kpi value="&gt;15">
+            EWS alert if the derived monthly score drops more than 15.0 points from
+            origination. Ensemble is not re-run.
+          </Kpi>
+          <Kpi value="JWT">
+            HS256 · 8 hours · roles admin / analyst
+            <br />
+            <span className="font-semibold text-brand-700">PostgreSQL 16.6 · bind 127.0.0.1</span>
+          </Kpi>
+        </section>
 
-        <ol className="mt-4 grid grid-cols-3 overflow-hidden rounded-lg text-[10px] font-semibold tracking-wide text-white uppercase sm:text-[11px]">
-          {SCORE_BANDS.map((band) => (
-            <li
-              key={band.decision}
-              className={`px-2 py-2 text-center ${
-                band.decision === "Manual Review" ? "text-slate-900" : "text-white"
-              }`}
-              style={{ backgroundColor: band.color }}
-            >
-              {band.range}
-              <span className="mt-0.5 block font-medium normal-case opacity-90">
-                {band.decision}
-              </span>
-            </li>
-          ))}
-        </ol>
+        <section className="grid gap-3 lg:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+            <h2 className="text-xs font-extrabold tracking-widest text-brand-900 uppercase">
+              Origination pipeline
+            </h2>
+            <ol className="mt-3 flex items-start">
+              {PIPELINE.map((item, index) => (
+                <li key={item.step} className="flex min-w-0 flex-1 items-start">
+                  {index > 0 ? (
+                    <span className="mt-4 h-1 w-2 shrink-0 rounded bg-brand-400 sm:w-3" aria-hidden="true" />
+                  ) : null}
+                  <div className="min-w-0 flex-1 text-center">
+                    <span className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-xs font-black text-white">
+                      {item.step}
+                    </span>
+                    <p className="mt-1.5 text-[11px] font-bold text-brand-900 sm:text-xs">{item.title}</p>
+                    <p className="text-[10px] leading-snug text-slate-500 sm:text-[11px]">{item.detail}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <ol className="mt-4 grid grid-cols-3 overflow-hidden rounded-md text-[10px] font-bold sm:text-[11px]">
+              {SCORE_BANDS.map((band) => (
+                <li
+                  key={band.decision}
+                  className={`px-1 py-2 text-center ${
+                    band.decision === "Manual Review" ? "text-slate-900" : "text-white"
+                  }`}
+                  style={{ backgroundColor: band.color }}
+                >
+                  {band.range}
+                  <span className="mt-0.5 block font-semibold">{band.decision}</span>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-3 text-[11px] leading-relaxed text-slate-600 sm:text-xs">
+              Relative ranking after SMOTE-in-CV, not a calibrated PD. Tenure, inventory
+              turnover, order consistency, existing debt, and headcount are stored with an
+              amber unused label. loan_to_income uses facility vs annual turnover proxy
+              max(digital receipts, cash-flow) × 12. SHAP summary cards are display-rounded
+              so they add to the 1-decimal score. AUC-ROC 0.85 is a bank-data target. The
+              three-feature ladder last step was 0.7776 ± 0.0067 (XGB 0.65 / RF 0.35) and
+              was not shipped.
+            </p>
+          </div>
 
-        <PipelineTrack activeId={activeId} onSelect={setActiveId} />
+          <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+            <h2 className="text-xs font-extrabold tracking-widest text-brand-900 uppercase">
+              On-premise stack
+            </h2>
+            <div className="mt-3 space-y-2 text-sm font-semibold">
+              <p className="flex flex-col gap-0.5 rounded-lg bg-brand-50 px-3 py-2.5 text-brand-900 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                React 18 officer workspace
+                <span className="text-xs font-medium whitespace-nowrap text-slate-500">nginx · :3000 · /login</span>
+              </p>
+              <p className="flex flex-col gap-0.5 rounded-lg bg-brand-900 px-3 py-2.5 text-white sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                FastAPI + served pickles
+                <span className="text-xs font-medium whitespace-nowrap text-brand-200">uvicorn · :8000 · /api</span>
+              </p>
+              <p className="flex flex-col gap-0.5 rounded-lg bg-brand-800 px-3 py-2.5 text-white sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                PostgreSQL 16.6
+                <span className="text-xs font-medium whitespace-nowrap text-brand-300">127.0.0.1:5432 · Alembic</span>
+              </p>
+            </div>
+            <p className="mt-3 text-[11px] leading-relaxed text-slate-600 sm:text-xs">
+              Everyday start is <strong>start.bat / start.ps1</strong> (starts Docker Desktop
+              if needed; no rebuild). Compose needs POSTGRES_* and JWT_SECRET_KEY. Seed with{" "}
+              <em>python -m scripts.seed_admin</em> only if start.ps1 reports no officer. GET
+              /health is public. /score, /explain, and /ews require a Bearer token. pytest uses
+              in-memory SQLite. Five routes after login: Dashboard, Credit Scoring, SHAP
+              Reports, EWS Alerts, Applications.
+            </p>
+          </div>
+        </section>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-2.5">
-          {WORKFLOWS.map((item) => {
-            const selected = item.id === activeId;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveId(item.id)}
-                aria-pressed={selected}
-                className={`rounded-xl border px-3.5 py-2.5 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-brand-950 ${
-                  selected
-                    ? "border-brand-400 bg-brand-800 shadow-sm"
-                    : "border-brand-800 bg-brand-900/70 hover:border-brand-600 hover:bg-brand-900"
-                }`}
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-brand-100">
-                    <item.Icon className="h-4 w-4" />
-                  </span>
-                  <span className="tabular text-[11px] font-bold text-brand-300">{item.step}</span>
-                </span>
-                <span className="mt-2 block text-[11px] font-semibold tracking-wide text-brand-300 uppercase">
-                  {item.kicker}
-                </span>
-                <span className="mt-0.5 block text-sm font-semibold text-white">{item.title}</span>
-                <span className="mt-1 block text-xs leading-snug text-brand-200">{item.summary}</span>
-              </button>
-            );
-          })}
-        </div>
+        <section className="grid gap-3 sm:grid-cols-3">
+          <Figure src="/fyp-poster/03-score-result.png" caption="Fig. 1 — Credit Scoring: 0–100 gauge, unused-field labels, additive SHAP waterfall." alt="Credit scoring result with SHAP waterfall" />
+          <Figure src="/fyp-poster/01-dashboard.png" caption="Fig. 2 — Dashboard after JWT login: origination mix and EWS strip." alt="Officer dashboard after JWT login" />
+          <Figure src="/fyp-poster/05-ews-alerts.png" caption="Fig. 3 — EWS Alerts: All / Active / Resolved. In Review is backend-only." alt="EWS alerts with All Active Resolved filters" />
+        </section>
 
-        <div className="mt-3 rounded-xl border border-brand-800 bg-brand-900/80 px-4 py-2.5" aria-live="polite">
-          <p className="text-[11px] font-semibold tracking-wide text-brand-300 uppercase">
-            {active.kicker}
-          </p>
-          <p className="mt-1 text-sm leading-relaxed text-brand-50">{active.detail}</p>
-        </div>
+        <section className="grid gap-3 sm:grid-cols-5">
+          <Figure className="sm:col-span-3" src="/fyp-poster/architecture-delivered.png" caption="Fig. 4 — Delivered architecture: intake → ensemble → decision → dashboard / API → EWS." alt="Delivered prototype architecture" />
+          <Figure className="sm:col-span-2" src="/fyp-poster/04-shap-chart.png" caption="Fig. 5 — SHAP Reports: stored TreeSHAP file on the credit application." alt="SHAP reports workspace" />
+        </section>
 
-        <div className="mt-auto pt-4">
-          <Link
-            to="/login"
-            className="btn-primary w-full bg-brand-500 py-3 text-base shadow-lg shadow-brand-950/40 hover:bg-brand-600"
-          >
-            Sign in to the officer workspace
-            <ArrowIcon className="h-4 w-4" />
-          </Link>
-          <p className="mt-2.5 text-center text-[11px] leading-relaxed text-brand-300">
-            Officer JWT · 8-hour session · start.bat on 127.0.0.1 · ForiFlow v1.0
-          </p>
-        </div>
+        <section className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="text-xs font-extrabold tracking-widest text-brand-900 uppercase">Early warning</h2>
+            <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-slate-700 sm:text-xs">
+              <li>Officer types month, ageing bucket, bureau balance, POS inflow (no live ECIB).</li>
+              <li>Current score is a published rule on the origination baseline — ageing, leverage, POS coverage. The ensemble is not re-run.</li>
+              <li>Alert if drop &gt; 15.0. Filters: All / Active / Resolved.</li>
+              <li>Days-to-default is a 7–365 heuristic from ageing + excess drop, not a validated 60–90 day forecast.</li>
+            </ul>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="text-xs font-extrabold tracking-widest text-brand-900 uppercase">What the model uses</h2>
+            <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-slate-700 sm:text-xs">
+              <li>Winner: credit_risk_shared (21.82% default rate, 3 shared features).</li>
+              <li>Rejected candidates: combined_shared CV 0.652 · loan_default_full CV 0.622.</li>
+              <li>Give Me Some Credit 0.8656 is a proxy experiment on a different file, not this served model.</li>
+              <li>Linear surrogate only if ensemble pickles are missing.</li>
+            </ul>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="text-xs font-extrabold tracking-widest text-brand-900 uppercase">Pilot access</h2>
+            <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-slate-700 sm:text-xs">
+              <li>http://127.0.0.1:3000 dashboard</li>
+              <li>http://127.0.0.1:8000 API</li>
+              <li>start.bat / start.ps1 · loopback only</li>
+              <li>github.com/Idreesi8/ForiFlow</li>
+              <li>ForiFlow v1.0 · PKR</li>
+            </ul>
+            <Link to="/login" className="btn-primary mt-4 w-full">
+              Sign in to the officer workspace
+            </Link>
+          </div>
+        </section>
       </div>
+
+      <footer className="flex flex-col gap-2 bg-brand-950 px-6 py-3 text-[11px] leading-relaxed text-brand-200 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <span>
+          ForiFlow v1.0 · start.bat · 127.0.0.1 · JWT HS256 · PKR · officer-typed bureau
+          fields · SHAP stored per decision · not SBP-certified
+        </span>
+        <a className="font-semibold text-brand-300 hover:text-white" href="https://github.com/Idreesi8/ForiFlow">
+          github.com/Idreesi8/ForiFlow
+        </a>
+      </footer>
     </article>
   );
 }
 
-function PipelineTrack({ activeId, onSelect }) {
+function Kpi({ value, children }) {
   return (
-    <div className="mt-3 flex items-center" aria-label="Origination to surveillance pipeline">
-      {WORKFLOWS.map((item, index) => (
-        <Fragment key={item.id}>
-          {index > 0 ? <span className="mx-1.5 h-px min-w-3 flex-1 bg-brand-700" aria-hidden="true" /> : null}
-          <button
-            type="button"
-            onClick={() => onSelect(item.id)}
-            aria-pressed={item.id === activeId}
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
-              item.id === activeId ? "bg-brand-500 text-white" : "bg-brand-900 text-brand-200 hover:bg-brand-800"
-            }`}
-          >
-            {item.pipe}
-          </button>
-        </Fragment>
-      ))}
+    <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white px-3.5 py-3">
+      <p className="text-2xl leading-none font-black tracking-tight text-brand-950 sm:text-3xl">{value}</p>
+      <p className="mt-2 text-[11px] leading-snug text-slate-600">{children}</p>
     </div>
   );
 }
 
-function GaugeIcon({ className }) {
+function Figure({ src, caption, alt, className = "" }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M4 18a8 8 0 1116 0" strokeLinecap="round" />
-      <path d="M12 18l4.5-5" strokeLinecap="round" />
-      <circle cx="12" cy="18" r="1.4" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function ChartIcon({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M4 5h10M4 12h14M4 19h7" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function BellIcon({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M6 9a6 6 0 1112 0c0 4 1.5 5.5 1.5 5.5h-15S6 13 6 9z" strokeLinejoin="round" />
-      <path d="M10 18a2 2 0 004 0" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ShieldIcon({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M12 3.5l7 3v5.2c0 4.2-2.8 7.2-7 8.8-4.2-1.6-7-4.6-7-8.8V6.5l7-3z" strokeLinejoin="round" />
-      <path d="M9 12.2l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ArrowIcon({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <figure className={`flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white ${className}`}>
+      <div className="flex min-h-[220px] flex-1 items-center justify-center bg-slate-100 p-2 sm:min-h-[260px]">
+        <img src={src} alt={alt} className="max-h-[260px] w-auto max-w-full object-contain sm:max-h-[300px]" />
+      </div>
+      <figcaption className="border-t border-slate-200 px-3 py-2 text-[10px] leading-snug text-slate-500 sm:text-[11px]">
+        {caption}
+      </figcaption>
+    </figure>
   );
 }
