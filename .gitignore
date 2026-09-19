@@ -76,7 +76,6 @@ temp/
 run-*.bat
 install-playwright*.bat
 capture-screenshots*.bat
-*-log.txt
-*-log2.txt
+*-log*.txt
 commit-message*.txt
 scripts/capture_auth.py
