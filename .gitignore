@@ -66,3 +66,17 @@ backend/ml/data/*.csv
 scripts/node_modules/
 temp/
 *.png.bak
+
+# --- Screenshot/poster refresh tooling: local scratch only ---
+# scripts/capture_auth2.py, scripts/render_poster.py,
+# scripts/cleanup_test_applications.py and scripts/capture_swagger_only.py
+# are the real, reusable tools and ARE committed. Everything below is
+# generated while iterating on them: append-only run logs and thin
+# double-click batch launchers, plus the superseded pre-fix capture script.
+run-*.bat
+install-playwright*.bat
+capture-screenshots*.bat
+*-log.txt
+*-log2.txt
+commit-message*.txt
+scripts/capture_auth.py
