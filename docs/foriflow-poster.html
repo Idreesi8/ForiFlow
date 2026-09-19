@@ -1,0 +1,368 @@
+<!--
+  ForiFlow FYP poster — A1 portrait (594mm x 841mm). v2.
+
+  Every figure on this poster was measured, not estimated:
+  - AUC/F1/PR-AUC/Brier: backend/ml/feature_names.json (served model,
+    trained 2026-08-11T23:51:28).
+  - The worked example (score 59.19, SHAP additivity, EWS alert) is a real
+    request run against the live backend + trained ensemble + PostgreSQL 16
+    on 2026-09-18 — not a mockup.
+  - "105/105" is the actual `pytest -q` result for that same run
+    (FORIFLOW_SCORING_ENGINE=ml, FORIFLOW_TEST_POSTGRES_URL set).
+  - Screenshots are real captures from docs/screenshots/.
+
+  Print: Chrome/Edge -> Save as PDF -> paper A1 -> margins None ->
+  scale 100% -> background graphics On. Do not fit to page.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ForiFlow — FYP Poster A1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+  @page { size: 594mm 841mm; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #cbd5e1; }
+  body { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #1e293b; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+  .sheet {
+    width: 594mm; height: 841mm; margin: 0 auto;
+    background: #f4f6f8;
+    display: flex; flex-direction: column;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    background: #071a14; color: #fff;
+    padding: 9mm 12mm 8mm;
+    display: grid; grid-template-columns: 1fr auto; gap: 8mm; align-items: end;
+    flex: 0 0 auto;
+  }
+  .brand { display: flex; align-items: center; gap: 5mm; }
+  .mark {
+    width: 19mm; height: 19mm; border-radius: 4.2mm; flex: 0 0 auto;
+    background: linear-gradient(155deg, #2d8560, #1f6b4c);
+    display: grid; place-items: center; color: #fff; font-weight: 900; font-size: 10mm;
+  }
+  h1 { font-size: 17mm; font-weight: 900; letter-spacing: -0.045em; line-height: 0.95; }
+  .tagline { color: #a7dcc2; font-size: 4mm; font-weight: 600; margin-top: 2.5mm; max-width: 138mm; line-height: 1.4; }
+  .credit-block { text-align: right; font-size: 3.3mm; line-height: 1.55; color: #9fc9b3; }
+  .credit-block strong { display: block; color: #fff; font-size: 4mm; font-weight: 700; margin-bottom: 1.2mm; }
+  .credit-block .names { color: #d7ecdf; font-weight: 600; }
+
+  /* ---------- live-run strip ---------- */
+  .proof-strip {
+    background: #0e2f24; color: #fff;
+    padding: 5mm 12mm;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 5mm;
+    border-bottom: 0.5mm solid #1f6b4c;
+    flex: 0 0 auto;
+  }
+  .proof { display: flex; flex-direction: column; gap: 0.8mm; min-width: 0; border-left: 0.5mm solid #2d8560; padding-left: 3.2mm; }
+  .proof b { font-size: 6mm; font-weight: 800; letter-spacing: -0.02em; color: #7cf0b3; }
+  .proof span { font-size: 2.75mm; color: #b9dcc9; line-height: 1.32; }
+
+  /* ---------- main grid ---------- */
+  main {
+    padding: 5.5mm 12mm 0;
+    display: grid; grid-template-columns: 1.72fr 1fr; gap: 5.5mm;
+    align-items: start;
+    flex: 1 1 auto; min-height: 0;
+  }
+  .col { display: flex; flex-direction: column; gap: 6.5mm; min-width: 0; }
+
+  h2 {
+    font-size: 3.7mm; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #0e2f24; margin-bottom: 3.2mm;
+    display: flex; align-items: center; gap: 2.6mm;
+  }
+  h2::before { content: ""; width: 4mm; height: 4mm; border-radius: 1.1mm; background: #2d8560; display: inline-block; flex: 0 0 auto; }
+
+  .card { background: #fff; border-radius: 3mm; border: 0.3mm solid #e2e8f0; padding: 6mm 6.5mm; }
+  .note { font-size: 2.9mm; color: #475569; line-height: 1.46; }
+
+  /* problem -> pipeline */
+  .flow-row { display: flex; align-items: stretch; gap: 0; margin-bottom: 4mm; }
+  .flow-step { flex: 1; background: #eef7f2; border-radius: 2.6mm; padding: 3.4mm 2.8mm; text-align: center; }
+  .flow-step .n { font-size: 2.5mm; font-weight: 800; color: #2d8560; letter-spacing: 0.08em; }
+  .flow-step p { font-size: 3.15mm; font-weight: 700; color: #0e2f24; margin-top: 1mm; line-height: 1.22; }
+  .flow-step small { display: block; font-size: 2.6mm; color: #64748b; margin-top: 0.8mm; line-height: 1.3; }
+  .flow-arrow { flex: 0 0 5.5mm; display: grid; place-items: center; color: #94a3b8; font-size: 4mm; }
+
+  .bands { display: grid; grid-template-columns: 40fr 30fr 30fr; height: 10mm; border-radius: 2.2mm; overflow: hidden; margin-top: 3.5mm; }
+  .bands i { display: grid; place-items: center; color: #fff; font-size: 2.8mm; font-weight: 700; font-style: normal; }
+  .b-r { background: #e11d48; } .b-a { background: #f59e0b; color: #171717 !important; } .b-g { background: #059669; }
+
+  /* worked example card */
+  .worked { background: #071a14; color: #eafff4; border-radius: 3mm; padding: 5mm 5.5mm; display: grid; grid-template-columns: 1fr 1fr; gap: 4.5mm; }
+  .worked h2 { color: #fff; } .worked h2::before { background: #7cf0b3; }
+  .worked .col2 { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3.5mm; }
+  .wk-item { background: rgba(255,255,255,0.07); border-radius: 2mm; padding: 3mm 3.4mm; }
+  .wk-item b { display: block; font-size: 3.7mm; font-weight: 800; color: #7cf0b3; }
+  .wk-item span { font-size: 2.6mm; color: #bfe6d2; line-height: 1.32; display: block; margin-top: 0.7mm; }
+  .waterfall { display: flex; flex-direction: column; gap: 1.7mm; font-size: 2.75mm; }
+  .wf-row { display: grid; grid-template-columns: 35mm 1fr 14mm; align-items: center; gap: 2.2mm; }
+  .wf-bar-track { height: 3mm; background: rgba(255,255,255,0.12); border-radius: 1.5mm; position: relative; overflow: hidden; }
+  .wf-bar { position: absolute; top: 0; bottom: 0; border-radius: 1.5mm; }
+  .wf-pos { background: #34d399; left: 50%; } .wf-neg { background: #fb7185; right: 50%; }
+  .wf-total { border-top: 0.35mm solid rgba(255,255,255,0.22); padding-top: 1.6mm; margin-top: 0.8mm; }
+
+  /* screenshots */
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  figure { background: #fff; border-radius: 2.6mm; border: 0.3mm solid #e2e8f0; overflow: hidden; }
+  .frame { background: #eef2f6; display: flex; align-items: center; justify-content: center; height: 128mm; padding: 1.5mm; }
+  .frame img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  figcaption { padding: 2.2mm 3.4mm; font-size: 2.65mm; color: #64748b; line-height: 1.32; border-top: 0.3mm solid #e2e8f0; }
+
+  .arch-frame { background: #eef2f6; border-radius: 2.6mm; border: 0.3mm solid #e2e8f0; padding: 3mm; display: flex; align-items: center; justify-content: center; }
+  .arch-frame img { width: 100%; height: auto; display: block; }
+
+  /* sidebar */
+  .stat-list { display: flex; flex-direction: column; gap: 3.6mm; }
+  .stat { display: flex; justify-content: space-between; align-items: baseline; gap: 2.5mm; border-bottom: 0.3mm dashed #e2e8f0; padding-bottom: 3.2mm; }
+  .stat:last-child { border-bottom: none; padding-bottom: 0; }
+  .stat b { font-size: 5.3mm; font-weight: 800; color: #0e2f24; white-space: nowrap; }
+  .stat span { font-size: 3.05mm; color: #64748b; text-align: right; line-height: 1.4; }
+
+  .stack-list { display: grid; gap: 2.2mm; }
+  .stack-item { display: flex; justify-content: space-between; gap: 2.2mm; background: #f8fafc; border-radius: 2mm; padding: 3.3mm 3.6mm; font-size: 3.1mm; }
+  .stack-item b { color: #0e2f24; font-weight: 700; }
+  .stack-item span { color: #64748b; }
+
+  .ledger { display: flex; flex-direction: column; gap: 3.2mm; }
+  .ledger li { list-style: none; display: flex; gap: 2.4mm; align-items: flex-start; font-size: 3.05mm; line-height: 1.48; color: #334155; }
+  .ledger li::before { content: "✓"; color: #2d8560; font-weight: 800; flex: 0 0 auto; }
+
+  .caveat-list { display: flex; flex-direction: column; gap: 3.2mm; }
+  .caveat-list li { list-style: none; display: flex; gap: 2.4mm; align-items: flex-start; font-size: 3.05mm; line-height: 1.48; color: #334155; }
+  .caveat-list li::before { content: "!"; color: #b45309; font-weight: 800; flex: 0 0 auto; width: 3.4mm; height: 3.4mm; border-radius: 50%; background: #fef3c7; display: grid; place-items: center; font-size: 2.2mm; margin-top: 0.2mm; }
+
+  .team-row { display: flex; justify-content: space-between; gap: 2mm; font-size: 3.1mm; padding: 2.7mm 0; border-bottom: 0.3mm dashed #e2e8f0; }
+  .team-row:last-child { border-bottom: none; }
+  .team-row b { color: #0e2f24; }
+  .team-row span { color: #64748b; }
+
+  footer {
+    background: #071a14; color: #a7dcc2;
+    display: flex; align-items: center; justify-content: space-between; gap: 6mm;
+    padding: 4mm 12mm; font-size: 2.85mm; line-height: 1.35;
+    flex: 0 0 auto; margin-top: 5.5mm;
+  }
+  footer a { color: #7cf0b3; text-decoration: none; font-weight: 700; }
+
+  @media print { html, body { background: #fff; } .sheet { margin: 0; } }
+</style>
+</head>
+<body>
+<article class="sheet">
+
+  <header>
+    <div class="brand">
+      <div class="mark">F</div>
+      <div>
+        <h1>ForiFlow</h1>
+        <p class="tagline">On-premise AI credit scoring and Early Warning System for Pakistani SME lenders — alternative-data underwriting, SHAP-explained, with no live ECIB feed and no SBP certification.</p>
+      </div>
+    </div>
+    <div class="credit-block">
+      <strong>COMSATS University Islamabad</strong>
+      BS Business Data Analytics · Final Year Project · 2023–2027<br />
+      <span class="names">Ramzan Ahmed Idreesi — SP23-BBD-056</span><br />
+      <span class="names">Zakria Saeed Abbasi — SP23-BBD-073</span><br />
+      Supervisor: Ms. Sarah Tariq
+    </div>
+  </header>
+
+  <div class="proof-strip">
+    <div class="proof"><b>105 / 105</b><span>backend tests passing — trained ensemble, live PostgreSQL 16, 18 Sep 2026</span></div>
+    <div class="proof"><b>0.7758</b><span>5-fold CV AUC-ROC ± 0.0075 · hold-out 0.7756 · n = 32,581</span></div>
+    <div class="proof"><b>&lt; 2s</b><span>officer-facing latency per score once the ensemble is warm</span></div>
+    <div class="proof"><b>&gt; 15 pts</b><span>EWS alert threshold on a score drop from the origination baseline</span></div>
+    <div class="proof"><b>100%</b><span>SHAP additivity — contributions + base value reproduce every score exactly</span></div>
+  </div>
+
+  <main>
+    <div class="col">
+
+      <div class="card">
+        <h2>Why ForiFlow</h2>
+        <div class="flow-row">
+          <div class="flow-step"><div class="n">01</div><p>No bureau file</p><small>60%+ of SME loans rejected for lack of collateral or ECIB history</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="n">02</div><p>Alternative signal</p><small>digital receipts, officer-entered repayment, inventory, cash flow</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="n">03</div><p>Explained score</p><small>0–100, SHAP waterfall, adverse-action narrative</small></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="n">04</div><p>Watched after</p><small>monthly re-score, alert on a &gt;15-pt drop, days-to-default</small></div>
+        </div>
+        <p class="note">SBP SME financing tables (31 Dec 2024): 183,987 SME borrowers, 6.06% of private-sector credit. ADB (2024): Pakistan MSME NPL 15.0% in 2023. ForiFlow targets the gap between an unbanked SME's real behaviour and what a collateral-only scorecard can see.</p>
+        <div class="bands">
+          <i class="b-r">0–40 Rejected</i><i class="b-a">41–70 Manual Review</i><i class="b-g">71–100 Approved</i>
+        </div>
+      </div>
+
+      <div class="worked">
+        <h2 style="grid-column:1/-1">Worked example — a real API call, not a mockup</h2>
+        <div>
+          <p class="note" style="color:#cfeee0">POST /score · applicant with a 6-year trading business, PKR 1.5m facility, PKR 850k/mo digital receipts, payment history 72/100 →</p>
+          <div class="waterfall mono" style="margin-top:3.5mm">
+            <div class="wf-row"><span>base value</span><span></span><span style="text-align:right">47.67</span></div>
+            <div class="wf-row"><span>loan_to_income</span><div class="wf-bar-track"><div class="wf-bar wf-pos" style="width:24%"></div></div><span style="text-align:right;color:#7cf0b3">+14.48</span></div>
+            <div class="wf-row"><span>payment_history</span><div class="wf-bar-track"><div class="wf-bar wf-neg" style="width:16%"></div></div><span style="text-align:right;color:#fb7185">−9.63</span></div>
+            <div class="wf-row"><span>years_in_operation</span><div class="wf-bar-track"><div class="wf-bar wf-pos" style="width:11%"></div></div><span style="text-align:right;color:#7cf0b3">+6.67</span></div>
+            <div class="wf-row wf-total"><b style="font-size:2.95mm">final score</b><span></span><span style="text-align:right;font-weight:800;color:#fff">59.19</span></div>
+          </div>
+        </div>
+        <div>
+          <p class="note" style="color:#cfeee0">Decision: <strong style="color:#fbbf24">Manual Review</strong> (Medium Risk, confidence 35.0). Three months later, EWS re-scores the same borrower:</p>
+          <div class="waterfall mono" style="margin-top:3.5mm">
+            <div class="wf-row"><span>baseline</span><span></span><span style="text-align:right">59.19</span></div>
+            <div class="wf-row"><span>60–89 days late</span><span></span><span style="text-align:right;color:#fb7185">−35.38</span></div>
+            <div class="wf-row wf-total"><b style="font-size:2.95mm">current score</b><span></span><span style="text-align:right;font-weight:800;color:#fff">23.81</span></div>
+          </div>
+          <p class="note" style="color:#cfeee0;margin-top:2.5mm">Drop &gt; 15 → <strong style="color:#fbbf24">alert triggered</strong>, estimated runway 7 days, escalate to recovery within 48 hours.</p>
+        </div>
+        <div class="col2">
+          <div class="wk-item"><b>ensemble-xgb-rf</b><span>credit_risk_shared, trained 2026-08-11</span></div>
+          <div class="wk-item"><b>base 47.67 + Σ 11.52</b><span>= 59.19 — matches the served score exactly</span></div>
+          <div class="wk-item"><b>PostgreSQL 16</b><span>Alembic 0001 + 0002, no drift</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Officer workspace — live screens</h2>
+        <div class="shots">
+          <figure><div class="frame"><img src="screenshots/03-score-result.png" alt="Credit scoring result with SHAP waterfall" /></div><figcaption>Credit Scoring — 0–100 gauge, unused-field labels, additive SHAP waterfall</figcaption></figure>
+          <figure><div class="frame"><img src="screenshots/01-dashboard.png" alt="Officer dashboard after JWT login" /></div><figcaption>Dashboard — origination mix and EWS strip, after JWT login</figcaption></figure>
+          <figure><div class="frame"><img src="screenshots/05-ews-alerts.png" alt="EWS alerts filtered All Active Resolved" /></div><figcaption>EWS Alerts — All / Active / Resolved, worst-first</figcaption></figure>
+          <figure><div class="frame"><img src="screenshots/04-shap-chart.png" alt="SHAP reports workspace" /></div><figcaption>SHAP Reports — stored TreeSHAP explanation per application</figcaption></figure>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Delivered architecture</h2>
+        <div class="arch-frame"><img src="screenshots/architecture-delivered.png" alt="Delivered prototype architecture" /></div>
+        <p class="note" style="margin-top:3mm">Intake (12 fields, PKR) → feature ratios → XGBoost + RF ensemble → SHAP TreeExplainer → decision (0–40 / 41–70 / 71–100) → React dashboard and FastAPI, bound to 127.0.0.1 → EWS monitoring.</p>
+      </div>
+
+      <div class="card">
+        <h2>Validated through four testing tiers</h2>
+        <div class="stack-list">
+          <div class="stack-item"><b>1 · Model performance</b><span>5-fold CV + hold-out AUC, F1, PR-AUC, Brier on the served artefacts</span></div>
+          <div class="stack-item"><b>2 · API correctness</b><span>Pytest + HTTPX on every route, including validation errors</span></div>
+          <div class="stack-item"><b>3 · EWS behaviour</b><span>alert trigger, runway estimate, recommended action per ageing bucket</span></div>
+          <div class="stack-item"><b>4 · End-to-end system</b><span>JWT login → score → SHAP → EWS → alert resolve, on live PostgreSQL</span></div>
+        </div>
+        <p class="note" style="margin-top:3.5mm">Plus two post-build diagnostics on the delivered prototype. No MLflow registry — training metrics are written to ml/feature_names.json; AUC-ladder experiments live in ml/auc_ladder.json and ml/gmsc_auc_ladder.json.</p>
+      </div>
+
+    </div>
+
+    <div class="col">
+
+      <div class="card">
+        <h2>Model performance</h2>
+        <div class="stat-list">
+          <div class="stat"><b>0.7758 ± 0.0075</b><span>5-fold CV AUC-ROC, served ensemble</span></div>
+          <div class="stat"><b>0.7756</b><span>hold-out AUC-ROC · F1 0.544 · Brier 0.175</span></div>
+          <div class="stat"><b>21.82%</b><span>default rate in the training file (n = 32,581)</span></div>
+          <div class="stat"><b>3 features</b><span>loan_to_income · payment_history_score · years_in_operation</span></div>
+          <div class="stat"><b>0.60 / 0.40</b><span>XGBoost / Random Forest soft-voting weights</span></div>
+        </div>
+        <p class="note" style="margin-top:3.5mm">Relative ranking after SMOTE-in-CV, not a calibrated PD. A public/proxy dataset, not a real Pakistani SME book — 0.85+ AUC remains a bank-data target, not a measured result.</p>
+      </div>
+
+      <div class="card">
+        <h2>On-premise stack</h2>
+        <div class="stack-list">
+          <div class="stack-item"><b>React 18</b><span>nginx · :3000 · /login</span></div>
+          <div class="stack-item"><b>FastAPI</b><span>uvicorn · :8000 · /api</span></div>
+          <div class="stack-item"><b>XGBoost + RF</b><span>SHAP TreeExplainer</span></div>
+          <div class="stack-item"><b>PostgreSQL 16.6</b><span>Alembic-managed</span></div>
+          <div class="stack-item"><b>JWT HS256</b><span>8h · admin / analyst</span></div>
+          <div class="stack-item"><b>Docker Compose</b><span>start.bat · 127.0.0.1 only</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>What's verified</h2>
+        <ul class="ledger">
+          <li>Full pytest suite (105/105) against the trained ensemble and a live PostgreSQL 16 instance, not just SQLite.</li>
+          <li>SHAP additivity holds exactly: base value + contributions = displayed score, every request.</li>
+          <li>Alembic migrations 0001 → 0002 apply clean on a fresh database.</li>
+          <li>EWS alert, runway estimate and recommended action fire correctly on a real 60–89-day-late scenario.</li>
+          <li>JWT auth: unauthenticated /score returns 401; a valid Bearer token returns 201.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Known limits</h2>
+        <ul class="caveat-list">
+          <li>No live ECIB or core-banking connector — bureau and repayment fields are officer-typed.</li>
+          <li>Designed for SBP-oriented explainability; not SBP-certified.</li>
+          <li>Inventory turnover, order consistency, headcount, debt and tenure are collected but do not move the served score yet.</li>
+          <li>EWS re-scores with a rule on the origination baseline, not a second ensemble inference.</li>
+          <li>Zero validation on a real Pakistani SME portfolio — this is a public/proxy-data prototype.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Regulatory context</h2>
+        <p class="note">ForiFlow is designed with Pakistan's regulatory landscape in view: SBP outsourcing guidelines for third-party risk models, the Personal Data Protection Act 2023, BPRD circulars on credit risk governance, ECIB bureau reporting, and SECP requirements for any future corporate vehicle. None of this constitutes certification — see Known limits.</p>
+      </div>
+
+      <div class="card">
+        <h2>Repository &amp; pilot access</h2>
+        <div class="stack-list">
+          <div class="stack-item"><b>Dashboard</b><span>http://127.0.0.1:3000</span></div>
+          <div class="stack-item"><b>API</b><span>http://127.0.0.1:8000</span></div>
+          <div class="stack-item"><b>Everyday start</b><span>start.bat / start.ps1 · loopback only</span></div>
+          <div class="stack-item"><b>Source</b><span>github.com/Idreesi8/ForiFlow</span></div>
+        </div>
+        <p class="note" style="margin-top:3.5mm">A 30-day on-premise pilot is available to Pakistani microfinance banks: ForiFlow runs on a bank laptop, no cloud dependency, and applicant data never leaves the premises.</p>
+      </div>
+
+      <div class="card">
+        <h2>Objectives met</h2>
+        <div class="stat-list">
+          <div class="stat"><b>BO-1</b><span>3-candidate bake-off on 2 public files; served candidate credit_risk_shared, CV AUC 0.7758 ± 0.0075</span></div>
+          <div class="stat"><b>BO-2</b><span>SHAP TreeExplainer on every score; waterfall on Credit Scoring and SHAP Reports, payload stored</span></div>
+          <div class="stat"><b>BO-3</b><span>EWS monthly monitoring; rule-based re-score; alert &gt; 15-pt drop; 7–365-day runway heuristic</span></div>
+          <div class="stat"><b>BO-4</b><span>FastAPI REST backend, on-premise Docker Compose, PostgreSQL + Alembic, JWT auth</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Literature basis</h2>
+        <div class="team-row"><b>Malik et al. (2025)</b><span>digital payments ↔ inclusion, r = 0.684</span></div>
+        <div class="team-row"><b>Ayari et al. (2026)</b><span>63-paper review: XGBoost+RF &gt; deep learning on tabular credit data</span></div>
+        <div class="team-row"><b>HKMA &amp; CRIF (2024)</b><span>inventory turnover, order consistency as MSME predictors</span></div>
+        <div class="team-row"><b>Lin &amp; Wang (2025)</b><span>SHAP stability across XGBoost runs</span></div>
+        <p class="note" style="margin-top:3.5mm">Research gap: published Pakistani SME credit work does not combine ensemble scoring, SHAP, EWS and a REST API in one implemented stack. ForiFlow is an FYP prototype that fills that gap.</p>
+      </div>
+
+      <div class="card">
+        <h2>Build &amp; team</h2>
+        <div class="team-row"><b>Data preparation</b><span>2 weeks · Zakria</span></div>
+        <div class="team-row"><b>Model + SHAP</b><span>2 weeks · Ramzan</span></div>
+        <div class="team-row"><b>EWS module</b><span>2 weeks · Ramzan</span></div>
+        <div class="team-row"><b>Backend API</b><span>2 weeks · Both</span></div>
+        <div class="team-row"><b>Frontend + integration</b><span>6 weeks · Both</span></div>
+        <p class="note" style="margin-top:3.5mm">14-week build. Full plan and delivered-vs-planned notes in the FYP proposal (docs/ForiFlow-Proposal-Final.docx, v2.4).</p>
+      </div>
+
+    </div>
+  </main>
+
+  <footer>
+    <span>ForiFlow v1.0 · start.bat · 127.0.0.1 loopback · JWT HS256 · PKR · officer-typed bureau fields · not SBP-certified · poster generated 19 Sep 2026</span>
+    <a href="https://github.com/Idreesi8/ForiFlow">github.com/Idreesi8/ForiFlow</a>
+  </footer>
+
+</article>
+</body>
+</html>
