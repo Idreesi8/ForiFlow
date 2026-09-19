@@ -7,7 +7,7 @@ nothing is hardcoded here.
 
 Run with the stack already up (start.bat)::
 
-    python scripts/capture_auth.py
+    python scripts/capture_auth2.py
 """
 
 from __future__ import annotations
@@ -91,10 +91,32 @@ def click_nav(page, label: str) -> None:
     page.wait_for_timeout(400)
 
 
+# App.jsx's <header> is `sticky top-0` and ApplicationForm.jsx's result
+# panel <aside> is `xl:sticky xl:top-6`, both by design for normal scrolling.
+# Playwright's full_page=True screenshot works by scrolling and stitching
+# viewport-sized tiles, and a `position: sticky` element gets re-painted at
+# the top of every tile it is still "stuck" in — on a page taller than one
+# viewport that shows up as a duplicated/ghosted header or panel baked into
+# the exported PNG. It is a screenshot-capture artifact, not a rendering bug
+# in the app: a person scrolling the real page never sees a duplicate. We
+# neutralise it only for the capture by forcing sticky elements static right
+# before each screenshot, which makes the full-page stitch paint them once,
+# in normal document flow, like everything else on the page.
+NEUTRALISE_STICKY_CSS = "[class*='sticky']{position:static !important;}"
+
+
+def _flatten_sticky(page) -> None:
+    try:
+        page.add_style_tag(content=NEUTRALISE_STICKY_CSS)
+    except Exception:  # noqa: BLE001 — never let this block a capture
+        pass
+
+
 def capture(page, filename: str, action) -> None:
     dest = OUT_DIR / filename
     try:
         action(page)
+        _flatten_sticky(page)
         page.screenshot(path=str(dest), full_page=True)
         log("ok", str(dest))
         return
@@ -103,6 +125,7 @@ def capture(page, filename: str, action) -> None:
         page.wait_for_timeout(5000)
         try:
             action(page)
+            _flatten_sticky(page)
             page.screenshot(path=str(dest), full_page=True)
             log("ok", str(dest))
         except Exception as second:  # noqa: BLE001

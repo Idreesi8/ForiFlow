@@ -1,14 +1,15 @@
-"""Delete the two test applications the screenshot-capture script created.
+"""Collapse the screenshot-capture script's test applications to at most one.
 
-capture_auth.py / capture_auth2.py submit a real scoring request each run
-(needed to produce the "result" screenshot). That created two rows in the
-live `applications` table: id 38 and id 39, both applicant "Ali Khan",
-business "Khan Traders". This script removes exactly those two rows and
-nothing else — the WHERE clause matches on id AND applicant_name AND
-business_name together, so it refuses to touch any row that doesn't match
-all three, even if ids were reused by something else in the meantime.
+capture_auth2.py submits a real scoring request every run (needed to produce
+the "result" screenshot), each time creating a new row in the live
+`applications` table for applicant "Ali Khan", business "Khan Traders". Run
+this after a capture session to delete every row matching that name pair
+*except the newest one* — so repeated capture runs never pile up duplicate
+demo entries, but the one row a fresh "result" screenshot actually points at
+is always left in place. Matching is by applicant_name + business_name, not
+by id, since the id changes every run.
 
-Alerts / EWS rows for those two applications (if any) cascade-delete
+Alerts / EWS rows for deleted applications (if any) cascade-delete
 automatically (ForeignKey ondelete="CASCADE" in backend/models/database.py).
 
 Run with the stack's Postgres reachable on 127.0.0.1:5432 (Docker exposes it
@@ -19,12 +20,12 @@ there per docker-compose.yml):
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-TARGET_IDS = (38, 39)
 TARGET_APPLICANT = "Ali Khan"
 TARGET_BUSINESS = "Khan Traders"
 
@@ -48,6 +49,16 @@ def load_dotenv(root: Path) -> dict:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--keep",
+        type=int,
+        default=1,
+        choices=(0, 1),
+        help="Rows to keep (default 1, the newest). --keep 0 wipes every demo row for a clean slate.",
+    )
+    args = parser.parse_args()
+
     try:
         import psycopg2
     except ImportError:
@@ -68,36 +79,37 @@ def main() -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, applicant_name, business_name, risk_score, decision, created_at "
-                "FROM applications WHERE id = ANY(%s) ORDER BY id",
-                (list(TARGET_IDS),),
+                "SELECT id, risk_score, decision, created_at FROM applications "
+                "WHERE applicant_name = %s AND business_name = %s ORDER BY created_at DESC, id DESC",
+                (TARGET_APPLICANT, TARGET_BUSINESS),
             )
             rows = cur.fetchall()
             if not rows:
-                log("warn", f"No rows found with id in {TARGET_IDS} — nothing to delete.")
+                log("warn", f"No {TARGET_APPLICANT!r}/{TARGET_BUSINESS!r} rows found — nothing to do.")
                 return 0
 
-            log("info", "Rows found before delete:")
-            for r in rows:
-                print(f"  id={r[0]} applicant={r[1]!r} business={r[2]!r} score={r[3]} decision={r[4]!r} created={r[5]}")
+            if args.keep == 1:
+                keep, drop = rows[0], rows[1:]
+                log("info", f"Keeping newest: id={keep[0]} score={keep[1]} decision={keep[2]!r} created={keep[3]}")
+            else:
+                drop = rows
+                log("info", "Clean slate: deleting every matching row.")
+            if not drop:
+                log("ok", "Nothing to delete.")
+                return 0
 
-            mismatched = [r for r in rows if r[1] != TARGET_APPLICANT or r[2] != TARGET_BUSINESS]
-            if mismatched:
-                log(
-                    "err",
-                    f"Refusing to delete: {len(mismatched)} row(s) with id in {TARGET_IDS} do not match "
-                    f"applicant={TARGET_APPLICANT!r} business={TARGET_BUSINESS!r}. Aborting, nothing changed.",
-                )
-                conn.rollback()
-                return 1
+            drop_ids = [r[0] for r in drop]
+            for r in drop:
+                print(f"  deleting id={r[0]} score={r[1]} decision={r[2]!r} created={r[3]}")
 
             cur.execute(
                 "DELETE FROM applications WHERE id = ANY(%s) AND applicant_name = %s AND business_name = %s",
-                (list(TARGET_IDS), TARGET_APPLICANT, TARGET_BUSINESS),
+                (drop_ids, TARGET_APPLICANT, TARGET_BUSINESS),
             )
             deleted = cur.rowcount
             conn.commit()
-            log("ok", f"Deleted {deleted} row(s): id in {TARGET_IDS}.")
+            kept_note = f" Kept id={keep[0]}." if args.keep == 1 else " Kept none."
+            log("ok", f"Deleted {deleted} row(s): id in {drop_ids}.{kept_note}")
 
             cur.execute("SELECT COUNT(*) FROM applications")
             (total,) = cur.fetchone()
