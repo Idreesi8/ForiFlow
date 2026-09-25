@@ -74,3 +74,6 @@ capture-screenshots*.bat
 *-log*.txt
 commit-message*.txt
 scripts/capture_auth.py
+
+# --- Local poster and design iterations (kept on the laptop, not in git) ---
+Claude outputs/

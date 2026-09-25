@@ -56,6 +56,8 @@ All notable changes to ForiFlow are recorded here. The format follows
 ### Removed
 
 - Unrouted `PosterPage.jsx` and `ForiFlowPoster.jsx`.
+- The superseded HTML poster (`docs/foriflow-poster.html` / `.png`) and its
+  renderer; `Claude outputs/` (local poster iterations) is no longer tracked.
 
 ## [1.1.0] - 2026-09-19
 

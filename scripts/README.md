@@ -2,7 +2,15 @@
 
 ## Screenshot capture
 
-From the repository root, with the stack already running:
+The dashboard needs a JWT login, so use the authenticated capture script. From
+the repository root, with the stack already running (`start.bat`):
+
+```bash
+python scripts/capture_auth2.py              # logs in with FORIFLOW_ADMIN_* from .env
+python scripts/cleanup_test_applications.py  # keep only the newest Khan Traders row
+```
+
+The older unauthenticated capture tools remain:
 
 ```bash
 npm run capture
