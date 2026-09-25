@@ -79,7 +79,7 @@ const FIELD_GROUPS = [
         min: 0,
         max: 100,
         step: 1,
-        hint: "Officer-entered 0–100 score on an ECIB-oriented scale. Not pulled from a live bureau.",
+        hint: "Officer-entered 0–100 score on an ECIB-oriented scale. Not pulled from a live bureau. The model reads 0–52 as an adverse record and 53–100 as a clean one.",
       },
       {
         name: "inventory_turnover",
@@ -147,6 +147,24 @@ const FIELD_GROUPS = [
 ];
 
 const ALL_FIELDS = FIELD_GROUPS.flatMap((group) => group.fields);
+
+/**
+ * In the training data the default rate jumps from 22% to 67% once a loan
+ * exceeds 30% of gross annual income, and the model inherits that cliff
+ * (backend/README.md, "Model limitations"). Turnover is estimated exactly as
+ * the backend does: the larger of digital receipts and cash flow, times 12.
+ */
+const FACILITY_TURNOVER_CLIFF = 0.3;
+
+function facilityToTurnover(values) {
+  const loan = Number(values.loan_amount_pkr);
+  const monthly = Math.max(
+    Number(values.monthly_digital_payments) || 0,
+    Number(values.cash_flow_proxy) || 0,
+  );
+  if (!loan || !monthly) return null;
+  return loan / (monthly * 12);
+}
 
 const EMPTY_FORM = Object.fromEntries(ALL_FIELDS.map((field) => [field.name, ""]));
 
@@ -265,6 +283,13 @@ export default function ApplicationForm({ onScored }) {
   const [submitError, setSubmitError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const turnoverRatio = facilityToTurnover(values);
+  const fieldNotes = {
+    loan_amount_pkr:
+      turnoverRatio !== null && turnoverRatio > FACILITY_TURNOVER_CLIFF
+        ? `This facility is ${Math.round(turnoverRatio * 100)}% of estimated annual turnover. Above 30% the model scores sharply lower, inherited from its training data.`
+        : null,
+  };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -351,6 +376,7 @@ export default function ApplicationForm({ onScored }) {
                     field={field}
                     value={values[field.name]}
                     error={errors[field.name]}
+                    note={fieldNotes[field.name]}
                     onChange={handleChange}
                   />
                 ))}
@@ -452,7 +478,7 @@ export default function ApplicationForm({ onScored }) {
   );
 }
 
-function FormField({ field, value, error, onChange }) {
+function FormField({ field, value, error, note, onChange }) {
   const showCurrencyHint = field.currency && value !== "" && !Number.isNaN(Number(value));
 
   return (
@@ -485,6 +511,11 @@ function FormField({ field, value, error, onChange }) {
         <p className="tabular mt-1 text-xs text-slate-500">{formatPKR(value)}</p>
       ) : field.hint ? (
         <p className="mt-1 text-xs text-slate-500">{field.hint}</p>
+      ) : null}
+      {note ? (
+        <p role="status" className="mt-1 text-xs font-semibold text-amber-800">
+          {note}
+        </p>
       ) : null}
       {field.unusedByModel ? (
         <p

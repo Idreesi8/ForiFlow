@@ -54,6 +54,8 @@ from sklearn.preprocessing import StandardScaler
 from xgboost import XGBClassifier
 
 from ml.features import (
+    ADVERSE_HISTORY_SCORE,
+    CLEAN_HISTORY_SCORE,
     FEATURE_NAMES,
     FEATURE_NAMES_PATH,
     MODEL_PATH,
@@ -81,16 +83,17 @@ SHAP_BACKGROUND_ROWS = 50
 ENSEMBLE_WEIGHTS = (0.6, 0.4)
 
 # ForiFlow's 0-100 payment history scale has only two supportable levels on this
-# data: a clean bureau record and a default on file. Serving clips live scores into
-# this range, so an ECIB score either side of the midpoint reads as one or other.
-CLEAN_HISTORY_SCORE = 80.0
-ADVERSE_HISTORY_SCORE = 25.0
+# data: a clean bureau record and a default on file. Serving snaps live scores to
+# these levels at the midpoint (ml.features.snap_payment_history), so an ECIB
+# score either side of 52.5 reads as one or the other.
 
 # Direction each feature is allowed to push the predicted default probability.
 # Constraining the gradient-boosted member keeps explanations defensible under
 # SBP adverse-action review: a stronger repayment record can never be shown as
-# increasing risk. Random forests cannot take these constraints, which is part of
-# why the forest carries the smaller voting weight. Tenure is left unconstrained
+# increasing risk. The forest is NOT constrained: scikit-learn has supported
+# ``monotonic_cst`` on RandomForestClassifier since 1.4, but the shipped model
+# was trained without it, so the ensemble as a whole is not monotone in years
+# in operation (see "Model limitations" in backend/README.md). Tenure is left unconstrained
 # because a longer tenure both lowers the installment and extends the exposure.
 FEATURE_MONOTONE_CONSTRAINTS: dict[str, int] = {
     "loan_to_income": 1,
@@ -622,6 +625,14 @@ def stratified_sample(frame: pd.DataFrame, max_rows: int) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
+def _history_levels(winner) -> dict[str, list[float]]:
+    """Record the history levels when the winner learnt history as a binary flag."""
+    if "payment_history_score" not in winner.features:
+        return {}
+    levels = sorted(float(v) for v in winner.frame["payment_history_score"].unique())
+    return {"payment_history_levels": levels} if len(levels) == 2 else {}
+
+
 def build_shap_explainers(
     model: VotingClassifier, background: np.ndarray, feature_names: list[str]
 ) -> dict:
@@ -874,6 +885,7 @@ def main(argv: list[str] | None = None) -> int:
         "monotone_constraints": {
             name: FEATURE_MONOTONE_CONSTRAINTS[name] for name in winner.features
         },
+        **_history_levels(winner),
         "cross_validation": {
             "folds": N_SPLITS,
             "auc_roc_mean": final_auc,

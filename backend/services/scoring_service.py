@@ -425,6 +425,9 @@ class MLScoringService(ScoringService):
         self.metadata = metadata
         self.feature_names: list[str] = list(metadata["feature_names"])
         self.feature_clips: dict[str, list[float]] = metadata.get("feature_clips", {})
+        from ml.features import payment_history_levels
+
+        self.history_levels = payment_history_levels(metadata)
         self.explainers: dict[str, Any] = _rebind_shap_links(shap_bundle["explainers"])
         self.shap_weights: dict[str, float] = shap_bundle["weights"]
         self.output_space: str = shap_bundle.get("output_space", "probability")
@@ -504,6 +507,12 @@ class MLScoringService(ScoringService):
             "not a real SME portfolio) "
             "with TreeSHAP attributions."
         )
+        if self.history_levels is not None:
+            midpoint = sum(self.history_levels) / 2.0
+            note += (
+                f" Payment history is read as a clean (above {midpoint:g}) or "
+                f"adverse ({midpoint:g} and below) record, not as a fine scale."
+            )
         if unused:
             note += (
                 " Collected but not used by this model version: "
@@ -518,10 +527,14 @@ class MLScoringService(ScoringService):
         """Build the scaled model input plus the clipped and raw feature values."""
         import numpy as np
 
-        from ml.features import apply_clips, build_raw_features
+        from ml.features import apply_clips, build_raw_features, snap_payment_history
 
         raw = build_raw_features(applicant)
         clipped = apply_clips(raw, self.feature_clips)
+        if self.history_levels is not None and "payment_history_score" in clipped:
+            clipped["payment_history_score"] = snap_payment_history(
+                raw["payment_history_score"], self.history_levels
+            )
         vector = np.array([[clipped[name] for name in self.feature_names]], dtype=float)
         return self.scaler.transform(vector), clipped, raw
 

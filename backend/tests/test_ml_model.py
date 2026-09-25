@@ -175,3 +175,15 @@ def test_shap_link_is_callable_on_this_interpreter(ml_service) -> None:
 
     for explainer in ml_service.explainers.values():
         assert float(explainer.link(np.array([0.3]))[0]) == pytest.approx(0.3)
+
+
+def test_payment_history_reads_as_clean_or_adverse(ml_service) -> None:
+    """The model learnt history from a binary bureau flag, so every score on one
+    side of the 52.5 midpoint must score identically: no third plateau."""
+    base = SMEApplicant(**MID_APPLICANT).model_dump()
+    adverse = {ml_service.score(SMEApplicant(**{**base, "payment_history_score": p})).risk_score
+               for p in (0, 25, 40, 52)}
+    clean = {ml_service.score(SMEApplicant(**{**base, "payment_history_score": p})).risk_score
+             for p in (53, 62, 79, 80, 100)}
+    assert len(adverse) == 1 and len(clean) == 1
+    assert clean.pop() > adverse.pop()

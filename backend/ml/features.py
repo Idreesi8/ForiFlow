@@ -75,6 +75,12 @@ FEATURE_LABELS: dict[str, str] = {
     "tenure_months": "Requested tenure",
 }
 
+# The served model learnt repayment history from a clean/adverse bureau flag
+# (``cb_person_default_on_file``), which training encodes as these two levels on
+# ForiFlow's 0-100 scale. See ``train_real_model.map_credit_risk``.
+CLEAN_HISTORY_SCORE: float = 80.0
+ADVERSE_HISTORY_SCORE: float = 25.0
+
 # Assumed remaining amortisation on an applicant's existing borrowings, used to
 # convert an outstanding balance into a monthly debt service figure.
 ASSUMED_DEBT_AMORTISATION_MONTHS: float = 36.0
@@ -150,6 +156,36 @@ def apply_clips(
         lower, upper = float(bounds[0]), float(bounds[1])
         clipped[name] = max(lower, min(upper, float(value)))
     return clipped
+
+
+def payment_history_levels(metadata: dict) -> tuple[float, float] | None:
+    """The two repayment-history levels the served model was trained on, if any.
+
+    New artefacts record them as ``payment_history_levels``. Older metadata
+    predates that key, so a model trained on ``credit_risk_dataset.csv`` (the
+    only source whose history is a binary flag) falls back to the constants.
+    Returns ``None`` when history was trained as a continuous score.
+    """
+    levels = metadata.get("payment_history_levels")
+    if levels is not None:
+        low, high = sorted(float(level) for level in levels)
+        return low, high
+    if str(metadata.get("dataset", "")).startswith("credit_risk"):
+        return ADVERSE_HISTORY_SCORE, CLEAN_HISTORY_SCORE
+    return None
+
+
+def snap_payment_history(score: float, levels: tuple[float, float]) -> float:
+    """Read an officer-entered 0-100 history score as clean or adverse.
+
+    The trees only ever saw the two training levels, so a value between them has
+    no meaning to the model: the forest split at the midpoint while the boosted
+    member split elsewhere, and scores of 53-79 landed on a third plateau that
+    neither member was trained to produce. Snapping at the midpoint makes the
+    model read every score the way the training data defines it.
+    """
+    low, high = levels
+    return high if float(score) > (low + high) / 2.0 else low
 
 
 def load_feature_metadata() -> dict:

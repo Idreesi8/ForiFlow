@@ -169,3 +169,18 @@ def test_invalid_weight_vectors_are_rejected() -> None:
         ScoringService(weights={})
     with pytest.raises(ValueError):
         ScoringService(weights={"payment_history_score": 0.0})
+
+
+def test_payment_history_levels_come_from_the_training_metadata() -> None:
+    from ml.features import payment_history_levels, snap_payment_history
+
+    assert payment_history_levels({"payment_history_levels": [80, 25]}) == (25.0, 80.0)
+    # Metadata written before the key existed: credit_risk data is binary.
+    assert payment_history_levels({"dataset": "credit_risk_shared"}) == (25.0, 80.0)
+    # Loan_default.csv maps a continuous credit score, so nothing is snapped.
+    assert payment_history_levels({"dataset": "loan_default_full"}) is None
+
+    levels = (25.0, 80.0)
+    assert [snap_payment_history(p, levels) for p in (0, 52, 52.5, 53, 95)] == [
+        25.0, 25.0, 25.0, 80.0, 80.0,
+    ]

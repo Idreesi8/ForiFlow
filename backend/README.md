@@ -187,14 +187,14 @@ adding to it.
   it in, and the model could only fit it as noise — it charged an applicant with
   an excellent ECIB record 22 points, which is indefensible in an adverse-action
   letter. Dropping it *improved* hold-out AUC from 0.766 to 0.7756. The cost is
-  granularity: ECIB scores either side of the midpoint read as clean or adverse
-  rather than on a fine scale.
-- **Monotone constraints on the boosted member.** Larger facilities, heavier debt
-  burdens and weaker repayment records can only ever be shown as increasing risk.
-  Random forests cannot take these constraints, which is part of why the forest
-  carries the smaller voting weight; a small local non-monotonicity survives from
-  it (a business trading two years can score ~3 points below one trading six
-  months, all else equal).
+  granularity: serving snaps the officer-entered 0-100 score to the two trained
+  levels at the 52.5 midpoint (`ml.features.snap_payment_history`), so 0-52
+  reads as adverse (25) and 53-100 as clean (80).
+- **Monotone constraints on the boosted member only.** In the XGBoost member,
+  larger facilities, weaker repayment records and fewer years in operation can
+  only ever push risk up. The random forest was trained without constraints, so
+  the ensemble is **not** monotone in years in operation — see "Model
+  limitations" below for the measured effect.
 - **Categorical columns are reported, not served.** The exploration step prints
   ordinal codes and per-level default rates for every categorical column, but
   home ownership, education, employment type and loan purpose are dropped because
@@ -224,6 +224,39 @@ calibrated to a 50% prior rather than the portfolio's true default rate. The
 score is therefore a **relative creditworthiness ranking** on a 0-100 scale, not
 an absolute default probability — which is also what keeps the SHAP base value
 near 50 and spreads applicants across the policy bands.
+
+### Model limitations (measured on the shipped artefacts)
+
+All figures below are from the committed `foriflow_model.pkl`, holding the
+reference applicant fixed (Khan Traders: PKR 500,000 over 12 months, PKR
+150,000 monthly receipts and cash flow, history 95, 5 years — score 64.87,
+Manual Review) and changing one input at a time.
+
+- **Years in operation is not monotone.** 0 → 41.43, 1 → 47.08, 3 → 60.03,
+  4 → 56.56, 5 → 64.87, 6 → 54.31, 8 → 66.41, 10 → 63.33, 17+ → 63.62. The
+  XGBoost member is constrained; the unconstrained forest is not.
+  scikit-learn ≥ 1.4 accepts `monotonic_cst` on `RandomForestClassifier`, and a
+  trial retrain with it (same data, same seed) makes the curve monotone
+  (0 → 44.64 … 17 → 61.30) at CV AUC 0.7752 ± 0.0073 and hold-out 0.7731,
+  against 0.7758 / 0.7756 today. That retrain is **not** shipped, because it
+  moves every published score (the reference applicant becomes 56.68); adopt it
+  deliberately, with the screenshots and report updated in the same change.
+- **Facility-to-turnover ratio has a cliff just above 0.30.** A ratio of 0.300
+  scores 62.91 (Manual Review), 0.3033 scores 45.45 and 0.3056 scores 14.79
+  (Rejected): about 48 points lost over a 0.6-point change in the ratio. This is inherited
+  from the training data, where the default rate jumps from 22% in the 0.2-0.3
+  band to 67% in 0.3-0.4, and it survives the monotone retrain (55.74 → 23.91).
+  Above the 99th-percentile clip (≈0.50) the ratio stops mattering at all. The
+  intake form warns the officer when a request crosses 0.30.
+- **Repayment history has two levels, not a scale** (see above).
+- **Five intake fields do not move the ML score**: inventory turnover, order
+  consistency, employee count, existing debt and requested tenure (see
+  "Accuracy, and an important limitation"). The form marks them, and every
+  explanation's `compliance_note` lists them.
+- **Consumer proxy data.** The model is trained on a public consumer-loan
+  dataset mapped onto SME concepts, not on SME repayment outcomes. Treat scores
+  as a relative ranking to support an officer's decision, not a validated
+  probability of default.
 
 ### Serving
 
