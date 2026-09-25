@@ -15,6 +15,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -96,6 +98,29 @@ app.include_router(explain.router)
 app.include_router(ews.router)
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """FastAPI's default 422 body, minus the submitted value of password fields.
+
+    The default handler echoes every rejected input back, which would put a
+    typed password into the response body (and any proxy or client log of it).
+    """
+    errors = []
+    for error in exc.errors():
+        error = dict(error)
+        if any(str(part).lower() == "password" for part in error.get("loc", ())):
+            error["input"] = "[redacted]"
+        errors.append(error)
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT
+        if hasattr(status, "HTTP_422_UNPROCESSABLE_CONTENT")
+        else 422,
+        content={"detail": jsonable_encoder(errors)},
+    )
+
+
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_exception_handler(
     request: Request, exc: SQLAlchemyError
@@ -115,7 +140,7 @@ async def root() -> dict[str, str | list[str]]:
         "service": "ForiFlow API",
         "version": API_VERSION,
         "docs": "/docs",
-        "endpoints": ["/score", "/explain/{application_id}", "/ews/monitor"],
+        "endpoints": ["/auth/login", "/score", "/explain/{application_id}", "/ews/monitor"],
     }
 
 

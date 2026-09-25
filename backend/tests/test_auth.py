@@ -269,3 +269,16 @@ def test_seed_admin_rejects_a_short_password() -> None:
 
     with pytest.raises(ValueError, match="at least 12"):
         seed_admin(username="admin", password="8charpwd", role="admin")
+
+
+def test_validation_errors_never_echo_a_password(client: TestClient) -> None:
+    secret = "short-pw"
+    response = client.post("/auth/users", json={"username": "officer9", "password": secret})
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert response.json()["detail"][0]["loc"] == ["body", "password"]
+
+    too_long = "x" * 80
+    login = client.post("/auth/login", json={"username": "admin", "password": too_long})
+    assert login.status_code == 422
+    assert too_long not in login.text
