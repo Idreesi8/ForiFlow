@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { getStoredRole } from "../api/auth.js";
 import { apiErrorMessage, fetchAlerts, resolveAlert } from "../api/client.js";
 import { alertSeverity, alertStatusStyle } from "../lib/decisions.js";
 import { formatDateTime, formatRelative } from "../lib/format.js";
@@ -28,6 +29,8 @@ export default function EWSAlertFeed({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [resolvingId, setResolvingId] = useState(null);
+  // The API enforces this (403 for analysts); hiding the button just avoids a dead click.
+  const canResolve = getStoredRole() === "admin";
 
   // Held in a ref so a parent re-render never retriggers the fetch effect.
   const onAlertsLoadedRef = useRef(onAlertsLoaded);
@@ -213,6 +216,13 @@ export default function EWSAlertFeed({
                       {isResolved ? (
                         <span className="text-xs text-slate-400">
                           {formatRelative(alert.resolved_at)}
+                        </span>
+                      ) : !canResolve ? (
+                        <span
+                          className="text-xs text-slate-400"
+                          title="Resolving an alert needs the admin role."
+                        >
+                          Admin only
                         </span>
                       ) : (
                         <button

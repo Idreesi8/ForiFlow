@@ -53,7 +53,7 @@ them belong in the compose file itself.
 | `POSTGRES_USER` | PostgreSQL role created on first start. |
 | `POSTGRES_PASSWORD` | Unique per deployment. |
 | `POSTGRES_DB` | Database name. |
-| `JWT_SECRET_KEY` | Unique per deployment. **Minimum 32 characters.** Used to sign officer JWTs with HMAC-SHA256. |
+| `JWT_SECRET_KEY` | Unique per deployment. **Minimum 32 characters, enforced:** the API refuses to sign tokens with a shorter value or the `.env.example` placeholder. Used to sign officer JWTs with HMAC-SHA256. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
 
 Example shape in `.env` (placeholders only — generate real values):
 
@@ -79,9 +79,9 @@ Set these in `.env` (the backend `env_file` makes them available to
 
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
-| `FORIFLOW_ADMIN_PASSWORD` | Yes for seed | none | Strong random password. The seed script reads it from the environment only — it is not accepted as a CLI flag and is never logged. |
+| `FORIFLOW_ADMIN_PASSWORD` | Yes for seed | none | **At least 12 characters** (enforced) and not the placeholder. The seed script reads it from the environment only — it is not accepted as a CLI flag and is never logged. |
 | `FORIFLOW_ADMIN_USERNAME` | No | `admin` | Officer username. |
-| `FORIFLOW_ADMIN_ROLE` | No | `admin` | `admin` or `analyst`. Both roles may use scoring and EWS; the value is stored on the user, not a full RBAC matrix. |
+| `FORIFLOW_ADMIN_ROLE` | No | `admin` | `admin` or `analyst`. Both roles score and monitor; only `admin` can resolve EWS alerts and create accounts (see [`api-reference.md`](api-reference.md#authentication-and-roles)). |
 
 Placeholder only:
 
@@ -106,6 +106,14 @@ docker compose exec backend python -m scripts.seed_admin --reset-password
 
 That replaces the password hash (and role, if `FORIFLOW_ADMIN_ROLE` /
 `--role` is set) for the existing username.
+
+Accounts created before the 12-character rule keep working: login does not
+re-check length. Rotate such a password by setting a new
+`FORIFLOW_ADMIN_PASSWORD` of 12+ characters in `.env` and running the
+`--reset-password` command above.
+
+Further officers are created by an admin through `POST /auth/users` (Swagger
+at `/docs` → Authorize → `POST /auth/users`); they default to `analyst`.
 
 ## Optional application flags
 

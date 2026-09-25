@@ -7,6 +7,54 @@ Interactive docs: [http://localhost:8000/docs](http://localhost:8000/docs).
 
 All amounts are PKR. Timestamps are UTC ISO-8601.
 
+## Authentication and roles
+
+`GET /`, `GET /health`, `POST /auth/login` and the interactive docs are public.
+Every other route needs `Authorization: Bearer <token>`; a missing, expired or
+invalid token returns `401`.
+
+Two roles exist. The role is read from the `users` table on every request, not
+from the token, so changing a user's role takes effect immediately.
+
+| Action | `analyst` | `admin` |
+| --- | --- | --- |
+| Score, explain, list applications | yes | yes |
+| Record EWS observations, read alerts and history | yes | yes |
+| Resolve an EWS alert | no (`403`) | yes |
+| List or create officer accounts | no (`403`) | yes |
+
+The API refuses to sign tokens while `JWT_SECRET_KEY` is empty, shorter than 32
+characters, or still the `.env.example` placeholder (login returns `500` and
+the startup log names the problem).
+
+### POST `/auth/login`
+
+```json
+{ "username": "officer.two", "password": "…" }
+```
+
+**Response `200`**: `access_token`, `token_type` (`bearer`), `expires_in`
+(28800 seconds), `username`, `role`. Wrong credentials return `401`.
+
+### GET `/auth/me`
+
+The signed-in account: `id`, `username`, `role`, `created_at`.
+
+### GET `/auth/users` (admin)
+
+All officer accounts, oldest first. Password hashes are never returned.
+
+### POST `/auth/users` (admin)
+
+```json
+{ "username": "officer.two", "password": "at-least-12-chars", "role": "analyst" }
+```
+
+`role` defaults to `analyst`. Usernames are 3–64 characters of letters, digits,
+`.`, `_` or `-`. Passwords are 12–72 characters and may not be the
+`.env.example` placeholder (`422`). An existing username returns `409`.
+**Response `201`**: the new account, as in `GET /auth/me`.
+
 ## GET `/`
 
 Service metadata.
@@ -232,4 +280,4 @@ Query: `alert_status` (`Active` | `In Review` | `Resolved`), `limit`, `offset`.
 ```
 
 Related: `GET /ews/borrowers/{id}/history` and
-`PATCH /ews/alerts/{id}/resolve`.
+`PATCH /ews/alerts/{id}/resolve` (admin only; an analyst gets `403`).

@@ -16,7 +16,7 @@ from schemas import (
     EWSMonitorResponse,
     EWSTrackingResponse,
 )
-from services.auth_service import get_current_user
+from services.auth_service import get_current_user, require_admin
 from services.ews_service import EWSService, get_ews_service
 
 router = APIRouter(
@@ -170,7 +170,8 @@ async def borrower_history(borrower_id: int, db: DbSession) -> list[EWSTrackingR
 @router.patch(
     "/alerts/{alert_id}/resolve",
     response_model=AlertResponse,
-    summary="Resolve an EWS alert",
+    summary="Resolve an EWS alert (admin only)",
+    dependencies=[Depends(require_admin)],
 )
 async def resolve_alert(alert_id: int, db: DbSession) -> AlertResponse:
     """Mark an alert as resolved and stamp the resolution time."""

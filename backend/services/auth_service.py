@@ -22,6 +22,13 @@ _bearer = HTTPBearer(auto_error=False)
 ALLOWED_ROLES = frozenset(role.value for role in UserRole)
 # bcrypt silently truncates after 72 bytes; reject instead.
 _MAX_PASSWORD_BYTES = 72
+# Applies when a password is SET (seeding, rotation, new accounts). Login does not
+# re-check it, so an account created under an older rule can still sign in and
+# be rotated.
+MIN_PASSWORD_LENGTH = 12
+# HS256 keys shorter than the 256-bit hash output weaken the MAC (RFC 7518 3.2).
+MIN_JWT_SECRET_LENGTH = 32
+_PLACEHOLDER_PREFIX = "CHANGE_ME"
 
 
 def hash_password(password: str) -> str:
@@ -45,12 +52,36 @@ def _assert_password_length(password: str) -> None:
         )
 
 
+def validate_new_password(password: str) -> None:
+    """Reject a password that is too short, too long or a placeholder."""
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(
+            f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
+        )
+    if password.startswith(_PLACEHOLDER_PREFIX):
+        raise ValueError("Password is still the .env.example placeholder.")
+    _assert_password_length(password)
+
+
+def jwt_secret_problem(secret: str) -> str | None:
+    """Describe why ``secret`` cannot sign tokens, or None when it is usable."""
+    if not secret:
+        return "JWT_SECRET_KEY is not set. Copy .env.example to .env and set a unique secret."
+    if secret.startswith(_PLACEHOLDER_PREFIX):
+        return "JWT_SECRET_KEY is still the .env.example placeholder. Set a unique secret."
+    if len(secret) < MIN_JWT_SECRET_LENGTH:
+        return (
+            f"JWT_SECRET_KEY is {len(secret)} characters; at least "
+            f"{MIN_JWT_SECRET_LENGTH} are required."
+        )
+    return None
+
+
 def _secret() -> str:
     secret = jwt_secret_key()
-    if not secret:
-        raise RuntimeError(
-            "JWT_SECRET_KEY is not set. Copy .env.example to .env and set a unique secret."
-        )
+    problem = jwt_secret_problem(secret)
+    if problem:
+        raise RuntimeError(problem)
     return secret
 
 
@@ -114,3 +145,21 @@ def get_current_user(
     if user is None:
         raise _unauthenticated
     return user
+
+
+def require_role(*roles: UserRole):
+    """Dependency factory: allow only users whose role is in ``roles``."""
+    allowed = frozenset(role.value for role in roles)
+
+    def dependency(user: Annotated[User, Depends(get_current_user)]) -> User:
+        if user.role not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This action needs the {' or '.join(sorted(allowed))} role.",
+            )
+        return user
+
+    return dependency
+
+
+require_admin = require_role(UserRole.ADMIN)

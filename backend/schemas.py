@@ -309,7 +309,8 @@ class HealthResponse(BaseModel):
 
 
 class UserRole(StrEnum):
-    """On-premise officer roles. Both may use scoring and EWS."""
+    """On-premise officer roles. Both score and monitor; admin also resolves
+    EWS alerts and manages officer accounts."""
 
     ADMIN = "admin"
     ANALYST = "analyst"
@@ -320,6 +321,26 @@ class LoginRequest(BaseModel):
 
     username: str = Field(..., min_length=1, max_length=64)
     password: str = Field(..., min_length=1, max_length=72)
+
+
+class UserCreate(BaseModel):
+    """New officer account for ``POST /auth/users`` (admin only)."""
+
+    username: str = Field(..., min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")
+    # 12 is MIN_PASSWORD_LENGTH in services.auth_service; 72 is bcrypt's limit.
+    password: str = Field(..., min_length=12, max_length=72)
+    role: UserRole = UserRole.ANALYST
+
+
+class UserResponse(BaseModel):
+    """An officer account. The password hash is never returned."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    role: UserRole
+    created_at: datetime
 
 
 class TokenResponse(BaseModel):

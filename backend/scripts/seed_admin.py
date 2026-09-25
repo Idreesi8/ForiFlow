@@ -16,7 +16,7 @@ import sys
 from sqlalchemy import select
 
 from models.database import SessionLocal, User, init_db
-from services.auth_service import ALLOWED_ROLES, hash_password
+from services.auth_service import ALLOWED_ROLES, hash_password, validate_new_password
 
 
 def seed_admin(
@@ -29,6 +29,7 @@ def seed_admin(
     """Insert the user if missing. Returns ``created``, ``exists``, or ``updated``."""
     if not password:
         raise ValueError("FORIFLOW_ADMIN_PASSWORD is empty.")
+    validate_new_password(password)
     if role not in ALLOWED_ROLES:
         raise ValueError(f"Role must be one of {sorted(ALLOWED_ROLES)}.")
     username = username.strip()

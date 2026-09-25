@@ -20,10 +20,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from config import env_flag
+from config import env_flag, jwt_secret_key
 from models.database import DATABASE_URL, engine, init_db
 from routers import auth, ews, explain, score
 from schemas import HealthResponse
+from services.auth_service import jwt_secret_problem
 from services.scoring_service import get_scoring_service
 
 API_VERSION = "1.0.0"
@@ -55,8 +56,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     applicant a credit officer submits.
     """
     logger.info("Starting ForiFlow API v%s", API_VERSION)
-    if not os.getenv("JWT_SECRET_KEY", "").strip():
-        logger.warning("JWT_SECRET_KEY is not set; POST /auth/login will fail.")
+    secret_problem = jwt_secret_problem(jwt_secret_key())
+    if secret_problem:
+        logger.error("%s POST /auth/login will fail until it is fixed.", secret_problem)
     init_db()
     logger.info("Scoring engine ready: %s", get_scoring_service().model_version)
     yield
