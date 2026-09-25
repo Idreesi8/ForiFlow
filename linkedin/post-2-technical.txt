@@ -11,7 +11,7 @@ XGBoost catches non-linear patterns. Random Forest reduces overfitting. Together
 3️⃣ Production Simplicity
 Tree models are fast, lightweight, and easy to retrain. No GPU needed. Perfect for on-premise bank servers.
 
-Result: 5-fold CV 0.7758 ± 0.0075, hold-out 0.7756 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio). 0.85+ remains a bank-data target, not a measured result.
+Result: 5-fold CV 0.7752 ± 0.0073, hold-out 0.7731 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio). 0.85+ remains a bank-data target, not a measured result.
 
 Full architecture on GitHub 👇
 https://github.com/Idreesi8/ForiFlow

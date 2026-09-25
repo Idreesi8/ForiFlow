@@ -110,45 +110,65 @@ Query: `include_explanation` (default `true`).
 }
 ```
 
-**Response `201`**
+**Response `201`** (a real response from the served model, trained 25 September 2026)
 
 ```json
 {
-  "application_id": 12,
+  "application_id": 1,
   "applicant_name": "Ayesha Siddiqui",
   "business_name": "Siddiqui Textiles (Faisalabad)",
   "loan_amount_pkr": 2500000.0,
   "tenure_months": 24,
   "monthly_installment_pkr": 104166.67,
-  "risk_score": 79.4,
-  "decision": "Approved",
-  "risk_band": "Low Risk",
-  "confidence": 71.7,
-  "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-08-11T23:51:28",
+  "risk_score": 67.23,
+  "decision": "Manual Review",
+  "risk_band": "Medium Risk",
+  "confidence": 43.7,
+  "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26",
   "explanation": {
-    "application_id": 12,
+    "application_id": 1,
     "business_name": "Siddiqui Textiles (Faisalabad)",
-    "risk_score": 79.4,
-    "decision": "Approved",
-    "risk_band": "Low Risk",
-    "base_value": 47.67,
+    "risk_score": 67.23,
+    "decision": "Manual Review",
+    "risk_band": "Medium Risk",
+    "base_value": 47.2,
     "feature_contributions": [
       {
         "feature": "loan_to_income",
         "label": "Facility size vs annual turnover",
-        "value": 0.13,
-        "contribution": 20.44,
+        "value": 0.1437,
+        "contribution": 10.77,
         "direction": "increases",
-        "weight": 0.42
+        "weight": 0.5377
+      },
+      {
+        "feature": "years_in_operation",
+        "label": "Years in operation",
+        "value": 7.0,
+        "contribution": 5.08,
+        "direction": "increases",
+        "weight": 0.2536
+      },
+      {
+        "feature": "payment_history_score",
+        "label": "Repayment history (officer-entered)",
+        "value": 78.0,
+        "contribution": 4.18,
+        "direction": "increases",
+        "weight": 0.2087
       }
     ],
-    "top_positive_factors": ["Facility size vs annual turnover"],
+    "top_positive_factors": [
+      "Facility size vs annual turnover",
+      "Years in operation",
+      "Repayment history (officer-entered)"
+    ],
     "top_negative_factors": [],
-    "narrative": "Score 79.4/100 (Low Risk) resulted in a 'Approved' outcome.",
-    "compliance_note": "SHAP values are stored on-premise so a bank can support an SBP-oriented adverse-action file. Payment-history and bureau-balance fields are officer-entered; there is no live ECIB connector. ForiFlow is not SBP-certified.",
-    "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-08-11T23:51:28"
+    "narrative": "Score 67.2/100 (Medium Risk) resulted in a 'Manual Review' outcome. Supporting factors: facility size vs annual turnover (+10.8), years in operation (+5.1), repayment history (officer-entered) (+4.2). Referred to a credit officer for manual verification of cash flow evidence.",
+    "compliance_note": "SHAP values are stored on-premise so a bank can support an SBP-oriented adverse-action file. Payment-history and bureau-balance fields are officer-entered; there is no live ECIB or other bureau connector. All amounts are in PKR. ForiFlow is not SBP-certified. Scored by the trained XGBoost + RandomForest ensemble (credit_risk_shared dataset, 5-fold CV 0.7752 ± 0.0073, hold-out 0.7731 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio) with TreeSHAP attributions. Payment history is read as a clean (above 52.5) or adverse (52.5 and below) record, not as a fine scale. Collected but not used by this model version: Business size (employees), Existing debt burden, Installment affordability vs cash flow, Inventory turnover, Order consistency.",
+    "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26"
   },
-  "created_at": "2026-08-15T08:12:01.441000Z"
+  "created_at": "2026-09-25T10:47:02.821460+05:00"
 }
 ```
 
@@ -167,14 +187,14 @@ default 50), `offset`.
 ```json
 [
   {
-    "id": 12,
+    "id": 1,
     "applicant_name": "Ayesha Siddiqui",
     "business_name": "Siddiqui Textiles (Faisalabad)",
     "loan_amount_pkr": 2500000.0,
     "tenure_months": 24,
-    "risk_score": 79.4,
-    "decision": "Approved",
-    "created_at": "2026-08-15T08:12:01.441000Z"
+    "risk_score": 67.23,
+    "decision": "Manual Review",
+    "created_at": "2026-09-25T10:47:02.821460+05:00"
   }
 ]
 ```
@@ -202,7 +222,7 @@ monthly score drops more than 15 points from the originating application.
 
 ```json
 {
-  "borrower_id": 12,
+  "borrower_id": 1,
   "month_number": 4,
   "installment_status": "Late 30-59",
   "bureau_balance": 1650000,
@@ -224,35 +244,35 @@ became a facility. ForiFlow keeps no disbursement record, so `Approved` and
 
 ```json
 {
-  "borrower_id": 12,
+  "borrower_id": 1,
   "business_name": "Siddiqui Textiles (Faisalabad)",
   "month_number": 4,
-  "baseline_score": 79.4,
-  "current_score": 52.1,
-  "score_drop": 27.3,
+  "baseline_score": 67.23,
+  "current_score": 47.01,
+  "score_drop": 20.22,
   "alert_triggered": true,
   "alert_threshold": 15.0,
-  "estimated_days_to_default": 48,
-  "recommended_action": "Call the relationship manager and request updated POS settlements.",
+  "estimated_days_to_default": 74,
+  "recommended_action": "Relationship manager to contact the borrower within 7 days and verify POS settlement trends.",
   "tracking": {
-    "id": 3,
-    "borrower_id": 12,
+    "id": 1,
+    "borrower_id": 1,
     "month_number": 4,
     "installment_status": "Late 30-59",
     "bureau_balance": 1650000.0,
     "pos_cash_balance": 240000.0,
-    "monthly_score": 52.1,
+    "monthly_score": 47.01,
     "data_source_primary": "ECIB"
   },
   "alert": {
     "id": 1,
-    "borrower_id": 12,
-    "baseline_score": 79.4,
-    "current_score": 52.1,
-    "score_drop": 27.3,
-    "estimated_days_to_default": 48,
+    "borrower_id": 1,
+    "baseline_score": 67.23,
+    "current_score": 47.01,
+    "score_drop": 20.22,
+    "estimated_days_to_default": 74,
     "alert_status": "Active",
-    "triggered_at": "2026-08-15T08:20:11.002000Z",
+    "triggered_at": "2026-09-25T10:47:16.580236+05:00",
     "resolved_at": null
   }
 }
@@ -272,13 +292,13 @@ Query: `alert_status` (`Active` | `In Review` | `Resolved`), `limit`, `offset`.
 [
   {
     "id": 1,
-    "borrower_id": 12,
-    "baseline_score": 79.4,
-    "current_score": 52.1,
-    "score_drop": 27.3,
-    "estimated_days_to_default": 48,
+    "borrower_id": 1,
+    "baseline_score": 67.23,
+    "current_score": 47.01,
+    "score_drop": 20.22,
+    "estimated_days_to_default": 74,
     "alert_status": "Active",
-    "triggered_at": "2026-08-15T08:20:11.002000Z",
+    "triggered_at": "2026-09-25T10:47:16.580236+05:00",
     "resolved_at": null
   }
 ]

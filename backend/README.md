@@ -118,9 +118,9 @@ publishers). Download them (a free Kaggle login is required) into `backend/ml/da
 | `Loan_default.csv` | [nikhil1e9/loan-default](https://www.kaggle.com/datasets/nikhil1e9/loan-default) | 255,347 | `1d7556a9071e7f9e872dc05a0cad174229fb1164b1cf3470ad35eed195c24278` |
 | `cs-training.csv` | [Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit) (experiment only, `ml.auc_ladder_gmsc`) | 150,000 | — |
 
-With the pinned `scikit-learn==1.8.0` / `xgboost==3.4.0` on Python 3.12,
-`--dataset credit_risk_shared` reproduces the published figures: 5-fold CV
-AUC-ROC 0.7758 ± 0.0075, hold-out 0.7756.
+With the pinned `scikit-learn==1.8.0` / `xgboost==3.4.0` on Python 3.12, both
+the full run and `--dataset credit_risk_shared` reproduce the published
+figures: 5-fold CV AUC-ROC 0.7752 ± 0.0073, hold-out 0.7731.
 
 The pipeline explores both CSVs, maps them onto the ForiFlow feature space,
 compares candidate training sets by 5-fold cross-validation, then fits a
@@ -142,16 +142,17 @@ tenure and no existing-debt measure. Merging on the union would leave those
 columns wholly imputed for 32k rows, letting the model recover *which dataset a
 row came from* and exploit the gap between their default rates (22% vs 12%). The
 combined candidate is therefore restricted to the true column intersection, and
-each option has to win on cross-validated AUC:
+each option has to win on cross-validated AUC (5-fold, the two large sets on a
+stratified 60,000-row subsample; full run of 25 September 2026):
 
 | Candidate            | Features | Rows    | AUC-ROC | F1    |
 | -------------------- | -------- | ------- | ------- | ----- |
-| `credit_risk_shared` | 3        | 32,581  | 0.7758  | 0.550 |
-| `combined_shared`    | 3        | 287,928 | 0.652   | 0.299 |
-| `loan_default_full`  | 6        | 255,347 | 0.622   | 0.237 |
+| `credit_risk_shared` | 3        | 32,581  | 0.7752  | 0.543 |
+| `loan_default_full`  | 6        | 255,347 | 0.644   | 0.263 |
+| `combined_shared`    | 3        | 287,928 | 0.635   | 0.275 |
 
-The served `credit_risk_shared` figure is 5-fold CV 0.7758 ± 0.0075, hold-out
-0.7756 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME
+The served `credit_risk_shared` figure is 5-fold CV 0.7752 ± 0.0073, hold-out
+0.7731 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME
 portfolio). The other two rows are rejected candidates, not production.
 
 `credit_risk_dataset.csv` wins decisively despite being the smallest.
@@ -170,11 +171,13 @@ adding to it.
   data a loan above 30% of gross annual income is already deep in the tail — the
   default rate jumps from 22% in the 0.2-0.3 band to 67% in 0.3-0.4. An SME
   borrowing half its annual *net* cash flow is unremarkable, so using net cash
-  flow as the denominator pushed ordinary applicants into that tail: a healthy
-  Faisalabad textile SME scored 18/100 and was rejected. Turnover is estimated
-  from monthly digital receipts, floored at net cash flow for cash-heavy
-  businesses, which also lets ForiFlow's flagship alternative-data signal reach
-  the model. The same applicant now scores 68.
+  flow as the denominator pushes ordinary applicants into that tail: on the
+  served model, the Faisalabad textile SME in the `POST /score` example of
+  [`docs/api-reference.md`](../docs/api-reference.md) scores 22.14 (Rejected)
+  with net cash flow as the denominator and 67.23 with turnover. Turnover is
+  estimated from monthly digital receipts, floored at net cash flow for
+  cash-heavy businesses, which also lets ForiFlow's flagship alternative-data
+  signal reach the model.
 - **Learned clip bounds.** Training persists each feature's 1st/99th percentile
   and serving clips to those saved bounds, keeping live applicants inside the
   range the trees were split on.
@@ -188,15 +191,21 @@ adding to it.
   years versus 16-18% at fifteen, correlation −0.018). An earlier version folded
   it in, and the model could only fit it as noise — it charged an applicant with
   an excellent ECIB record 22 points, which is indefensible in an adverse-action
-  letter. Dropping it *improved* hold-out AUC from 0.766 to 0.7756. The cost is
+  letter. Dropping it *improved* hold-out AUC from 0.766 to 0.7756 (on the
+  then-unconstrained ensemble). The cost is
   granularity: serving snaps the officer-entered 0-100 score to the two trained
   levels at the 52.5 midpoint (`ml.features.snap_payment_history`), so 0-52
   reads as adverse (25) and 53-100 as clean (80).
-- **Monotone constraints on the boosted member only.** In the XGBoost member,
-  larger facilities, weaker repayment records and fewer years in operation can
-  only ever push risk up. The random forest was trained without constraints, so
-  the ensemble is **not** monotone in years in operation — see "Model
-  limitations" below for the measured effect.
+- **Monotone constraints on both members.** XGBoost takes
+  `monotone_constraints` and the random forest takes scikit-learn's
+  `monotonic_cst` (≥ 1.4), with the same directions: a larger facility, a
+  weaker repayment record or fewer years in operation can only ever push risk
+  up. A weighted average of monotone members is monotone, so the served score is
+  too; `tests/test_ml_model.py` checks this over a grid spanning the trained
+  range. Until 25 September 2026 only the booster was constrained, and a
+  business trading six years scored 10.6 points *below* an otherwise identical
+  one trading five. Constraining the forest cost 0.0006 CV AUC (0.7758 → 0.7752)
+  and 0.0025 hold-out AUC (0.7756 → 0.7731).
 - **Categorical columns are reported, not served.** The exploration step prints
   ordinal codes and per-level default rates for every categorical column, but
   home ownership, education, employment type and loan purpose are dropped because
@@ -204,11 +213,13 @@ adding to it.
 
 ### Accuracy, and an important limitation
 
-5-fold cross-validation gives **AUC-ROC 0.7758 ± 0.0075** and **F1 0.540**; the
-held-out 20% scores AUC 0.7756, F1 0.544, Brier 0.175 (n=32,581, 3 features,
-trained on a public/proxy dataset — not a real SME portfolio). Hold-out applicants spread
-across the policy bands at roughly 20% Rejected, 42% Manual Review and 39%
-Approved, so the bands remain meaningful rather than approving everyone.
+5-fold cross-validation gives **AUC-ROC 0.7752 ± 0.0073** and **F1 0.543**; the
+held-out 20% scores AUC 0.7731, F1 0.546, Brier 0.185 (n=32,581, 3 features,
+trained on a public/proxy dataset — not a real SME portfolio). Hold-out
+applicants spread across the policy bands at 18.6% Rejected, 63.5% Manual
+Review and 18.0% Approved (median score 61.3). The constrained forest is more
+conservative than the unconstrained one it replaced (19.5% / 41.7% / 38.8%), so
+more applicants now go to an officer instead of being approved outright.
 
 The winning dataset only supports **three** features — `loan_to_income`,
 `payment_history_score` and `years_in_operation`. Loan amount, cash flow and
@@ -231,25 +242,20 @@ near 50 and spreads applicants across the policy bands.
 
 All figures below are from the committed `foriflow_model.pkl`, holding the
 reference applicant fixed (Khan Traders: PKR 500,000 over 12 months, PKR
-150,000 monthly receipts and cash flow, history 95, 5 years — score 64.87,
-Manual Review) and changing one input at a time.
+150,000 monthly receipts and cash flow, history 95, 5 years — score 56.68,
+Manual Review; SHAP base 47.20, years +5.36, history +4.25, facility −0.12)
+and changing one input at a time.
 
-- **Years in operation is not monotone.** 0 → 41.43, 1 → 47.08, 3 → 60.03,
-  4 → 56.56, 5 → 64.87, 6 → 54.31, 8 → 66.41, 10 → 63.33, 17+ → 63.62. The
-  XGBoost member is constrained; the unconstrained forest is not.
-  scikit-learn ≥ 1.4 accepts `monotonic_cst` on `RandomForestClassifier`, and a
-  trial retrain with it (same data, same seed) makes the curve monotone
-  (0 → 44.64 … 17 → 61.30) at CV AUC 0.7752 ± 0.0073 and hold-out 0.7731,
-  against 0.7758 / 0.7756 today. That retrain is **not** shipped, because it
-  moves every published score (the reference applicant becomes 56.68); adopt it
-  deliberately, with the screenshots and report updated in the same change.
+- **Years in operation is monotone but flat in places.** 0 → 44.64,
+  1 → 45.70, 2 → 46.66, 3 → 52.46, 4 → 52.50, 5 → 56.68, 6 → 56.80,
+  8 → 58.36, 10 → 58.41, 15 → 60.63, 17+ → 61.30 (the clip is 17 years).
 - **Facility-to-turnover ratio has a cliff just above 0.30.** A ratio of 0.300
-  scores 62.91 (Manual Review), 0.3033 scores 45.45 and 0.3056 scores 14.79
-  (Rejected): about 48 points lost over a 0.6-point change in the ratio. This is inherited
-  from the training data, where the default rate jumps from 22% in the 0.2-0.3
-  band to 67% in 0.3-0.4, and it survives the monotone retrain (55.74 → 23.91).
-  Above the 99th-percentile clip (≈0.50) the ratio stops mattering at all. The
-  intake form warns the officer when a request crosses 0.30.
+  scores 55.74 (Manual Review), 0.3033 scores 49.65 and 0.3044 scores 27.90
+  (Rejected): about 28 points lost over a 0.4-point change in the ratio. This is
+  inherited from the training data, where the default rate jumps from 22% in the
+  0.2-0.3 band to 67% in 0.3-0.4. Above the 99th-percentile clip (≈0.50) the
+  ratio stops mattering at all. The intake form warns the officer when a
+  request crosses 0.30.
 - **Repayment history has two levels, not a scale** (see above).
 - **Five intake fields do not move the ML score**: inventory turnover, order
   consistency, employee count, existing debt and requested tenure (see
@@ -283,8 +289,11 @@ sample. Note that XGBoost ≥ 3.0 enables categorical support by default, which
 makes `shap` refuse interventional explainers even with no categorical splits;
 the trainer sets `enable_categorical=False` for this reason.
 
-Scoring one applicant takes about 230 ms, dominated by interventional TreeSHAP
-over the forest's ~70k leaves. Three things keep it there: a 50-row SHAP
+Interventional TreeSHAP over the forest dominates scoring time. The
+unconstrained forest had 86,709 leaves and took about 230 ms per applicant on
+the development laptop; the constrained forest has 4,477 (the model file fell
+from 13.9 MB to 1.1 MB) and takes about 17 ms in the cloud environment used for
+the 25 September retrain. Three things keep it there: a 50-row SHAP
 background, forcing `n_jobs=1` on the loaded members (parallel dispatch cost more
 than it saved for single-row inference — 183 ms versus a few milliseconds), and
 averaging the member probabilities directly instead of making a third pass over

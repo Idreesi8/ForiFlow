@@ -96,11 +96,13 @@ Design constraints that matter in production:
   would push healthy SMEs into the high loan-to-income tail.
 - **Age is excluded.** The intake form never collects it, so training on it
   would bake a fabricated constant into every live score.
-- **Monotone constraints** on the XGBoost member stop a clean payment history
-  from increasing predicted risk.
+- **Monotone constraints** on both ensemble members (XGBoost
+  `monotone_constraints`, RandomForest `monotonic_cst`) mean a larger facility,
+  a weaker repayment record or fewer years in operation can never lower
+  predicted risk, so the served score is monotone in every model input.
 
-When artefacts are missing the API falls back to a linear surrogate
-(`ScoringService`) so the dashboard still boots on a fresh clone. Set
+The trained artefacts are committed. If they are missing the API falls back to
+a linear surrogate (`ScoringService`) so the dashboard still boots. Set
 `FORIFLOW_SCORING_ENGINE=ml` to refuse that fallback.
 
 ## Early Warning System

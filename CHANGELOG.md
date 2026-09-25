@@ -19,7 +19,7 @@ All notable changes to ForiFlow are recorded here. The format follows
   called on the 3.12 image; it is now rebound on load. Scores are unchanged.
 - Payment history between 53 and 79 no longer lands on an untrained third
   plateau: serving reads 0-52 as adverse and 53-100 as clean, matching the
-  binary flag the model was trained on. Scores at 80+ and 52- are unchanged.
+  binary flag the model was trained on.
 - `POST /ews/monitor` refuses Rejected applications (`409`).
 
 ### Added
@@ -38,6 +38,17 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ### Changed
 
+- **Model retrained with a monotone random forest.** Both ensemble members now
+  carry the same monotone constraints, so more years in operation, a stronger
+  repayment record or a smaller facility can never lower a score (before, six
+  years scored 10.6 points below five). Full candidate bake-off re-run; the
+  winner is unchanged. CV AUC 0.7758 → 0.7752, hold-out 0.7756 → 0.7731,
+  Brier 0.175 → 0.185. Hold-out policy mix moves from 19.5 / 41.7 / 38.8 % to
+  18.6 / 63.5 / 18.0 % (Rejected / Manual Review / Approved). Every score
+  changes; Khan Traders goes from 64.87 to 56.68 (still Manual Review). The
+  forest shrinks from 86,709 to 4,477 leaves (model file 13.9 MB → 1.1 MB).
+- The compliance note reads its AUC figures from the artefact metadata instead
+  of a hard-coded string.
 - React Router 6 → 7.18 and Vite 5 → 6.4 (`npm audit`: 0 vulnerabilities).
 - README problem statement: unsourced statistics removed; the SBP line now
   cites what has actually been reported.

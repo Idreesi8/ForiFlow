@@ -499,13 +499,22 @@ class MLScoringService(ScoringService):
             for intake_field, ml_feature in INTAKE_TO_ML_FEATURE.items()
             if ml_feature is None or ml_feature not in self.feature_names
         ]
+        # Read from the artefact's own metadata so the published figures can
+        # never drift from the model actually being served.
+        cv = self.metadata.get("cross_validation", {})
+        holdout = self.metadata.get("holdout", {})
+        metrics = (
+            f"5-fold CV {cv['auc_roc_mean']:.4f} ± {cv['auc_roc_std']:.4f}, "
+            f"hold-out {holdout['auc']:.4f} "
+            if "auc_roc_mean" in cv and "auc" in holdout
+            else ""
+        )
         note = (
             f"{COMPLIANCE_NOTE} Scored by the trained XGBoost + RandomForest "
             f"ensemble ({self.metadata.get('dataset', 'unknown')} dataset, "
-            "5-fold CV 0.7758 ± 0.0075, hold-out 0.7756 "
-            "(n=32,581, 3 features, trained on a public/proxy dataset — "
-            "not a real SME portfolio) "
-            "with TreeSHAP attributions."
+            f"{metrics}(n={int(self.metadata.get('rows', 0)):,}, "
+            f"{len(self.feature_names)} features, trained on a public/proxy "
+            "dataset — not a real SME portfolio) with TreeSHAP attributions."
         )
         if self.history_levels is not None:
             midpoint = sum(self.history_levels) / 2.0

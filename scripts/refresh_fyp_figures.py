@@ -82,7 +82,7 @@ def architecture() -> Path:
         ),
         (
             "2. SCORING ENGINE",
-            "Maps loan_to_income, payment_history_score, years_in_operation. Ensemble PD → score = 100 × (1 − PD). Served CV AUC 0.7758 ± 0.0075, hold-out 0.7756 (public/proxy file, n=32,581). Linear surrogate only if pickles are missing.",
+            "Maps loan_to_income, payment_history_score, years_in_operation. Ensemble PD → score = 100 × (1 − PD). Served CV AUC 0.7752 ± 0.0073, hold-out 0.7731 (public/proxy file, n=32,581). Linear surrogate only if pickles are missing.",
         ),
         (
             "3. DECISION",

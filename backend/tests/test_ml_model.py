@@ -187,3 +187,51 @@ def test_payment_history_reads_as_clean_or_adverse(ml_service) -> None:
              for p in (53, 62, 79, 80, 100)}
     assert len(adverse) == 1 and len(clean) == 1
     assert clean.pop() > adverse.pop()
+
+
+def test_compliance_note_quotes_the_served_model_metrics(ml_service) -> None:
+    """The published AUC comes from the artefact metadata, never a literal."""
+    cv = ml_service.metadata["cross_validation"]
+    holdout = ml_service.metadata["holdout"]
+    note = ml_service.compliance_note
+    assert f"5-fold CV {cv['auc_roc_mean']:.4f} ± {cv['auc_roc_std']:.4f}" in note
+    assert f"hold-out {holdout['auc']:.4f}" in note
+    assert f"n={ml_service.metadata['rows']:,}" in note
+
+
+def test_ensemble_is_monotone_in_every_constrained_feature(ml_service) -> None:
+    """Both members carry the monotone constraints, so the served PD may never
+    move against a feature's declared direction anywhere in the trained range."""
+    import itertools
+
+    import numpy as np
+
+    constraints = ml_service.metadata["monotone_constraints"]
+    clips = ml_service.feature_clips
+    names = ml_service.feature_names
+    grids = {name: np.linspace(*clips[name], 60) for name in names}
+
+    for name in names:
+        direction = constraints.get(name, 0)
+        if direction == 0:
+            continue
+        others = [other for other in names if other != name]
+        anchors = itertools.product(*(grids[other][::12] for other in others))
+        for anchor in anchors:
+            rows = []
+            for value in grids[name]:
+                point = dict(zip(others, anchor, strict=True))
+                point[name] = value
+                rows.append([point[column] for column in names])
+            pd = ml_service.model.predict_proba(ml_service.scaler.transform(np.array(rows)))[:, 1]
+            steps = np.diff(pd) * direction
+            assert steps.min() >= -1e-9, (name, anchor)
+
+
+def test_more_years_in_operation_never_lowers_the_score(ml_service) -> None:
+    base = SMEApplicant(**MID_APPLICANT).model_dump()
+    scores = [
+        ml_service.score(SMEApplicant(**{**base, "years_in_operation": years})).risk_score
+        for years in (0, 1, 2, 3, 4, 5, 6, 8, 10, 15, 20)
+    ]
+    assert scores == sorted(scores)

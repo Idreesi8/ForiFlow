@@ -88,13 +88,14 @@ ENSEMBLE_WEIGHTS = (0.6, 0.4)
 # score either side of 52.5 reads as one or the other.
 
 # Direction each feature is allowed to push the predicted default probability.
-# Constraining the gradient-boosted member keeps explanations defensible under
-# SBP adverse-action review: a stronger repayment record can never be shown as
-# increasing risk. The forest is NOT constrained: scikit-learn has supported
-# ``monotonic_cst`` on RandomForestClassifier since 1.4, but the shipped model
-# was trained without it, so the ensemble as a whole is not monotone in years
-# in operation (see "Model limitations" in backend/README.md). Tenure is left unconstrained
-# because a longer tenure both lowers the installment and extends the exposure.
+# Both members are constrained (XGBoost ``monotone_constraints``, scikit-learn
+# >= 1.4 ``monotonic_cst``), and a weighted average of monotone functions is
+# monotone, so the served score can never fall because an applicant has more
+# years in operation, a stronger repayment record or a smaller facility. That
+# keeps explanations defensible under SBP adverse-action review. Before the
+# forest was constrained, a business trading six years scored 10 points below
+# one trading five. Tenure is left unconstrained because a longer tenure both
+# lowers the installment and extends the exposure.
 FEATURE_MONOTONE_CONSTRAINTS: dict[str, int] = {
     "loan_to_income": 1,
     "installment_to_income": 1,
@@ -415,7 +416,7 @@ def build_ensemble(
     """Create the XGBoost + RandomForest soft-voting ensemble.
 
     ``features`` fixes the column order so the monotone constraints line up with
-    the columns the booster actually receives.
+    the columns both members actually receive.
     """
     constraints = tuple(FEATURE_MONOTONE_CONSTRAINTS[name] for name in features)
     xgb_params = {
@@ -448,6 +449,8 @@ def build_ensemble(
         "class_weight": rf_class_weight,
         "random_state": RANDOM_STATE,
         "n_jobs": -1,
+        # Same directions as the booster; see FEATURE_MONOTONE_CONSTRAINTS.
+        "monotonic_cst": list(constraints),
     }
     if rf_overrides:
         rf_params.update(rf_overrides)
