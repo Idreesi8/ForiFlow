@@ -10,12 +10,19 @@
 
 ## 🎯 Problem Statement
 
-Pakistani SMEs face a critical financing gap:
+Pakistani SMEs face a financing gap:
 
-- **60%** of SME loan applications are rejected due to lack of collateral
-- **14-17%** NPL ratio in the microfinance sector
-- **90 days** average time to detect portfolio deterioration
-- **SBP mandates** explainable AI for all credit decisions
+- Many have no collateral and a thin or informal credit file, so a collateral-led
+  scorecard has little to go on
+- Their digital footprint (Raast, POS and wallet receipts) is rarely part of the
+  credit decision
+- Deterioration after disbursement is often noticed only once installments are
+  already late
+- Lenders need to explain automated credit decisions. The State Bank of Pakistan
+  was reported in April 2025 to be finalising guidelines for responsible AI use in
+  financial services, aimed at "trust, transparency, and accountability"
+  ([Dawn](https://www.dawn.com/news/1906849)); no final SBP rule mandating
+  explainable AI for credit decisions has been verified for this project
 
 ## 💡 Solution
 
@@ -23,7 +30,7 @@ ForiFlow is an end-to-end AI credit intelligence platform that:
 
 - Scores unbanked SMEs using **alternative data** (digital payments and other officer-entered signals)
 - Provides **SHAP explainability** for every decision, stored on-premise to support an SBP-oriented review (ForiFlow is not SBP-certified and has no live ECIB connector)
-- Monitors approved borrowers with an **Early Warning System** that detects defaults 60-90 days in advance
+- Monitors approved borrowers with an **Early Warning System** that raises an alert when the monthly score drops more than 15 points below origination, with an estimated runway to default (a heuristic, not validated on repayment data)
 
 ## 🏗️ Architecture
 
@@ -110,7 +117,7 @@ in `frontend/`. Vite proxies `/api` to the API.
 
 - **AUC-ROC:** 5-fold CV 0.7758 ± 0.0075, hold-out 0.7756 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio). 0.85+ remains a bank-data target, not a measured result.
 - **Response time:** under 2 seconds per score after the ensemble is loaded
-- **Concurrent users:** designed for 1,000+ officers behind a reverse proxy
+- **Concurrency:** not load-tested; the shipped Compose stack runs a single uvicorn process behind nginx
 
 ## 📁 Project Structure
 

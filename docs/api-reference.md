@@ -64,7 +64,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "docs": "/docs"
 }
 ```
@@ -79,7 +79,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "database": "connected"
 }
 ```

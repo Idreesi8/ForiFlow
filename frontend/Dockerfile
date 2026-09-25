@@ -1,6 +1,6 @@
 # Node 20, not 18: @tailwindcss/oxide (the Rust engine behind Tailwind v4)
 # declares "engines.node": ">= 20", so an 18 base is not a supported build
-# platform for this dependency set. Vite 5 accepts both.
+# platform for this dependency set (React Router 7 also requires Node 20+).
 FROM node:20-bookworm-slim AS build
 
 WORKDIR /app

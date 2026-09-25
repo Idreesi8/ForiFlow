@@ -1,7 +1,7 @@
 {
   "name": "foriflow-frontend",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "ForiFlow credit officer dashboard - SME credit scoring and Early Warning System for Pakistani banks.",
   "scripts": {
@@ -14,13 +14,13 @@
     "axios": "^1.7.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2",
+    "react-router-dom": "^7.18.4",
     "recharts": "^2.15.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
     "@vitejs/plugin-react": "^4.3.3",
     "tailwindcss": "^4.0.0",
-    "vite": "^5.4.10"
+    "vite": "^6.4.3"
   }
 }
