@@ -63,7 +63,7 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 | Layer | Technology |
 |-------|-----------|
 | **Frontend** | React 18, Vite, Tailwind CSS, Recharts, Axios |
-| **Backend** | Python 3.11, FastAPI, SQLAlchemy, Pydantic |
+| **Backend** | Python 3.12, FastAPI, SQLAlchemy, Pydantic |
 | **ML** | XGBoost, Random Forest, SHAP, scikit-learn, imbalanced-learn |
 | **Database** | SQLite (development), PostgreSQL (production) |
 | **DevOps** | Docker, Docker Compose, GitHub Actions |

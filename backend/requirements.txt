@@ -1,4 +1,4 @@
-# ForiFlow backend dependencies (Python 3.11+)
+# ForiFlow backend dependencies (Python 3.12+; xgboost 3.4 requires it)
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 sqlalchemy>=2.0.30
@@ -13,10 +13,14 @@ bcrypt>=4.0.1,<4.1.0
 
 # Model serving: required to score with the trained ensemble. Without these the
 # API falls back to the linear surrogate in services/scoring_service.py.
-numpy>=1.26.0
-scikit-learn>=1.5.0
-xgboost>=2.1.0
-shap>=0.46.0
+# scikit-learn and xgboost are pinned to the exact versions the shipped
+# artefacts were pickled with (backend/ml/*.pkl records sklearn 1.8.0 and
+# xgboost 3.4.0). Unpickling with any other version prints "might lead to
+# breaking code or invalid results". Retrain before bumping either pin.
+numpy>=2.0,<3
+scikit-learn==1.8.0
+xgboost==3.4.0
+shap>=0.46.0,<0.53
 joblib>=1.4.0
 
 # Model training only (python -m ml.train_real_model)
