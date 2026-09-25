@@ -98,9 +98,10 @@ Confirm the trained ensemble is live with:
 docker compose logs backend | grep "Scoring engine ready"
 ```
 
-You want `ensemble-xgb-rf-...`, not `surrogate-linear-v1`. Train the artefacts
-first if you cloned a fresh copy (`cd backend && python -m ml.train_real_model`)
-— they are gitignored.
+You want `ensemble-xgb-rf-...`, not `surrogate-linear-v1`. The trained
+artefacts are committed in `backend/ml/`, so a fresh clone serves the real
+ensemble. To retrain them, see "Training data" in
+[`backend/README.md`](backend/README.md).
 
 Without Docker: `uvicorn main:app --port 8000` in `backend/` and `npm run dev`
 in `frontend/`. Vite proxies `/api` to the API.

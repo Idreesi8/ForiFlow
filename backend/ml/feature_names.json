@@ -1,0 +1,129 @@
+{
+  "feature_names": [
+    "loan_to_income",
+    "payment_history_score",
+    "years_in_operation"
+  ],
+  "feature_clips": {
+    "loan_to_income": [
+      0.02,
+      0.4999616030717543
+    ],
+    "payment_history_score": [
+      25.0,
+      80.0
+    ],
+    "years_in_operation": [
+      0.0,
+      17.0
+    ]
+  },
+  "dataset": "credit_risk_shared",
+  "dataset_note": "32k rows, limited to the 3 shared features",
+  "rows": 32581,
+  "default_rate": 0.21816396059052823,
+  "shap_output_space": "probability",
+  "shap_additivity_max_error": 9.908380144141304e-08,
+  "ensemble_weights": {
+    "xgb": 0.6,
+    "rf": 0.4
+  },
+  "monotone_constraints": {
+    "loan_to_income": 1,
+    "payment_history_score": -1,
+    "years_in_operation": -1
+  },
+  "cross_validation": {
+    "folds": 5,
+    "auc_roc_mean": 0.775775837994361,
+    "auc_roc_std": 0.007532206804265033,
+    "f1_mean": 0.5403675355003172,
+    "per_fold": [
+      {
+        "auc": 0.7754942312655881,
+        "f1": 0.5341047503045067,
+        "pr_auc": 0.5644640247329206,
+        "seconds": 20.56555020000087
+      },
+      {
+        "auc": 0.7887809739485576,
+        "f1": 0.5552460538532962,
+        "pr_auc": 0.5910320641608086,
+        "seconds": 19.190206899947952
+      },
+      {
+        "auc": 0.777354580579894,
+        "f1": 0.5395839801303943,
+        "pr_auc": 0.5738590991595964,
+        "seconds": 16.37617639999371
+      },
+      {
+        "auc": 0.7664238027788692,
+        "f1": 0.5350358143880412,
+        "pr_auc": 0.5566349005434644,
+        "seconds": 9.997952200006694
+      },
+      {
+        "auc": 0.770825601398896,
+        "f1": 0.5378670788253478,
+        "pr_auc": 0.5541708418695699,
+        "seconds": 5.841211099992506
+      }
+    ]
+  },
+  "holdout": {
+    "auc": 0.7756098958052972,
+    "f1": 0.5437192118226601,
+    "pr_auc": 0.5603466889154806,
+    "brier": 0.1752871839612556,
+    "score_min": 2.117490129408117,
+    "score_median": 66.36619540089305,
+    "score_max": 97.79601456242301,
+    "share_rejected": 0.19472149762160504,
+    "share_manual_review": 0.4172165106644161,
+    "share_approved": 0.3880619917139788
+  },
+  "candidates": [
+    {
+      "name": "credit_risk_shared",
+      "features": [
+        "loan_to_income",
+        "payment_history_score",
+        "years_in_operation"
+      ],
+      "rows": 32581,
+      "auc_roc": 0.7740734015035926,
+      "f1": 0.5494841608287789,
+      "note": "32k rows, limited to the 3 shared features"
+    },
+    {
+      "name": "combined_shared",
+      "features": [
+        "loan_to_income",
+        "payment_history_score",
+        "years_in_operation"
+      ],
+      "rows": 287928,
+      "auc_roc": 0.651808458153208,
+      "f1": 0.2991409630686205,
+      "note": "288k rows over the true column intersection (no fabricated columns)"
+    },
+    {
+      "name": "loan_default_full",
+      "features": [
+        "loan_to_income",
+        "installment_to_income",
+        "debt_service_to_income",
+        "payment_history_score",
+        "years_in_operation",
+        "tenure_months"
+      ],
+      "rows": 255347,
+      "auc_roc": 0.6216444143738784,
+      "f1": 0.2372357930387738,
+      "note": "255k rows, all 6 features genuinely present"
+    }
+  ],
+  "selection_skipped": true,
+  "trained_at": "2026-08-11T23:51:28"
+}

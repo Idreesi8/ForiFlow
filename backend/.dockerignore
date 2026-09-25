@@ -1,8 +1,8 @@
 # Build context for the backend image.
 #
 # Note: ml/*.pkl and ml/feature_names.json are deliberately NOT excluded here.
-# They are gitignored, but the trained ensemble has to be baked into the image
-# for the demo to score with the real model rather than the linear surrogate.
+# They are committed, and the trained ensemble has to be baked into the image
+# so the API scores with the real model rather than the linear surrogate.
 
 .git
 .gitignore

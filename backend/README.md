@@ -228,8 +228,8 @@ near 50 and spreads applicants across the policy bands.
 ### Serving
 
 `get_scoring_service()` returns `MLScoringService` when the artefacts are present
-and falls back to the linear surrogate otherwise, so the API still boots on a
-fresh checkout. Set `FORIFLOW_SCORING_ENGINE` to `ml`, `surrogate` or `auto`
+and falls back to the linear surrogate otherwise, so the API still boots if
+they are removed (they are committed, so a normal clone has them). Set `FORIFLOW_SCORING_ENGINE` to `ml`, `surrogate` or `auto`
 (default) to override; `ml` fails loudly rather than falling back.
 
 `MLScoringService` subclasses `ScoringService`, so routers keep one dependency

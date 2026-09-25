@@ -166,3 +166,12 @@ def test_explain_endpoint_reproduces_the_stored_score(ml_client: TestClient) -> 
 
     assert explained.status_code == 200, explained.text
     assert explained.json()["risk_score"] == pytest.approx(created["risk_score"], abs=0.01)
+
+
+def test_shap_link_is_callable_on_this_interpreter(ml_service) -> None:
+    """The pickled numba link carries the training Python's bytecode; the
+    service must rebind it so it runs on whatever Python serves the model."""
+    import numpy as np
+
+    for explainer in ml_service.explainers.values():
+        assert float(explainer.link(np.array([0.3]))[0]) == pytest.approx(0.3)

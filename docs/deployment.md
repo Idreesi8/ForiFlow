@@ -11,8 +11,9 @@ model notes live in [`backend/README.md`](../backend/README.md).
 - A copy of [`.env.example`](../.env.example) saved as `.env` in the
   **repository root**. `.env` is gitignored. Never commit it.
 - Trained scoring artefacts in `backend/ml/` (`foriflow_model.pkl`,
-  `scaler.pkl`, `shap_explainer.pkl`, `feature_names.json`). The default
-  image build (`REQUIRE_MODEL=true`) fails if they are missing.
+  `scaler.pkl`, `shap_explainer.pkl`, `feature_names.json`). They are
+  committed, so a clone already has them. The default image build
+  (`REQUIRE_MODEL=true`) fails if they are missing.
 
 Verify the CLI:
 
@@ -276,7 +277,7 @@ Then seed the admin user as in [First-run setup](#first-run-setup-creating-the-a
 | `docker` is not recognized | PATH points at a missing Program Files install. Use the `$env:PATH` line above, or reopen the terminal after installing Docker Desktop. |
 | `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine` | Engine is down. Start Docker Desktop; do not rebuild. |
 | Compose error `Set POSTGRES_* in .env` or `Set JWT_SECRET_KEY in .env` | Required variable missing from `.env`. Copy `.env.example` and fill the placeholders. |
-| `ERROR: backend/ml artefacts missing` | Train with `python -m ml.train_real_model` in `backend/`, or (UI-only demo) build with `--build-arg REQUIRE_MODEL=false`. A pilot must ship the ensemble. |
+| `ERROR: backend/ml artefacts missing` | Restore them with `git checkout -- backend/ml` (they are committed), or retrain with `python -m ml.train_real_model --dataset credit_risk_shared` in `backend/`. For a UI-only demo, build with `--build-arg REQUIRE_MODEL=false`. A pilot must ship the ensemble. |
 | `pip` `ReadTimeoutError` | Slow link. Rebuild; the pip cache mount resumes instead of starting over. |
 | `Ports are not available` | A local `uvicorn` or `npm run dev` holds 8000 or 3000. Stop it. |
 | Dashboard shows "API offline" | Backend still inside the 120s health `start_period` (ensemble load) or unhealthy. `docker compose logs backend`. |

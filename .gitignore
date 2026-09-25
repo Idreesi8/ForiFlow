@@ -50,17 +50,12 @@ desktop.ini
 .cursor/
 
 # --- Trained model artefacts ---
-# Generate using: python -m ml.train_real_model
-# (from backend/). The API falls back to the linear surrogate when these
-# files are absent. Do not commit pickles unless a maintainer asks you to.
-backend/ml/*.pkl
-backend/ml/feature_names.json
+# The four serving artefacts (foriflow_model.pkl, scaler.pkl,
+# shap_explainer.pkl, feature_names.json) ARE committed so a fresh clone
+# scores with the real ensemble. Only the training log and the raw Kaggle
+# CSVs stay out (see backend/README.md, "Training data").
 backend/ml/train_log.txt
 backend/ml/data/*.csv
-
-# Uncomment the next line if you need the trained ensemble inside a public
-# clone for Docker demos (the files are large and machine-specific):
-# !backend/ml/*.pkl
 
 # --- Capture / scratch ---
 scripts/node_modules/

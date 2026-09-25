@@ -374,6 +374,28 @@ CONFIDENCE_MARGIN_SPAN: float = 30.0
 CONFIDENCE_DISAGREEMENT_SPAN: float = 0.5
 
 
+def _rebind_shap_links(explainers: dict[str, Any]) -> dict[str, Any]:
+    """Point each explainer's ``link`` at this interpreter's ``shap.links``.
+
+    ``shap.links.identity`` is a numba-jitted function, and numba pickles it by
+    value: the bytecode of the Python that trained the model travels inside
+    ``shap_explainer.pkl``. The shipped artefacts were trained on Python 3.14,
+    so on the 3.12 serving image the unpickled ``link`` raised
+    ``IndexError: pop from empty list`` when called. TreeSHAP values never go
+    through it, but anything that does (``shap.Explanation``, plots) would.
+    Rebinding by name restores the same function, compiled for this interpreter.
+    """
+    import shap.links
+
+    for explainer in explainers.values():
+        link = getattr(explainer, "link", None)
+        name = getattr(getattr(link, "py_func", link), "__name__", None)
+        fresh = getattr(shap.links, name, None) if name else None
+        if fresh is not None:
+            explainer.link = fresh
+    return explainers
+
+
 class MLScoringService(ScoringService):
     """Scores applicants with the trained ensemble and real TreeSHAP values.
 
@@ -403,7 +425,7 @@ class MLScoringService(ScoringService):
         self.metadata = metadata
         self.feature_names: list[str] = list(metadata["feature_names"])
         self.feature_clips: dict[str, list[float]] = metadata.get("feature_clips", {})
-        self.explainers: dict[str, Any] = shap_bundle["explainers"]
+        self.explainers: dict[str, Any] = _rebind_shap_links(shap_bundle["explainers"])
         self.shap_weights: dict[str, float] = shap_bundle["weights"]
         self.output_space: str = shap_bundle.get("output_space", "probability")
         self.member_names: list[str] = [name for name, _ in model.estimators]

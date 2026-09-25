@@ -25,9 +25,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY . .
 
-# The trained artefacts are gitignored, so an image built from a fresh clone
-# would quietly serve surrogate scores. Fail the build instead, and pass
-# --build-arg REQUIRE_MODEL=false to demo the UI without a trained model.
+# The trained artefacts are committed under backend/ml/. If they are missing
+# (deleted, or a partial checkout) the image would quietly serve surrogate
+# scores, so fail the build instead. Pass --build-arg REQUIRE_MODEL=false to
+# demo the UI without a trained model.
 ARG REQUIRE_MODEL=true
 RUN REQUIRE_MODEL="$REQUIRE_MODEL" python -c "import os, sys; \
 from ml.features import artifacts_available, MODEL_PATH; \
