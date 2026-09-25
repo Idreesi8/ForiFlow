@@ -82,7 +82,7 @@ def architecture() -> Path:
         ),
         (
             "2. SCORING ENGINE",
-            "Maps loan_to_income, payment_history_score, years_in_operation. Ensemble PD → score = 100 × (1 − PD). Served CV AUC 0.7752 ± 0.0073, hold-out 0.7731 (public/proxy file, n=32,581). Linear surrogate only if pickles are missing.",
+            "Maps loan_to_income, payment_history_score, years_in_operation; both members monotone-constrained. Ensemble PD → score = 100 × (1 − PD). Served CV AUC 0.7752 ± 0.0073, hold-out 0.7731 (public/proxy file, n=32,581). Linear surrogate only if pickles are missing.",
         ),
         (
             "3. DECISION",
@@ -94,11 +94,11 @@ def architecture() -> Path:
         ),
         (
             "5. API :8000",
-            "POST /auth/login. Protected /score, /explain/{id}, /ews/*. GET /health is public. nginx strips /api. Alembic 0001 + 0002_users. Volume foriflow-pgdata.",
+            "POST /auth/login. Protected /score, /explain/{id}, /ews/*; resolving alerts and /auth/users are admin-only. GET /health is public. nginx strips /api. Alembic 0001 + 0002_users. Volume foriflow-pgdata.",
         ),
         (
             "6. EARLY WARNING",
-            "Officer types month, ageing, bureau balance, POS. Rule on the origination baseline — ensemble is not re-run. Alert if drop > 15. UI filters: All / Active / Resolved.",
+            "Officer types month, ageing, bureau balance, POS. Rule on the origination baseline — ensemble is not re-run. Rejected applications are refused. Alert if drop > 15. UI filters: All / Active / Resolved.",
         ),
     ]
     gap = 16
