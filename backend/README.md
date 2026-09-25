@@ -118,7 +118,7 @@ publishers). Download them (a free Kaggle login is required) into `backend/ml/da
 | `Loan_default.csv` | [nikhil1e9/loan-default](https://www.kaggle.com/datasets/nikhil1e9/loan-default) | 255,347 | `1d7556a9071e7f9e872dc05a0cad174229fb1164b1cf3470ad35eed195c24278` |
 | `cs-training.csv` | [Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit) (experiment only, `ml.auc_ladder_gmsc`) | 150,000 | — |
 
-With the pinned `scikit-learn==1.8.0` / `xgboost==3.4.0` on Python 3.12, both
+With the pinned `scikit-learn==1.8.0` / xgboost 3.4.0 (`xgboost-cpu` on Linux and Windows) on Python 3.12, both
 the full run and `--dataset credit_risk_shared` reproduce the published
 figures: 5-fold CV AUC-ROC 0.7752 ± 0.0073, hold-out 0.7731.
 

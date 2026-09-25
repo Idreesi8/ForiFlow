@@ -19,7 +19,11 @@ bcrypt>=4.0.1,<4.1.0
 # breaking code or invalid results". Retrain before bumping either pin.
 numpy>=2.0,<3
 scikit-learn==1.8.0
-xgboost==3.4.0
+# xgboost-cpu is the same 3.4.0 library without the ~350 MB nvidia-nccl
+# dependency that the plain Linux wheel pulls in; ForiFlow never trains or
+# scores on a GPU. It has no macOS wheel, so macOS keeps the regular package.
+xgboost-cpu==3.4.0; sys_platform == "linux" or sys_platform == "win32"
+xgboost==3.4.0; sys_platform == "darwin"
 shap>=0.46.0,<0.53
 joblib>=1.4.0
 

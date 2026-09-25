@@ -21,6 +21,9 @@ All notable changes to ForiFlow are recorded here. The format follows
   plateau: serving reads 0-52 as adverse and 53-100 as clean, matching the
   binary flag the model was trained on.
 - `POST /ews/monitor` refuses Rejected applications (`409`).
+- The backend image installs `xgboost-cpu` (same 3.4.0 library) instead of
+  `xgboost`, whose Linux wheel pulls in a ~350 MB `nvidia-nccl` GPU library
+  that ForiFlow never uses; the rebuild on a slow connection stalled on it.
 
 ### Added
 
