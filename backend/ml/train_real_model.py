@@ -112,16 +112,40 @@ def banner(title: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def load_datasets() -> dict[str, pd.DataFrame]:
-    """Read both CSV files, failing loudly if either is missing."""
-    paths = {
-        "credit_risk": DATA_DIR / "credit_risk_dataset.csv",
-        "loan_default": DATA_DIR / "Loan_default.csv",
-    }
+DATASET_FILES: dict[str, str] = {
+    "credit_risk": "credit_risk_dataset.csv",
+    "loan_default": "Loan_default.csv",
+}
+
+# Source datasets each training set needs. A routine ``--dataset`` retrain only
+# reads the files it actually uses, so retraining the served model does not
+# require the 25 MB Loan_default.csv.
+DATASETS_NEEDED: dict[str | None, tuple[str, ...]] = {
+    None: ("credit_risk", "loan_default"),
+    "credit_risk_shared": ("credit_risk",),
+    "loan_default_full": ("loan_default",),
+    "combined_shared": ("credit_risk", "loan_default"),
+}
+
+# Features present in both public datasets. Equal to the column intersection
+# computed in :func:`build_candidates`, which asserts it whenever both files are
+# loaded; used on its own when only credit_risk_dataset.csv is available.
+SHARED_FEATURES: list[str] = ["loan_to_income", "payment_history_score", "years_in_operation"]
+
+
+def load_datasets(names: tuple[str, ...] = ("credit_risk", "loan_default")) -> dict[str, pd.DataFrame]:
+    """Read the requested CSV files, failing loudly if one is missing.
+
+    Download links for both files are in backend/README.md ("Training data").
+    """
     frames: dict[str, pd.DataFrame] = {}
-    for name, path in paths.items():
+    for name in names:
+        path = DATA_DIR / DATASET_FILES[name]
         if not path.exists():
-            raise FileNotFoundError(f"Expected dataset at {path}")
+            raise FileNotFoundError(
+                f"Expected dataset at {path}. See backend/README.md, 'Training data', "
+                "for where to download it."
+            )
         frames[name] = pd.read_csv(path)
         print(f"Loaded {name:<13} {path.name:<26} rows={len(frames[name]):>7,}")
     return frames
@@ -306,26 +330,36 @@ class Candidate:
 
 
 def build_candidates(mapped: dict[str, pd.DataFrame]) -> list[Candidate]:
-    """Assemble the candidate training sets, imputing and clipping each."""
-    credit_risk = mapped["credit_risk"]
-    loan_default = mapped["loan_default"]
+    """Assemble the candidate training sets, imputing and clipping each.
 
-    shared = [
-        column
-        for column in FEATURE_NAMES
-        if column in credit_risk.columns and column in loan_default.columns
-    ]
+    Only the sets whose source files were loaded are built, so a
+    ``--dataset credit_risk_shared`` retrain needs credit_risk_dataset.csv alone.
+    """
+    credit_risk = mapped.get("credit_risk")
+    loan_default = mapped.get("loan_default")
+
+    if credit_risk is not None and loan_default is not None:
+        shared = [
+            column
+            for column in FEATURE_NAMES
+            if column in credit_risk.columns and column in loan_default.columns
+        ]
+        assert shared == SHARED_FEATURES, f"shared features changed: {shared}"
+        combined = pd.concat(
+            [credit_risk[shared + [TARGET]], loan_default[shared + [TARGET]]],
+            ignore_index=True,
+        )
+    else:
+        shared = list(SHARED_FEATURES)
+        combined = None
     print(f"\nFeatures shared by both datasets: {shared}")
-
-    combined = pd.concat(
-        [credit_risk[shared + [TARGET]], loan_default[shared + [TARGET]]],
-        ignore_index=True,
-    )
 
     specs = [
         (
             "loan_default_full",
-            [column for column in FEATURE_NAMES if column in loan_default.columns],
+            [column for column in FEATURE_NAMES if column in loan_default.columns]
+            if loan_default is not None
+            else [],
             loan_default,
             "255k rows, all 6 features genuinely present",
         ),
@@ -345,6 +379,8 @@ def build_candidates(mapped: dict[str, pd.DataFrame]) -> list[Candidate]:
 
     candidates: list[Candidate] = []
     for name, features, frame, note in specs:
+        if frame is None:
+            continue
         print(f"\n{name}: {note}")
         working = frame[features + [TARGET]].copy()
         working = impute_medians(working, features)
@@ -688,19 +724,19 @@ def main(argv: list[str] | None = None) -> int:
     started = time.perf_counter()
     banner("FORIFLOW MODEL TRAINING — real loan performance data")
 
-    raw = load_datasets()
+    raw = load_datasets(DATASETS_NEEDED[args.dataset])
 
-    explore("credit_risk_dataset.csv", raw["credit_risk"], "loan_status")
-    report_categorical_encodings("credit_risk_dataset.csv", raw["credit_risk"], "loan_status")
+    if "credit_risk" in raw:
+        explore("credit_risk_dataset.csv", raw["credit_risk"], "loan_status")
+        report_categorical_encodings("credit_risk_dataset.csv", raw["credit_risk"], "loan_status")
 
-    explore("Loan_default.csv", raw["loan_default"], "Default")
-    report_categorical_encodings("Loan_default.csv", raw["loan_default"], "Default")
+    if "loan_default" in raw:
+        explore("Loan_default.csv", raw["loan_default"], "Default")
+        report_categorical_encodings("Loan_default.csv", raw["loan_default"], "Default")
 
     banner("FEATURE MAPPING")
-    mapped = {
-        "credit_risk": map_credit_risk(raw["credit_risk"]),
-        "loan_default": map_loan_default(raw["loan_default"]),
-    }
+    mappers = {"credit_risk": map_credit_risk, "loan_default": map_loan_default}
+    mapped = {name: mappers[name](frame) for name, frame in raw.items()}
     for name, frame in mapped.items():
         built = [column for column in FEATURE_NAMES if column in frame.columns]
         missing = [column for column in FEATURE_NAMES if column not in frame.columns]

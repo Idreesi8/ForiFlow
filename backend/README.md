@@ -101,7 +101,24 @@ python -m ml.predict_sample                            # score one applicant
 ```
 
 `--dataset` skips the candidate comparison for routine retrains and carries the
-previously recorded comparison into the new metadata for traceability.
+previously recorded comparison into the new metadata for traceability. It only
+reads the file that training set needs: `credit_risk_shared` (the served model)
+needs `credit_risk_dataset.csv` alone.
+
+#### Training data
+
+The CSVs are public Kaggle datasets and are not committed (licensed by their
+publishers). Download them (a free Kaggle login is required) into `backend/ml/data/`:
+
+| File | Kaggle dataset | Rows | SHA-256 of the copy used for the shipped model |
+| ---- | -------------- | ---: | ---------------------------------------------- |
+| `credit_risk_dataset.csv` | [laotse/credit-risk-dataset](https://www.kaggle.com/datasets/laotse/credit-risk-dataset) | 32,581 | `ce3c6d2167717bf1627d1c0c81cbccd28323cd4aa7b96d542599366d5ff6aac8` |
+| `Loan_default.csv` | [nikhil1e9/loan-default](https://www.kaggle.com/datasets/nikhil1e9/loan-default) | 255,347 | `1d7556a9071e7f9e872dc05a0cad174229fb1164b1cf3470ad35eed195c24278` |
+| `cs-training.csv` | [Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit) (experiment only, `ml.auc_ladder_gmsc`) | 150,000 | — |
+
+With the pinned `scikit-learn==1.8.0` / `xgboost==3.4.0` on Python 3.12,
+`--dataset credit_risk_shared` reproduces the published figures: 5-fold CV
+AUC-ROC 0.7758 ± 0.0075, hold-out 0.7756.
 
 The pipeline explores both CSVs, maps them onto the ForiFlow feature space,
 compares candidate training sets by 5-fold cross-validation, then fits a
