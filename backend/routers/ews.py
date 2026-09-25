@@ -12,6 +12,7 @@ from models.database import Alert, Application, EWSTracking, get_db, utcnow
 from schemas import (
     AlertResponse,
     AlertStatus,
+    Decision,
     EWSMonitorRequest,
     EWSMonitorResponse,
     EWSTrackingResponse,
@@ -58,6 +59,17 @@ async def monitor_borrower(
     already-active alert is updated in place instead of being duplicated.
     """
     borrower = _load_borrower(payload.borrower_id, db)
+    if borrower.decision == Decision.REJECTED.value:
+        # ForiFlow keeps no disbursement record, so Approved and Manual Review
+        # applications (the latter may be approved after review) can be
+        # monitored. A Rejected application never became a facility.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Application {borrower.id} was Rejected at origination, so there "
+                "is no facility to monitor."
+            ),
+        )
 
     outcome = monitor.evaluate(
         baseline_score=borrower.risk_score,

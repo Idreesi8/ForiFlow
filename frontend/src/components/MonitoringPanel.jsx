@@ -40,11 +40,13 @@ export default function MonitoringPanel({ onMonitored }) {
     fetchApplications({ limit: 200 })
       .then((data) => {
         if (cancelled) return;
-        setBorrowers(data);
+        // A Rejected application was never disbursed; the API answers 409.
+        const monitorable = data.filter((application) => application.decision !== "Rejected");
+        setBorrowers(monitorable);
         setForm((previous) =>
-          previous.borrower_id || data.length === 0
+          previous.borrower_id || monitorable.length === 0
             ? previous
-            : { ...previous, borrower_id: String(data[0].id) },
+            : { ...previous, borrower_id: String(monitorable[0].id) },
         );
       })
       .catch(() => setBorrowers([]));
@@ -111,7 +113,7 @@ export default function MonitoringPanel({ onMonitored }) {
             </option>
             {borrowers.map((borrower) => (
               <option key={borrower.id} value={borrower.id}>
-                #{borrower.id} · {borrower.business_name}
+                #{borrower.id} · {borrower.business_name} · {borrower.decision}
               </option>
             ))}
           </select>

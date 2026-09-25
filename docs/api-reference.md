@@ -215,6 +215,11 @@ monthly score drops more than 15 points from the originating application.
 `Default`. `data_source_primary`: `ECIB`, `POS`, `Bank Statement`,
 `Self Reported`.
 
+`borrower_id` is an application id. An unknown id returns `404`; an
+application whose decision was `Rejected` returns `409`, because it never
+became a facility. ForiFlow keeps no disbursement record, so `Approved` and
+`Manual Review` applications can both be monitored.
+
 **Response `201`**
 
 ```json

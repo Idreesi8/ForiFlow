@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from schemas import InstallmentStatus
 from services.ews_service import ALERT_SCORE_DROP_THRESHOLD, EWSService
-from tests.conftest import STRONG_APPLICANT
+from tests.conftest import STRONG_APPLICANT, WEAK_APPLICANT
 
 pytestmark = pytest.mark.ews
 
@@ -246,3 +246,14 @@ def test_runway_shortens_as_the_drop_deepens() -> None:
 
     assert severe < mild
     assert severe >= 7
+
+
+def test_rejected_applications_cannot_be_monitored(client: TestClient) -> None:
+    """A Rejected application was never disbursed, so it has nothing to monitor."""
+    scored = client.post("/score", json=WEAK_APPLICANT).json()
+    assert scored["decision"] == "Rejected"
+
+    response = client.post("/ews/monitor", json=_healthy_month(scored["application_id"]))
+    assert response.status_code == 409
+    assert "Rejected" in response.json()["detail"]
+    assert client.get(f"/ews/borrowers/{scored['application_id']}/history").json() == []

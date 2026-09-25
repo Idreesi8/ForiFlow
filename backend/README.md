@@ -68,7 +68,9 @@ bureau balance, and POS settlement inflows. There is no live bureau pull. A
 drop of **more than 15 points** raises an alert with an estimated runway to
 default. An unresolved alert is updated in place rather than duplicated, and
 re-submitting a month (e.g. after a corrected typed balance) overwrites that
-observation.
+observation. Rejected applications cannot be monitored (`409`); ForiFlow keeps
+no disbursement record, so Approved and Manual Review applications can.
+Resolving an alert needs the `admin` role.
 
 ## Layout
 
