@@ -77,3 +77,6 @@ scripts/capture_auth.py
 
 # --- Local poster and design iterations (kept on the laptop, not in git) ---
 Claude outputs/
+
+# --- Local archive of old scratch launchers, logs and the previous model ---
+foriflow-scratch-archive/
