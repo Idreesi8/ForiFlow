@@ -225,9 +225,13 @@ def main() -> int:
             p.locator(".swagger-ui .opblock, .swagger-ui .info").first.wait_for(timeout=30000)
             p.wait_for_timeout(800)
 
-        capture(page, "01-dashboard.png", dashboard)
+        # Score first, then photograph the dashboard, so its "Latest
+        # assessment" and recent-applications table show the row this run
+        # created (the one cleanup_test_applications.py keeps), not the
+        # previous run's.
         capture(page, "02-scoring-form.png", form)
         capture(page, "03-score-result.png", result)
+        capture(page, "01-dashboard.png", dashboard)
         capture(page, "04-shap-chart.png", shap)
         capture(page, "05-ews-alerts.png", alerts)
         capture(page, "06-applications.png", applications)

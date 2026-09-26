@@ -292,8 +292,9 @@ the trainer sets `enable_categorical=False` for this reason.
 Interventional TreeSHAP over the forest dominates scoring time. The
 unconstrained forest had 86,709 leaves and took about 230 ms per applicant on
 the development laptop; the constrained forest has 4,477 (the model file fell
-from 13.9 MB to 1.1 MB) and takes about 17 ms in the cloud environment used for
-the 25 September retrain. Three things keep it there: a 50-row SHAP
+from 13.9 MB to 1.1 MB). Measured inside the rebuilt backend container on the
+same laptop (26 September 2026, 30 runs, score plus SHAP): median 150 ms, p90
+207 ms. Three things keep it there: a 50-row SHAP
 background, forcing `n_jobs=1` on the loaded members (parallel dispatch cost more
 than it saved for single-row inference — 183 ms versus a few milliseconds), and
 averaging the member probabilities directly instead of making a third pass over
