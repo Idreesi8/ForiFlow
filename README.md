@@ -60,20 +60,20 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 |---------|-------------|
 | 🎯 **AI Credit Scoring** | XGBoost + Random Forest soft-voting ensemble. Score: 0-100 |
 | 📊 **SHAP Waterfall Charts** | Every decision explained with feature attribution |
-| 🚨 **Early Warning System** | Monthly re-scoring. Alert triggered on >15 point drop |
-| 🏦 **PKR Banking Context** | Built for Pakistani financial regulations |
+| 🚨 **Early Warning System** | Officer-submitted monthly observation; a rule-based score is derived from the origination baseline and an alert fires on a >15-point drop |
+| 🏦 **PKR Banking Context** | PKR amounts; designed for SBP-oriented explainability (not SBP-certified, no live ECIB feed) |
 | 🐳 **Docker Ready** | One-command deployment for bank demos |
-| 🔐 **JWT Authentication** | Role-based access (Admin/Manager/Officer) — on the roadmap |
+| 🔐 **JWT Authentication** | On-premise login (bcrypt, HS256, 8-hour tokens); roles admin and analyst, with resolving alerts and creating officer accounts admin-only |
 
 ## 🛠️ Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | **Frontend** | React 18, Vite, Tailwind CSS, Recharts, Axios |
-| **Backend** | Python 3.12, FastAPI, SQLAlchemy, Pydantic |
-| **ML** | XGBoost, Random Forest, SHAP, scikit-learn, imbalanced-learn |
-| **Database** | SQLite (development), PostgreSQL (production) |
-| **DevOps** | Docker, Docker Compose, GitHub Actions |
+| **Backend** | Python 3.12, FastAPI, SQLAlchemy 2, Pydantic 2, Alembic, PyJWT, passlib/bcrypt |
+| **ML** | XGBoost 3.4, scikit-learn 1.8 (Random Forest), SHAP TreeExplainer, imbalanced-learn (SMOTE) |
+| **Database** | PostgreSQL 16 in Docker (schema owned by Alembic); SQLite only for runs without Docker and for tests |
+| **DevOps** | Docker, Docker Compose, nginx (serves the dashboard, proxies `/api`), GitHub Actions |
 
 ## 📸 Screenshots
 
@@ -116,8 +116,8 @@ in `frontend/`. Vite proxies `/api` to the API.
 ## 📊 Performance
 
 - **AUC-ROC:** 5-fold CV 0.7752 ± 0.0073, hold-out 0.7731 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio). 0.85+ remains a bank-data target, not a measured result.
-- **Response time:** under 2 seconds per score after the ensemble is loaded
-- **Concurrency:** not load-tested; the shipped Compose stack runs a single uvicorn process behind nginx
+- **Response time:** median 150 ms, p90 207 ms per score including SHAP (30 runs in the Docker container on the development laptop, 26 September 2026)
+- **Concurrency:** not load-tested; the shipped Compose stack runs a single uvicorn process behind nginx, sized for a single-branch pilot
 
 ## 📁 Project Structure
 
@@ -137,8 +137,9 @@ foriflow/
 - [x] Docker containerization
 - [x] SHAP explainability
 - [x] EWS monitoring
-- [ ] JWT Authentication & RBAC
-- [ ] PostgreSQL migration
+- [x] JWT authentication with admin and analyst roles
+- [x] PostgreSQL 16 with Alembic migrations
+- [ ] Retrain on labelled Pakistani SME loan data
 - [ ] ECIB integration
 - [ ] Mobile responsive + Urdu support
 

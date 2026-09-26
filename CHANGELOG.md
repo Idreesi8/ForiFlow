@@ -4,6 +4,21 @@ All notable changes to ForiFlow are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versioning follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `python -m ml.compare_models` benchmarks the served ensemble against logistic
+  regression, XGBoost alone, Random Forest alone, LightGBM and an MLP under the
+  production CV protocol, writing `ml/model_comparison.json`. The results and
+  what they mean are in `backend/README.md`.
+
+### Fixed
+
+- The root README no longer lists JWT authentication and PostgreSQL as roadmap
+  items (both shipped in 1.1.0), describes the EWS as the rule-based check it
+  is, and reports the measured scoring latency.
+
 ## [1.2.0] - 2026-09-25
 
 ### Fixed

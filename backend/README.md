@@ -87,6 +87,7 @@ backend/
   ml/features.py              # canonical feature schema shared by train + serve
   ml/train_real_model.py      # training pipeline -> model, scaler, SHAP, metadata
   ml/predict_sample.py        # single-applicant smoke test
+  ml/compare_models.py        # served ensemble vs LR, XGB, RF, LightGBM, MLP
   ml/shap_utils.py            # SHAP output normalisation helpers
   ml/data/                    # raw CSV training data (not committed)
   tests/                      # pytest suite (in-memory SQLite)
@@ -237,6 +238,33 @@ calibrated to a 50% prior rather than the portfolio's true default rate. The
 score is therefore a **relative creditworthiness ranking** on a 0-100 scale, not
 an absolute default probability — which is also what keeps the SHAP base value
 near 50 and spreads applicants across the policy bands.
+
+### Why XGBoost + Random Forest: measured alternatives
+
+`python -m ml.compare_models` (LightGBM optional) scores each learner on the
+served training set with the production protocol: same 5 stratified folds,
+StandardScaler + SMOTE fitted inside each training fold, production monotone
+constraints on every tree model. Results are in `ml/model_comparison.json`.
+
+| Learner | CV AUC-ROC | PR-AUC | F1 | Predict, one row | Explanation |
+| ------- | ---------: | -----: | -: | ---------------: | ----------- |
+| Logistic regression | 0.7638 ± 0.0067 | 0.535 | 0.510 | 0.05 ms | exact (linear) |
+| MLP (32-16) | 0.7711 ± 0.0063 | 0.555 | 0.533 | 0.06 ms | KernelSHAP only, not monotone |
+| Random Forest alone | 0.7723 ± 0.0080 | 0.561 | 0.526 | 10.7 ms | exact TreeSHAP |
+| LightGBM | 0.7750 ± 0.0072 | 0.564 | 0.540 | 0.4 ms | exact TreeSHAP |
+| XGBoost alone | 0.7753 ± 0.0072 | 0.566 | 0.542 | 0.3 ms | exact TreeSHAP |
+| **Served XGBoost + RF** | **0.7752 ± 0.0073** | **0.567** | **0.543** | 12.1 ms | exact TreeSHAP |
+
+Timings are from a cloud CI-class machine (2 vCPUs) and only comparable with
+each other. The honest reading: on three features the boosted trees, LightGBM
+and the ensemble are statistically tied (at most 0.0003 AUC apart, far inside
+the ±0.0073 spread across folds), and the tree models beat logistic regression by about
+0.011 AUC because the facility-to-turnover effect is a threshold, not a line.
+The forest does not add discrimination here. It is kept because the
+`confidence` indicator needs two differently-built learners to disagree
+(boosting versus bagging), and its extra ~12 ms is small next to the ~150 ms
+SHAP step. On richer bank data this comparison should be re-run, and the forest
+dropped if it still adds nothing.
 
 ### Model limitations (measured on the shipped artefacts)
 

@@ -1,0 +1,121 @@
+{
+  "dataset": "credit_risk_shared",
+  "rows": 32581,
+  "features": [
+    "loan_to_income",
+    "payment_history_score",
+    "years_in_operation"
+  ],
+  "protocol": "StratifiedKFold(5, shuffle=True, random_state=42); StandardScaler + SMOTE fitted inside each training fold; production monotone constraints on the tree models",
+  "models": {
+    "logistic_regression": {
+      "auc_roc_mean": 0.763817406098749,
+      "auc_roc_std": 0.006730907003871801,
+      "pr_auc_mean": 0.5354366661093214,
+      "f1_mean": 0.5099737244891791,
+      "brier_mean": 0.19077871630994986,
+      "fit_seconds_mean": 0.048211429799994224,
+      "single_row_predict_ms_median": 0.047067999958017026,
+      "explainer": "exact (linear coefficients)",
+      "monotone": "yes, by construction (one sign per feature)",
+      "per_fold_auc": [
+        0.7632267508064081,
+        0.7765508441303495,
+        0.7628867722816672,
+        0.7586075680991493,
+        0.7578150951761706
+      ]
+    },
+    "xgboost_only": {
+      "auc_roc_mean": 0.7752634381220377,
+      "auc_roc_std": 0.007202394851877795,
+      "pr_auc_mean": 0.5656626018925339,
+      "f1_mean": 0.5415354223061084,
+      "brier_mean": 0.17764837443828582,
+      "fit_seconds_mean": 0.304126100600115,
+      "single_row_predict_ms_median": 0.30579350004700245,
+      "explainer": "exact TreeSHAP",
+      "monotone": "yes (monotone_constraints)",
+      "per_fold_auc": [
+        0.7754530999614911,
+        0.7877838271991483,
+        0.7759210527042376,
+        0.7660501146754937,
+        0.7711090960698177
+      ]
+    },
+    "random_forest_only": {
+      "auc_roc_mean": 0.7722968745007925,
+      "auc_roc_std": 0.00798328930545558,
+      "pr_auc_mean": 0.5610593899013403,
+      "f1_mean": 0.526429555083872,
+      "brier_mean": 0.20682920202389118,
+      "fit_seconds_mean": 1.3547484943999735,
+      "single_row_predict_ms_median": 10.680057500167095,
+      "explainer": "exact TreeSHAP",
+      "monotone": "yes (monotonic_cst)",
+      "per_fold_auc": [
+        0.7729447805341273,
+        0.785769930372292,
+        0.7740712992367955,
+        0.7624463829049606,
+        0.7662519794557869
+      ]
+    },
+    "served_ensemble_xgb_rf": {
+      "auc_roc_mean": 0.7752217608152002,
+      "auc_roc_std": 0.007338855422182144,
+      "pr_auc_mean": 0.5670297171650194,
+      "f1_mean": 0.5425236860721261,
+      "brier_mean": 0.18495525562213777,
+      "fit_seconds_mean": 1.6037106359999598,
+      "single_row_predict_ms_median": 12.135078500023155,
+      "explainer": "exact TreeSHAP per member, weighted",
+      "monotone": "yes (both members constrained)",
+      "per_fold_auc": [
+        0.7757266645410892,
+        0.7877029979838944,
+        0.7764983845201078,
+        0.7658638576407857,
+        0.7703168993901239
+      ]
+    },
+    "mlp_neural_network": {
+      "auc_roc_mean": 0.7711328832386096,
+      "auc_roc_std": 0.006286550602552964,
+      "pr_auc_mean": 0.5554491279093868,
+      "f1_mean": 0.5326985392914538,
+      "brier_mean": 0.17890689635178636,
+      "fit_seconds_mean": 1.2721257433999198,
+      "single_row_predict_ms_median": 0.05521800017049827,
+      "explainer": "no exact explainer; KernelSHAP (sampled, slow)",
+      "monotone": "no (not constrainable in scikit-learn)",
+      "per_fold_auc": [
+        0.7714085677334581,
+        0.7825907399400414,
+        0.7707929877515093,
+        0.764654395479555,
+        0.7662177252884843
+      ]
+    },
+    "lightgbm": {
+      "auc_roc_mean": 0.7750120217979894,
+      "auc_roc_std": 0.007185546522287741,
+      "pr_auc_mean": 0.5642506140418344,
+      "f1_mean": 0.5402578331151399,
+      "brier_mean": 0.17775191983199873,
+      "fit_seconds_mean": 0.34323870460011674,
+      "single_row_predict_ms_median": 0.4221760000291397,
+      "explainer": "exact TreeSHAP",
+      "monotone": "yes (monotone_constraints)",
+      "per_fold_auc": [
+        0.775247374428751,
+        0.7876082255564447,
+        0.7753650498614789,
+        0.7659298107250073,
+        0.7709096484182655
+      ]
+    }
+  },
+  "recorded_at": "2026-09-27T00:03:34"
+}
