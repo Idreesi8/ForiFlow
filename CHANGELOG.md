@@ -38,6 +38,8 @@ All notable changes to ForiFlow are recorded here. The format follows
   30% of estimated annual turnover.
 - `backend/README.md`: training-data sources with checksums, and measured
   model limitations.
+- `docs/screenshots/` recaptured from the rebuilt 1.2.0 stack, and the FYP
+  proposal (v2.5) restated for the monotone model, roles and CI.
 
 ### Changed
 
