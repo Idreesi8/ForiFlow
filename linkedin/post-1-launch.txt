@@ -1,14 +1,14 @@
-🚀 I spent 3 months building an AI system that could save Pakistani banks millions.
+🚀 I spent 3 months building an AI credit-scoring prototype for Pakistani SME lenders.
 
 The Problem:
-• 60% of SME loans rejected due to lack of collateral
-• 14-17% NPL ratio in microfinance
-• SBP mandates explainable AI for credit decisions
+• SME financing is only 6.06% of private-sector credit (SBP, 31 Dec 2024)
+• Pakistan's MSME non-performing loan ratio was 15.0% in 2023 (ADB, 2024)
+• Lenders need to explain automated credit decisions to borrowers and reviewers
 
 The Solution — ForiFlow:
 ✅ Scores SMEs using alternative data (digital payments, officer-entered ECIB-style history)
 ✅ SHAP explainability for every decision — built with SBP review in mind (not certified)
-✅ Early Warning System detects defaults 60-90 days in advance
+✅ Early Warning System: monthly re-score, alert when the score drops more than 15 points
 ✅ One-command Docker deployment for bank demos
 
 Built with: FastAPI ⚡ React ⚡ XGBoost ⚡ SHAP ⚡ Docker

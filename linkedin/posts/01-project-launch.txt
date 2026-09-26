@@ -1,4 +1,4 @@
-I spent 3 months building an AI system that could save Pakistani banks millions...
+I spent 3 months building an AI credit-scoring prototype for Pakistani SME lenders.
 
 Not a slide deck. A running credit desk.
 

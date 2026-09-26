@@ -1,10 +1,10 @@
-60% of SMEs in Pakistan get rejected for loans. Not because they're risky — banks just have no data on them.
+SME financing is only 6.06% of Pakistan's private-sector credit (SBP, 31 Dec 2024). Often not because the businesses are risky — the bank just has no usable data on them.
 
 Walk into a branch with a five-year trading business, Raast receipts every month, and no titled property. The file dies at collateral. That is not a risk decision. That is a data decision wearing a credit policy.
 
-The unbanked SME is not invisible. Digital payments, POS settlements, inventory turns, and ECIB payment history already exist. They are just not in the scorecard. Meanwhile microfinance NPLs sit at 14–17%, and many books only notice deterioration after 90 days.
+The unbanked SME is not invisible. Digital payments, POS settlements, inventory turns, and ECIB payment history already exist. They are just not in the scorecard. Meanwhile Pakistan's MSME non-performing loan ratio was 15.0% in 2023 (ADB, 2024), and deterioration is often noticed only once installments are already late.
 
-ForiFlow scores on those alternative signals (bureau-style fields are officer-entered — there is no live ECIB connector), explains the result with SHAP so the officer can write an adverse-action letter, and keeps watching the borrower after disbursement. A drop of more than 15 points raises an Early Warning alert — typically 60–90 days before a default would hit the provision.
+ForiFlow scores on those alternative signals (bureau-style fields are officer-entered — there is no live ECIB connector), explains the result with SHAP so the officer can write an adverse-action letter, and keeps watching the borrower after disbursement. A drop of more than 15 points raises an Early Warning alert with an estimated runway to default (a heuristic, not yet validated on repayment data).
 
 We can fix this. 30-day on-premise pilot available for banks.
 
