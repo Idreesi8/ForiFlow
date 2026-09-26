@@ -12,6 +12,7 @@ Run with the stack already up (start.bat)::
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import time
 import urllib.error
@@ -225,12 +226,15 @@ def main() -> int:
             p.locator(".swagger-ui .opblock, .swagger-ui .info").first.wait_for(timeout=30000)
             p.wait_for_timeout(800)
 
-        # Score first, then photograph the dashboard, so its "Latest
-        # assessment" and recent-applications table show the row this run
-        # created (the one cleanup_test_applications.py keeps), not the
-        # previous run's.
+        # Score first, then drop the previous runs' Khan Traders rows, then
+        # photograph the dashboard, so every screenshot shows the one row that
+        # remains in the database.
         capture(page, "02-scoring-form.png", form)
         capture(page, "03-score-result.png", result)
+        subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "cleanup_test_applications.py")],
+            check=False,
+        )
         capture(page, "01-dashboard.png", dashboard)
         capture(page, "04-shap-chart.png", shap)
         capture(page, "05-ews-alerts.png", alerts)
