@@ -255,16 +255,20 @@ constraints on every tree model. Results are in `ml/model_comparison.json`.
 | XGBoost alone | 0.7753 ± 0.0072 | 0.566 | 0.542 | 0.3 ms | exact TreeSHAP |
 | **Served XGBoost + RF** | **0.7752 ± 0.0073** | **0.567** | **0.543** | 12.1 ms | exact TreeSHAP |
 
-Timings are from a cloud CI-class machine (2 vCPUs) and only comparable with
-each other. The honest reading: on three features the boosted trees, LightGBM
-and the ensemble are statistically tied (at most 0.0003 AUC apart, far inside
-the ±0.0073 spread across folds), and the tree models beat logistic regression by about
-0.011 AUC because the facility-to-turnover effect is a threshold, not a line.
-The forest does not add discrimination here. It is kept because the
-`confidence` indicator needs two differently-built learners to disagree
-(boosting versus bagging), and its extra ~12 ms is small next to the ~150 ms
-SHAP step. On richer bank data this comparison should be re-run, and the forest
-dropped if it still adds nothing.
+Timings are from a cloud CI-class machine (2 vCPUs), vary between runs, and are
+only comparable with each other. Random Forest, the MLP and logistic regression
+are significantly below the served ensemble (paired t-test p < 0.01); with five
+folds that share training rows the test is approximate. The honest reading: on
+three features the boosted trees, LightGBM and the ensemble are statistically
+tied (at most 0.0003 AUC apart, far inside the ±0.0073 spread across folds; a
+paired t-test on the five fold AUCs gives p = 0.87 against XGBoost and p = 0.51
+against LightGBM), and the tree models beat logistic regression by about 0.011
+AUC because the facility-to-turnover effect is a threshold, not a line. The
+forest does not add discrimination here. It is kept because the `confidence`
+indicator needs two differently-built learners to disagree (boosting versus
+bagging), and its extra ~12 ms is small next to the ~150 ms SHAP step. On richer
+bank data this comparison should be re-run, and the forest dropped if it still
+adds nothing.
 
 ### Model limitations (measured on the shipped artefacts)
 

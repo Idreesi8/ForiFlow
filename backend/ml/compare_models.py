@@ -197,6 +197,33 @@ def _single_row_latency_ms(pipeline, rows: np.ndarray) -> float:
     return float(np.median(timings))
 
 
+SERVED = "served_ensemble_xgb_rf"
+
+
+def add_paired_tests(results: dict) -> None:
+    """Paired t-test of each learner's fold AUCs against the served ensemble.
+
+    Every learner is scored on the same five folds, so the fold-by-fold
+    differences are paired. With only five folds that share training rows the
+    test is approximate; it separates "inside fold noise" from a real gap, it
+    does not prove two models are identical.
+    """
+    from scipy.stats import ttest_rel
+
+    served = results[SERVED]["per_fold_auc"]
+    print("\nPaired t-test of fold AUCs against the served ensemble")
+    for name, result in results.items():
+        if name == SERVED:
+            continue
+        diffs = [a - b for a, b in zip(served, result["per_fold_auc"], strict=True)]
+        p_value = float(ttest_rel(served, result["per_fold_auc"]).pvalue)
+        result["vs_served"] = {
+            "mean_auc_difference": float(np.mean(diffs)),
+            "paired_t_test_p": p_value,
+        }
+        print(f"  {name:<26} served − this = {np.mean(diffs):+.4f}   p = {p_value:.4f}")
+
+
 def main() -> int:
     """Run the comparison and write ``model_comparison.json``."""
     raw = load_datasets(("credit_risk",))
@@ -209,6 +236,7 @@ def main() -> int:
     results = {
         name: evaluate(name, spec, X, y) for name, spec in candidates(winner.features).items()
     }
+    add_paired_tests(results)
     payload = {
         "dataset": "credit_risk_shared",
         "rows": int(len(X)),
