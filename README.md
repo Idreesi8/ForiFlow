@@ -99,6 +99,9 @@ Visit: [http://127.0.0.1:3000](http://127.0.0.1:3000)
 On Windows, double-click `start.bat` (or the desktop **ForiFlow** shortcut
 from `create-shortcut.bat`). That starts existing images without rebuilding.
 After code changes, use `rebuild.bat`.
+To see what is stored in PostgreSQL (applications with their SHAP explanations,
+EWS records, alerts, bcrypt-hashed officer accounts), run `show-data.bat`; the
+read-only queries are in `scripts/show-data.sql`.
 Confirm the trained ensemble is live with:
 
 ```bash

@@ -8,6 +8,9 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ### Added
 
+- `show-data.bat` / `scripts/show-data.sql`: read-only view of what PostgreSQL
+  stores (latest applications and their SHAP explanations, EWS records, alerts,
+  hashed officer accounts) and which Docker volume holds it.
 - `python -m ml.compare_models` benchmarks the served ensemble against logistic
   regression, XGBoost alone, Random Forest alone, LightGBM and an MLP under the
   production CV protocol, writing `ml/model_comparison.json`. The results and
