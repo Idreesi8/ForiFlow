@@ -52,6 +52,10 @@ export default function ReviewPanel({ applicationId, onDecided }) {
       onDecided?.(updated);
     } catch (requestError) {
       setSubmitError(apiErrorMessage(requestError, "The decision was not saved."));
+      // 409: someone else decided first. Reload so the recorded decision shows.
+      if (requestError?.response?.status === 409) {
+        await load();
+      }
     } finally {
       setSubmitting(null);
     }

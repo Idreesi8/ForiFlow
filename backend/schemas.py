@@ -239,6 +239,33 @@ class ApplicationSummary(BaseModel):
         return Decision(self.review_decision.value)
 
 
+class ScoreBucket(BaseModel):
+    """One bar of the score histogram: scores in (lower, upper], 0 included."""
+
+    label: str
+    lower: float
+    upper: float
+    count: int
+
+
+class PortfolioStats(BaseModel):
+    """Portfolio totals computed in SQL over every application and alert."""
+
+    total_applications: int
+    model_decisions: dict[str, int] = Field(
+        ..., description="Applications per model band (Approved / Manual Review / Rejected)."
+    )
+    pending_review: int = Field(..., description="Manual Review cases awaiting a decision.")
+    final_approved: int = Field(..., description="Model Approved plus officer-approved.")
+    final_rejected: int = Field(..., description="Model Rejected plus officer-rejected.")
+    approval_rate: float = Field(..., description="final_approved / total, in percent.")
+    approved_exposure_pkr: float
+    average_score: float | None
+    score_histogram: list[ScoreBucket]
+    open_alerts: int = Field(..., description="EWS alerts that are Active or In Review.")
+    worst_open_drop: float | None
+
+
 class ReviewRequest(BaseModel):
     """Officer decision on a Manual Review application."""
 
@@ -376,8 +403,9 @@ class HealthResponse(BaseModel):
 
 
 class UserRole(StrEnum):
-    """On-premise officer roles. Both score and monitor; admin also resolves
-    EWS alerts and manages officer accounts."""
+    """On-premise officer roles. Both score, monitor and take alerts for review;
+    admin also decides Manual Review cases, resolves EWS alerts and manages
+    officer accounts."""
 
     ADMIN = "admin"
     ANALYST = "analyst"

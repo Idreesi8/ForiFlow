@@ -37,6 +37,8 @@ function formatFeatureValue(feature, value) {
       return `${amount.toFixed(1)} years`;
     case "num_employees":
       return `${amount.toFixed(0)} employees`;
+    case "loan_to_income":
+      return `${(amount * 100).toFixed(1)}% of annual turnover`;
     case "loan_affordability":
       return `${(amount * 100).toFixed(1)}% of monthly cash flow`;
     case "debt_burden":

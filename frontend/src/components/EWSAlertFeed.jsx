@@ -25,7 +25,8 @@ const NOTE_MIN = 5;
  * closes it with a note (`PATCH /ews/alerts/{id}/resolve`).
  */
 export default function EWSAlertFeed({
-  limit = 50,
+  limit = 200,
+  maxRows = null,
   compact = false,
   showFilters = true,
   onAlertsLoaded,
@@ -118,6 +119,10 @@ export default function EWSAlertFeed({
     () => alerts.filter((alert) => alert.alert_status === "Resolved").length,
     [alerts],
   );
+  const shownAlerts = useMemo(
+    () => (maxRows ? visibleAlerts.slice(0, maxRows) : visibleAlerts),
+    [visibleAlerts, maxRows],
+  );
   const worstDrop = useMemo(
     () => visibleAlerts.reduce((worst, alert) => Math.max(worst, alert.score_drop), 0),
     [visibleAlerts],
@@ -196,7 +201,7 @@ export default function EWSAlertFeed({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {visibleAlerts.map((alert) => {
+              {shownAlerts.map((alert) => {
                 const severity = alertSeverity(alert.score_drop);
                 const statusStyle = alertStatusStyle(alert.alert_status);
                 const isResolved = alert.alert_status === "Resolved";
@@ -348,6 +353,18 @@ export default function EWSAlertFeed({
               })}
             </tbody>
           </table>
+          {shownAlerts.length < visibleAlerts.length ? (
+            <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+              Showing the {shownAlerts.length} worst of {visibleAlerts.length}.{" "}
+              <button
+                type="button"
+                onClick={() => navigate("/alerts")}
+                className="font-semibold text-brand-700 hover:underline"
+              >
+                See all alerts
+              </button>
+            </p>
+          ) : null}
         </div>
       )}
     </section>

@@ -43,11 +43,12 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 
 | Route           | Sidebar item   | What it does                                                        |
 | --------------- | -------------- | ------------------------------------------------------------------- |
-| `/`             | Dashboard      | Portfolio KPIs, decision mix, score distribution, latest assessment  |
-| `/scoring`      | Credit Scoring | Application intake form, live score gauge and SHAP rationale         |
-| `/shap/:id`     | SHAP Reports   | Application picker plus the full feature-attribution chart           |
-| `/alerts`       | EWS Alerts     | Monthly monitoring run and the alert queue with resolve actions      |
-| `/applications` | Applications   | Sortable, searchable register with a "View SHAP" action per row      |
+| `/login`        | —              | Officer sign-in (JWT)                                               |
+| `/`             | Dashboard      | Portfolio KPIs from `GET /score/stats`, model decision mix, score distribution, latest assessment, open alerts |
+| `/scoring`      | Credit Scoring | Application intake form, live score gauge, SHAP rationale and, for Manual Review, the decision panel |
+| `/shap/:id`     | SHAP Reports   | Application picker, the full feature-attribution chart and the decision on file |
+| `/alerts`       | EWS Alerts     | Monthly monitoring of approved facilities; alert queue with Take for review and admin Resolve with a note |
+| `/applications` | Applications   | Sortable, searchable register with model and final decision, Pending review filter, and a Review action for admins |
 
 ## Components
 
@@ -61,12 +62,18 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `components/ShapWaterfall.jsx` — horizontal contribution chart from
   `POST /explain/{id}`, with base value, positive/negative totals, the credit
   file narrative and the compliance note.
-- `components/EWSAlertFeed.jsx` — alert table from `GET /ews/alerts` with red
-  severity badges, days-to-default and `PATCH /ews/alerts/{id}/resolve`.
+- `components/EWSAlertFeed.jsx` — alert table from `GET /ews/alerts` with
+  severity badges, days-to-default, `PATCH /ews/alerts/{id}/review` (any
+  officer) and `PATCH /ews/alerts/{id}/resolve` with a note (admin).
 - `components/ApplicationTable.jsx` — sortable register from
-  `GET /score/applications` with search, decision filters and per-row SHAP links.
-- `components/MonitoringPanel.jsx` — records a surveillance month through
-  `POST /ews/monitor` so alerts can be raised from the UI.
+  `GET /score/applications` with search, model and final decision columns,
+  Pending review / Approved / Rejected filters and per-row SHAP or Review links.
+- `components/ReviewPanel.jsx` — the decision on file; for a pending Manual
+  Review case an admin approves or rejects it with a reason through
+  `POST /score/applications/{id}/review`.
+- `components/MonitoringPanel.jsx` — records a surveillance month for an
+  approved facility through `POST /ews/monitor` so alerts can be raised from
+  the UI.
 
 ## API layer
 
@@ -79,7 +86,8 @@ the user how to start the backend when the API is unreachable.
 
 - The score is oriented so **higher is better** even though the API field is
   named `risk_score`; the band colours follow that orientation everywhere.
-- SQLite returns timestamps without a timezone suffix, so `parseApiDate()`
-  interprets naive values as UTC before rendering them in local (PKT) time.
+- SQLite (the non-Docker fallback) returns timestamps without a timezone
+  suffix, so `parseApiDate()` interprets naive values as UTC before rendering
+  them in local (PKT) time.
 - Tailwind v4 is configured through the `@tailwindcss/vite` plugin; the brand
   palette and shared component classes live in `src/index.css`.

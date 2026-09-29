@@ -1,7 +1,7 @@
 # ForiFlow architecture
 
-ForiFlow is a two-process credit-intelligence stack: a FastAPI scoring service
-and a React officer dashboard. The machine-learning artefacts live beside the
+ForiFlow is a three-container credit-intelligence stack: a FastAPI scoring
+service, a React officer dashboard served by nginx, and PostgreSQL 16. The machine-learning artefacts live beside the
 API so a bank can run the whole system on one laptop, with no cloud dependency.
 
 ## System context
@@ -35,7 +35,7 @@ sequenceDiagram
     participant Dashboard
     participant API as FastAPI /score
     participant Engine as MLScoringService
-    participant DB as SQLite
+    participant DB as PostgreSQL
 
     Officer->>Dashboard: Submit SMEApplicant
     Dashboard->>API: POST /api/score
@@ -115,9 +115,15 @@ flowchart LR
     drop -->|no| track[EWSTracking row only]
 ```
 
-`POST /ews/monitor` records one borrower-month. The baseline is the originating
-application score. A drop greater than 15 points opens an `Active` alert with
-an estimated days-to-default used by the officer queue.
+`POST /ews/monitor` records one borrower-month. Only an approved facility can be
+monitored: Approved by the model, or Manual Review approved by an officer
+(anything else is `409`), and only up to the facility's tenure. The baseline is
+the originating application score. When the latest month drops more than 15
+points, an `Active` alert opens (or the open one is updated) with an estimated
+days-to-default. Back-filling an older month never rewrites the alert; if a
+correction brings the alerting month back within the threshold, the alert is
+closed with a note. Any officer can take an alert `In Review`; an admin
+resolves it with a note.
 
 ## Deployment
 
@@ -128,18 +134,21 @@ flowchart TB
         subgraph net [foriflow_default]
             fe[frontend nginx :3000]
             be[backend uvicorn :8000]
+            db[db postgres:16.6 :5432]
         end
-        vol[(volume foriflow-data)]
+        vol[(volume foriflow-pgdata)]
         compose --> fe
         compose --> be
-        be --> vol
+        compose --> db
         fe -->|proxy /api| be
+        be --> db
+        db --> vol
     end
     officer[Officer browser] --> fe
 ```
 
-Images: `foriflow-backend:1.0.0` (`python:3.12-slim` + `libgomp1`) and
-`foriflow-frontend:1.0.0` (Node 20 build, nginx 1.27). See
+Images: `foriflow-backend:1.3.0` (`python:3.12-slim` + `libgomp1`) and
+`foriflow-frontend:1.3.0` (Node 20 build, nginx 1.27). See
 [deployment.md](deployment.md).
 
 ## Repository map
@@ -147,8 +156,9 @@ Images: `foriflow-backend:1.0.0` (`python:3.12-slim` + `libgomp1`) and
 | Path | Responsibility |
 |------|----------------|
 | `backend/main.py` | App factory, CORS, lifespan (eager model load) |
-| `backend/routers/` | `/score`, `/explain`, `/ews` |
-| `backend/services/` | Scoring engines and EWS rules |
+| `backend/routers/` | `/auth`, `/score` (incl. Manual Review decision and stats), `/explain`, `/ews` |
+| `backend/services/` | Scoring engines, EWS rules, auth (bcrypt, JWT, roles) |
+| `backend/alembic/` | PostgreSQL schema migrations (0001–0003) |
 | `backend/ml/` | Feature schema, training, artefacts |
 | `frontend/src/pages/` | Five officer workspaces |
 | `frontend/src/api/client.js` | Axios client, base `/api` |

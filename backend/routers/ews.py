@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from models.database import Alert, Application, EWSTracking, User, get_db, utcnow
@@ -82,15 +82,28 @@ async def monitor_borrower(
     payload: EWSMonitorRequest,
     db: DbSession,
     monitor: Monitor,
+    officer: Officer,
 ) -> EWSMonitorResponse:
     """Evaluate one borrower-month of surveillance data.
 
     The borrower's origination score is the baseline. An alert is raised when
     the recomputed score falls more than 15 points below that baseline. Any
-    already-active alert is updated in place instead of being duplicated.
+    already-open alert is updated in place instead of being duplicated.
+
+    Only the latest recorded month drives the alert, so back-filling an older
+    month never rewrites it. If a correction of the latest month brings it
+    back within the threshold, the open alert it raised is closed with a note.
     """
     borrower = _load_borrower(payload.borrower_id, db)
     _require_approved_facility(borrower)
+    if payload.month_number > borrower.tenure_months:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Month {payload.month_number} is past the end of the facility: "
+                f"application {borrower.id} has a {borrower.tenure_months}-month tenure."
+            ),
+        )
 
     outcome = monitor.evaluate(
         baseline_score=borrower.risk_score,
@@ -106,6 +119,11 @@ async def monitor_borrower(
             EWSTracking.month_number == payload.month_number,
         )
     ).first()
+    # A corrected month that breached before is the one the open alert follows.
+    corrected_breach = (
+        tracking is not None
+        and borrower.risk_score - tracking.monthly_score > monitor.alert_threshold
+    )
     if tracking is None:
         tracking = EWSTracking(
             borrower_id=payload.borrower_id, month_number=payload.month_number
@@ -117,18 +135,28 @@ async def monitor_borrower(
     tracking.pos_cash_balance = payload.pos_cash_balance
     tracking.monthly_score = outcome.current_score
     tracking.data_source_primary = payload.data_source_primary.value
+    db.flush()
 
-    alert: Alert | None = None
-    if outcome.alert_triggered:
-        alert = db.scalars(
-            select(Alert)
-            .where(
-                Alert.borrower_id == payload.borrower_id,
-                Alert.alert_status != AlertStatus.RESOLVED.value,
-            )
-            .order_by(Alert.triggered_at.desc())
-        ).first()
+    latest_month = db.scalar(
+        select(func.max(EWSTracking.month_number)).where(
+            EWSTracking.borrower_id == payload.borrower_id
+        )
+    )
+    is_latest = payload.month_number >= (latest_month or 0)
 
+    alert: Alert | None = db.scalars(
+        select(Alert)
+        .where(
+            Alert.borrower_id == payload.borrower_id,
+            Alert.alert_status != AlertStatus.RESOLVED.value,
+        )
+        .order_by(Alert.triggered_at.desc())
+    ).first()
+
+    raised = is_latest and outcome.alert_triggered
+    touched = False
+    if raised:
+        touched = True
         if alert is None:
             alert = Alert(
                 borrower_id=payload.borrower_id,
@@ -136,16 +164,36 @@ async def monitor_borrower(
                 triggered_at=utcnow(),
             )
             db.add(alert)
-
         alert.baseline_score = outcome.baseline_score
         alert.current_score = outcome.current_score
         alert.score_drop = outcome.score_drop
         alert.estimated_days_to_default = outcome.estimated_days_to_default
+    elif is_latest and corrected_breach and alert is not None:
+        # The month that raised the alert was corrected and no longer breaches.
+        touched = True
+        alert.current_score = outcome.current_score
+        alert.score_drop = outcome.score_drop
+        alert.alert_status = AlertStatus.RESOLVED.value
+        alert.resolved_at = utcnow()
+        alert.resolved_by = officer.username
+        alert.resolution_note = (
+            f"Closed automatically: month {payload.month_number} was corrected and is "
+            f"now within the {monitor.alert_threshold:g}-point threshold."
+        )
 
     db.commit()
     db.refresh(tracking)
-    if alert is not None:
+    if touched:
         db.refresh(alert)
+    else:
+        alert = None
+
+    recommended_action = outcome.recommended_action
+    if not is_latest:
+        recommended_action = (
+            f"Earlier month recorded. Alerts follow the latest month on file "
+            f"(month {latest_month}), so no alert was changed."
+        )
 
     return EWSMonitorResponse(
         borrower_id=borrower.id,
@@ -154,12 +202,10 @@ async def monitor_borrower(
         baseline_score=outcome.baseline_score,
         current_score=outcome.current_score,
         score_drop=outcome.score_drop,
-        alert_triggered=outcome.alert_triggered,
+        alert_triggered=raised,
         alert_threshold=monitor.alert_threshold,
-        estimated_days_to_default=(
-            outcome.estimated_days_to_default if outcome.alert_triggered else None
-        ),
-        recommended_action=outcome.recommended_action,
+        estimated_days_to_default=outcome.estimated_days_to_default if raised else None,
+        recommended_action=recommended_action,
         tracking=EWSTrackingResponse.model_validate(tracking),
         alert=AlertResponse.model_validate(alert) if alert is not None else None,
     )
@@ -226,8 +272,20 @@ def _load_open_alert(alert_id: int, db: Session) -> Alert:
     summary="Take an EWS alert for review",
 )
 async def review_alert(alert_id: int, db: DbSession, officer: Officer) -> AlertResponse:
-    """Mark an open alert In Review and record which officer is handling it."""
+    """Mark an open alert In Review and record which officer is handling it.
+
+    Taking an alert someone else is already reviewing returns ``409``, so a
+    case never changes hands silently.
+    """
     alert = _load_open_alert(alert_id, db)
+    if (
+        alert.alert_status == AlertStatus.IN_REVIEW.value
+        and alert.assigned_to not in (None, officer.username)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Alert {alert_id} is already being reviewed by {alert.assigned_to}.",
+        )
     alert.alert_status = AlertStatus.IN_REVIEW.value
     alert.assigned_to = officer.username
     db.commit()

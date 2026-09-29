@@ -6,14 +6,18 @@ import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from models.database import Application, User, get_db, utcnow
+from models.database import Alert, Application, User, get_db, utcnow
 from schemas import (
+    AlertStatus,
     ApplicationSummary,
     Decision,
+    OfficerDecision,
+    PortfolioStats,
     ReviewRequest,
+    ScoreBucket,
     ScoreResponse,
     SMEApplicant,
 )
@@ -118,6 +122,10 @@ async def list_applications(
         bool | None,
         Query(description="true: Manual Review cases still awaiting an officer decision."),
     ] = None,
+    final_decision: Annotated[
+        OfficerDecision | None,
+        Query(description="The decision that stands: the model band, or the officer's call."),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[ApplicationSummary]:
@@ -135,9 +143,99 @@ async def list_applications(
             (Application.decision != Decision.MANUAL_REVIEW.value)
             | Application.review_decision.is_not(None)
         )
+    if final_decision is not None:
+        statement = statement.where(_final_is(final_decision.value))
 
     applications = db.scalars(statement.offset(offset).limit(limit)).all()
     return [ApplicationSummary.model_validate(app) for app in applications]
+
+
+# Edges sit on the policy boundaries (40 and 70), so no bar mixes decisions.
+SCORE_BUCKETS: tuple[tuple[str, float, float], ...] = (
+    ("0-20", 0.0, 20.0),
+    ("20-40", 20.0, 40.0),
+    ("40-55", 40.0, 55.0),
+    ("55-70", 55.0, 70.0),
+    ("70-85", 70.0, 85.0),
+    ("85-100", 85.0, 100.0),
+)
+
+
+def _final_is(decision: str):
+    """SQL condition: the decision that stands equals ``decision``."""
+    return or_(
+        Application.decision == decision,
+        and_(
+            Application.decision == Decision.MANUAL_REVIEW.value,
+            Application.review_decision == decision,
+        ),
+    )
+
+
+def _in_bucket(lower: float, upper: float):
+    """SQL condition: score in (lower, upper], with 0 in the first bucket."""
+    if lower <= 0:
+        return Application.risk_score <= upper
+    return and_(Application.risk_score > lower, Application.risk_score <= upper)
+
+
+@router.get(
+    "/stats",
+    response_model=PortfolioStats,
+    summary="Portfolio totals for the dashboard",
+)
+async def portfolio_stats(db: DbSession) -> PortfolioStats:
+    """Counts, exposure, score histogram and open alerts over every row."""
+    approved = _final_is(Decision.APPROVED.value)
+    rejected = _final_is(Decision.REJECTED.value)
+    pending = and_(
+        Application.decision == Decision.MANUAL_REVIEW.value,
+        Application.review_decision.is_(None),
+    )
+    totals = db.execute(
+        select(
+            func.count(Application.id),
+            func.count(case((pending, 1))),
+            func.count(case((approved, 1))),
+            func.count(case((rejected, 1))),
+            func.coalesce(func.sum(case((approved, Application.loan_amount_pkr))), 0.0),
+            func.avg(Application.risk_score),
+            *[
+                func.count(case((_in_bucket(lower, upper), 1)))
+                for _label, lower, upper in SCORE_BUCKETS
+            ],
+        )
+    ).one()
+    total, pending_count, approved_count, rejected_count, exposure, average = totals[:6]
+    bucket_counts = totals[6:]
+
+    by_band = dict.fromkeys((band.value for band in Decision), 0)
+    for band, count in db.execute(
+        select(Application.decision, func.count()).group_by(Application.decision)
+    ):
+        by_band[band] = count
+
+    open_filter = Alert.alert_status != AlertStatus.RESOLVED.value
+    open_alerts, worst_drop = db.execute(
+        select(func.count(Alert.id), func.max(Alert.score_drop)).where(open_filter)
+    ).one()
+
+    return PortfolioStats(
+        total_applications=total,
+        model_decisions=by_band,
+        pending_review=pending_count,
+        final_approved=approved_count,
+        final_rejected=rejected_count,
+        approval_rate=round(approved_count / total * 100, 2) if total else 0.0,
+        approved_exposure_pkr=float(exposure),
+        average_score=round(float(average), 2) if average is not None else None,
+        score_histogram=[
+            ScoreBucket(label=label, lower=lower, upper=upper, count=count)
+            for (label, lower, upper), count in zip(SCORE_BUCKETS, bucket_counts, strict=True)
+        ],
+        open_alerts=open_alerts,
+        worst_open_drop=float(worst_drop) if worst_drop is not None else None,
+    )
 
 
 @router.get(

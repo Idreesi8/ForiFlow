@@ -95,12 +95,14 @@ subject; describe the change a reviewer will read in `git log`.
 
 ## What not to commit
 
-- `backend/ml/*.pkl` and raw CSVs under `backend/ml/data/` (see `.gitignore`)
+- Raw CSVs under `backend/ml/data/` (see `.gitignore`)
 - Local SQLite files, `.env`, and `node_modules`
 - Screenshots of customer or bank data
 
-Trained artefacts are produced by `python -m ml.train_real_model`. Do not
-check them in unless a maintainer asks you to.
+The four serving artefacts in `backend/ml/` are committed so a fresh clone
+serves the trained ensemble. They are produced by
+`python -m ml.train_real_model`; replace them only in a change that retrains
+the model and updates the published metrics.
 
 ## Review bar
 

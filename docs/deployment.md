@@ -185,8 +185,9 @@ docker compose ps
 All three should show `healthy` (or `Up ... (healthy)`).
 
 On backend startup, `init_db()` runs **Alembic `upgrade head`** against
-PostgreSQL (revisions `0001_initial` then `0002_users` on an empty
-database). Schema is owned by Alembic, not by ad hoc table creation.
+PostgreSQL (revisions `0001_initial`, `0002_users` and
+`0003_officer_decisions` on an empty database; an existing database only gets
+the revisions it is missing). Schema is owned by Alembic, not by ad hoc table creation.
 
 Postgres data lives on the named volume `foriflow-pgdata`. It survives
 `docker compose down`. Wipe it with `docker compose down -v`.
@@ -265,7 +266,7 @@ backend container.
 
 ```bash
 docker compose build
-docker save foriflow-backend:1.0.0 foriflow-frontend:1.0.0 postgres:16.6 -o foriflow-images.tar
+docker save foriflow-backend:1.3.0 foriflow-frontend:1.3.0 postgres:16.6 -o foriflow-images.tar
 ```
 
 Copy the tarball, `docker-compose.yml`, and a filled `.env` (never the

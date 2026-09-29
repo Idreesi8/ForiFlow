@@ -29,7 +29,7 @@ from schemas import HealthResponse
 from services.auth_service import jwt_secret_problem
 from services.scoring_service import get_scoring_service
 
-API_VERSION = "1.2.0"
+API_VERSION = "1.3.0"
 
 logging.basicConfig(
     level=os.getenv("FORIFLOW_LOG_LEVEL", "INFO"),
@@ -37,8 +37,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("foriflow")
 
-# The React dashboard runs on port 3000 by default, 3001 when that port is
-# already taken, and 5173 if started through Vite's own default.
+# In Docker (nginx) and under `vite dev` the dashboard is served on port 3000
+# and calls /api on its own origin, so CORS is not involved. These origins
+# only matter for a dev server started on another port.
 ALLOWED_ORIGINS: list[str] = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -140,7 +141,15 @@ async def root() -> dict[str, str | list[str]]:
         "service": "ForiFlow API",
         "version": API_VERSION,
         "docs": "/docs",
-        "endpoints": ["/auth/login", "/score", "/explain/{application_id}", "/ews/monitor"],
+        "endpoints": [
+            "/auth/login",
+            "/score",
+            "/score/applications",
+            "/score/stats",
+            "/explain/{application_id}",
+            "/ews/monitor",
+            "/ews/alerts",
+        ],
     }
 
 

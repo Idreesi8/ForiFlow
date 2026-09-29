@@ -81,6 +81,9 @@ export const scoreApplication = (payload) =>
 export const fetchApplications = (params = {}) =>
   client.get("/score/applications", { params }).then((response) => response.data);
 
+export const fetchPortfolioStats = () =>
+  client.get("/score/stats").then((response) => response.data);
+
 export const fetchApplication = (applicationId) =>
   client.get(`/score/applications/${applicationId}`).then((response) => response.data);
 

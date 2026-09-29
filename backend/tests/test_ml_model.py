@@ -3,11 +3,10 @@
 The whole module is skipped when the model artefacts are absent, so a fresh
 checkout stays green before anyone runs ``python -m ml.train_real_model``.
 
-These tests deliberately assert *invariants* rather than specific scores: the
-artefacts are regenerated whenever the model is retrained, and neither XGBoost
-nor the random forest is fitted under monotonicity constraints, so exact values
-and per-feature monotonicity are not part of the contract. The one directional
-assertion compares applicants that differ starkly on every trained feature.
+These tests assert *invariants* rather than specific scores, because the
+artefacts are regenerated whenever the model is retrained. Both XGBoost and the
+random forest carry monotone constraints, so per-feature monotonicity is part
+of the contract and is tested below.
 """
 
 from __future__ import annotations

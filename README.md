@@ -43,9 +43,9 @@ ForiFlow is an end-to-end AI credit intelligence platform that:
                  ┌─────────────────────────┼─────────────────────────┐
                  ▼                         ▼                         ▼
           ┌─────────────┐           ┌─────────────┐           ┌─────────────┐
-          │ XGBoost+RF  │           │    SHAP     │           │  PostgreSQL │
-          │  Ensemble   │           │TreeExplainer│           │   SQLite    │
-          │ CV 0.7752*  │           │             │           │   (Dev)     │
+          │ XGBoost+RF  │           │    SHAP     │           │ PostgreSQL  │
+          │  Ensemble   │           │TreeExplainer│           │     16      │
+          │ CV 0.7752*  │           │             │           │  (Docker)   │
           └─────────────┘           └─────────────┘           └─────────────┘
 ```
 

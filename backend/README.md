@@ -13,13 +13,19 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate        # Windows (use: source .venv/bin/activate on Linux/macOS)
 pip install -r requirements.txt
+set JWT_SECRET_KEY=<32+ random characters>   # Windows (export ... on Linux/macOS)
+set FORIFLOW_ADMIN_PASSWORD=<12+ characters>
+python -m scripts.seed_admin                   # first officer account (admin)
 uvicorn main:app --reload --port 8000
 ```
 
 - Swagger UI: http://localhost:8000/docs
 - Health probe: http://localhost:8000/health
-- CORS is pre-configured for the React dashboard on ports `3000`, `3001` and
-  `5173` (both `localhost` and `127.0.0.1` for 3000/3001).
+- Without Docker this uses SQLite (`./foriflow.db`). The Docker stack in the
+  repository root uses PostgreSQL 16; see [`docs/deployment.md`](../docs/deployment.md).
+- In Docker the dashboard calls `/api` on its own origin, so CORS is not
+  involved; the allowed origins in `main.py` only matter for a dev server on
+  another port.
 
 Run the tests from the same directory:
 
@@ -31,17 +37,30 @@ pytest
 
 | Variable                  | Default                  | Purpose                     |
 | ------------------------- | ------------------------ | --------------------------- |
-| `FORIFLOW_DATABASE_URL`   | `sqlite:///./foriflow.db` | SQLAlchemy connection URL   |
+| `JWT_SECRET_KEY`          | none (required)          | Token signing secret, 32+ characters; login returns `500` without it |
+| `FORIFLOW_DATABASE_URL`   | unset                    | SQLAlchemy URL; wins over `POSTGRES_*` |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB` | unset | PostgreSQL connection when user and host are set; otherwise `sqlite:///./foriflow.db` |
+| `FORIFLOW_SCORING_ENGINE` | `auto`                   | `ml` (trained ensemble), `surrogate`, or `auto` (ml when the artefacts load) |
+| `FORIFLOW_ENABLE_DOCS`    | `true`                   | Serve `/docs`, `/redoc`, `/openapi.json` |
+| `FORIFLOW_ADMIN_USERNAME`, `FORIFLOW_ADMIN_PASSWORD`, `FORIFLOW_ADMIN_ROLE` | `admin`, none, `admin` | Read by `python -m scripts.seed_admin` |
 | `FORIFLOW_LOG_LEVEL`      | `INFO`                   | Root log level              |
 
-Tables are created automatically on startup.
+On startup SQLite tables are created directly; PostgreSQL is brought to the
+latest Alembic revision (`alembic upgrade head`).
 
 ## Endpoints
 
 | Method  | Path                                 | Purpose                                        |
 | ------- | ------------------------------------ | ---------------------------------------------- |
 | `POST`  | `/score`                             | Score an SME application and persist it        |
-| `GET`   | `/score/applications`                | List applications (filter by decision, pending review) |
+| `GET`   | `/`                                  | Service metadata (public)                      |
+| `GET`   | `/health`                            | Liveness and database check (public)           |
+| `POST`  | `/auth/login`                        | Sign in, returns an 8-hour JWT (public)        |
+| `GET`   | `/auth/me`                           | The signed-in officer                          |
+| `GET`   | `/auth/users`                        | List officer accounts (admin)                  |
+| `POST`  | `/auth/users`                        | Create an officer account (admin)              |
+| `GET`   | `/score/stats`                       | Portfolio totals for the dashboard             |
+| `GET`   | `/score/applications`                | List applications (filter by decision, final decision, pending review) |
 | `GET`   | `/score/applications/{id}`           | Fetch one application                          |
 | `POST`  | `/score/applications/{id}/review`    | Approve or reject a Manual Review case (admin) |
 | `POST`  | `/explain/{application_id}`          | Generate the SHAP explanation                  |
@@ -86,20 +105,26 @@ resolving it needs the `admin` role and a note, and records who resolved it.
 ```
 backend/
   main.py                     # app factory, CORS, lifespan, health
+  config.py                   # environment: database URL, JWT secret, flags
   schemas.py                  # Pydantic request/response models + enums
-  models/database.py          # engine, session, Application / Alert / EWSTracking
-  routers/score.py            # POST /score and application queries
+  models/database.py          # engine, session, Application / Alert / EWSTracking / User
+  alembic/versions/           # PostgreSQL schema: 0001 initial, 0002 users, 0003 officer decisions
+  routers/auth.py             # login, current officer, officer accounts
+  routers/score.py            # scoring, applications, Manual Review decision, portfolio stats
   routers/explain.py          # SHAP-style explanations
   routers/ews.py              # monitoring, alerts, borrower history
+  services/auth_service.py    # bcrypt hashing, JWT, role checks
   services/scoring_service.py # scoring + explainability logic (ML + surrogate)
   services/ews_service.py     # monitoring, alert and runway logic
+  scripts/seed_admin.py       # create or reset an officer account
+  scripts/migrate_sqlite_to_postgres.py  # copy a 1.0 SQLite file into PostgreSQL
   ml/features.py              # canonical feature schema shared by train + serve
   ml/train_real_model.py      # training pipeline -> model, scaler, SHAP, metadata
   ml/predict_sample.py        # single-applicant smoke test
   ml/compare_models.py        # served ensemble vs LR, XGB, RF, LightGBM, MLP
   ml/shap_utils.py            # SHAP output normalisation helpers
   ml/data/                    # raw CSV training data (not committed)
-  tests/                      # pytest suite (in-memory SQLite)
+  tests/                      # pytest suite (in-memory SQLite, plus PostgreSQL parity tests)
 ```
 
 ## Model

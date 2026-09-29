@@ -13,43 +13,35 @@ import {
   YAxis,
 } from "recharts";
 
-import { apiErrorMessage, fetchApplications } from "../api/client.js";
+import { apiErrorMessage, fetchApplications, fetchPortfolioStats } from "../api/client.js";
 import ApplicationTable from "../components/ApplicationTable.jsx";
 import EWSAlertFeed from "../components/EWSAlertFeed.jsx";
 import ScoreDial from "../components/ScoreDial.jsx";
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
-import {
-  DECISION_APPROVED,
-  SCORE_BANDS,
-  bandForDecision,
-  finalDecisionOf,
-  isPendingReview,
-} from "../lib/decisions.js";
+import { SCORE_BANDS, bandForDecision } from "../lib/decisions.js";
 import { formatPKRCompact } from "../lib/format.js";
-
-// Bucket edges land on the policy boundaries (40 and 70) so no bar mixes
-// decisions and every bar can take a single band colour.
-const SCORE_BUCKETS = [
-  { label: "0-20", min: 0, max: 20 },
-  { label: "21-40", min: 21, max: 40 },
-  { label: "41-55", min: 41, max: 55 },
-  { label: "56-70", min: 56, max: 70 },
-  { label: "71-85", min: 71, max: 85 },
-  { label: "86-100", min: 86, max: 100 },
-];
 
 /** Portfolio overview: origination quality on the left, surveillance below. */
 export default function DashboardPage() {
   const [applications, setApplications] = useState([]);
-  const [activeAlerts, setActiveAlerts] = useState([]);
+  const [portfolio, setPortfolio] = useState(null);
+  // null until the alert feed has loaded; the stats snapshot is used until then.
+  const [openAlerts, setOpenAlerts] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const loadApplications = useCallback(async () => {
+  // Totals come from GET /score/stats (computed in SQL over every row); the
+  // application list is only needed for the latest and most recent rows.
+  const loadPortfolio = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      setApplications(await fetchApplications({ limit: 200 }));
+      const [stats, recent] = await Promise.all([
+        fetchPortfolioStats(),
+        fetchApplications({ limit: 5 }),
+      ]);
+      setPortfolio(stats);
+      setApplications(recent);
     } catch (requestError) {
       setError(apiErrorMessage(requestError, "Could not load the portfolio."));
     } finally {
@@ -58,98 +50,79 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    loadApplications();
-  }, [loadApplications]);
+    loadPortfolio();
+  }, [loadPortfolio]);
 
   const handleAlertsLoaded = useCallback((alerts) => {
     // Open = not yet resolved: Active, or In Review with an officer.
-    setActiveAlerts(alerts.filter((alert) => alert.alert_status !== "Resolved"));
+    setOpenAlerts(alerts.filter((alert) => alert.alert_status !== "Resolved"));
   }, []);
-
-  const stats = useMemo(() => {
-    const total = applications.length;
-    // Approved by the model, or Manual Review approved by an officer.
-    const approved = applications.filter((app) => finalDecisionOf(app) === DECISION_APPROVED);
-    const averageScore = total
-      ? applications.reduce((sum, app) => sum + app.risk_score, 0) / total
-      : 0;
-    const exposure = approved.reduce((sum, app) => sum + app.loan_amount_pkr, 0);
-
-    return {
-      total,
-      approvalRate: total ? (approved.length / total) * 100 : 0,
-      averageScore,
-      exposure,
-      pending: applications.filter(isPendingReview).length,
-    };
-  }, [applications]);
 
   const decisionData = useMemo(
     () =>
       SCORE_BANDS.map((band) => ({
         name: band.decision,
-        value: applications.filter((app) => app.decision === band.decision).length,
+        value: portfolio?.model_decisions?.[band.decision] ?? 0,
         color: band.color,
       })).filter((item) => item.value > 0),
-    [applications],
+    [portfolio],
   );
 
+  // Bars are (lower, upper], with edges on the policy boundaries 40 and 70,
+  // so every score is counted once and no bar mixes decisions.
   const histogramData = useMemo(
     () =>
-      SCORE_BUCKETS.map((bucket) => ({
+      (portfolio?.score_histogram ?? []).map((bucket) => ({
         label: bucket.label,
-        count: applications.filter(
-          (app) => app.risk_score >= bucket.min && app.risk_score <= bucket.max,
-        ).length,
-        color: bucket.max <= 40 ? "#e11d48" : bucket.max <= 70 ? "#f59e0b" : "#059669",
+        count: bucket.count,
+        color: bucket.upper <= 40 ? "#e11d48" : bucket.upper <= 70 ? "#f59e0b" : "#059669",
       })),
-    [applications],
+    [portfolio],
   );
 
-  const latest = useMemo(() => {
-    if (applications.length === 0) return null;
-    return [...applications].sort((a, b) => b.id - a.id)[0];
-  }, [applications]);
+  const latest = applications[0] ?? null;
+  const openCount = openAlerts ? openAlerts.length : (portfolio?.open_alerts ?? 0);
+  const worstOpenDrop = openAlerts
+    ? openAlerts.length
+      ? Math.max(...openAlerts.map((alert) => alert.score_drop))
+      : null
+    : (portfolio?.worst_open_drop ?? null);
 
   if (isLoading) return <LoadingState label="Loading portfolio…" />;
-  if (error) return <ErrorState message={error} onRetry={loadApplications} />;
+  if (error) return <ErrorState message={error} onRetry={loadPortfolio} />;
 
   return (
     <div className="space-y-6">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           label="Applications scored"
-          value={stats.total}
+          value={portfolio.total_applications}
           hint="All time"
           accent="brand"
         />
         <StatCard
           label="Approval rate"
-          value={`${stats.approvalRate.toFixed(0)}%`}
-          hint={`${stats.pending} awaiting an officer decision`}
+          value={`${portfolio.approval_rate.toFixed(0)}%`}
+          hint={`${portfolio.pending_review} awaiting an officer decision`}
           accent="emerald"
         />
         <StatCard
           label="Average score"
-          value={stats.averageScore.toFixed(1)}
+          value={portfolio.average_score === null ? "—" : portfolio.average_score.toFixed(1)}
           hint="Out of 100"
           accent="slate"
         />
         <StatCard
           label="Approved exposure"
-          value={formatPKRCompact(stats.exposure)}
-          hint="Sanctioned facilities"
+          value={formatPKRCompact(portfolio.approved_exposure_pkr)}
+          hint="Model and officer approvals"
           accent="slate"
         />
         <StatCard
           label="Open EWS alerts"
-          value={activeAlerts.length}
-          hint={
-            activeAlerts.length
-              ? `Worst drop ${Math.max(...activeAlerts.map((a) => a.score_drop)).toFixed(1)} pts`
-              : "Portfolio stable"
-          }
-          accent={activeAlerts.length ? "rose" : "emerald"}
+          value={openCount}
+          hint={worstOpenDrop !== null ? `Worst drop ${worstOpenDrop.toFixed(1)} pts` : "Portfolio stable"}
+          accent={openCount ? "rose" : "emerald"}
         />
       </section>
 
@@ -254,10 +227,15 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <EWSAlertFeed limit={5} compact showFilters={false} onAlertsLoaded={handleAlertsLoaded} />
+      <EWSAlertFeed
+        maxRows={5}
+        compact
+        showFilters={false}
+        onAlertsLoaded={handleAlertsLoaded}
+      />
 
       <ApplicationTable
-        applications={[...applications].sort((a, b) => b.id - a.id).slice(0, 5)}
+        applications={applications}
         showFilters={false}
         title="Recent applications"
       />

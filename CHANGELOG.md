@@ -6,6 +6,8 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-29
+
 ### Added
 
 - **Officer decision on Manual Review.** `POST /score/applications/{id}/review`
@@ -23,6 +25,12 @@ All notable changes to ForiFlow are recorded here. The format follows
   cannot be resolved again (`409`). Alerts carry the borrower's business name.
 - Migration `0003_officer_decisions` adds the columns (all nullable, so
   existing rows are kept as they are).
+- `GET /score/stats`: portfolio totals computed in SQL over every row (counts
+  per model band, pending reviews, final approvals and rejections, approved
+  exposure, average score, score histogram, open alerts). The dashboard KPIs
+  and charts use it, so they are no longer limited to the newest 200 rows.
+- `GET /score/applications?final_decision=Approved|Rejected`; the monitoring
+  form lists approved facilities through it.
 - `show-data.bat` / `scripts/show-data.sql`: read-only view of what PostgreSQL
   stores (latest applications and their SHAP explanations, officer decisions
   on Manual Review cases, EWS records, alerts, hashed officer accounts) and
@@ -40,9 +48,28 @@ All notable changes to ForiFlow are recorded here. The format follows
   model-rejected ones.
 - `POST /explain/{id}?refresh=true` no longer overwrites the explanation stored
   at scoring time, which is the audit record; it returns the recomputed one.
+- EWS alerts follow the latest month on file: back-filling an older month no
+  longer rewrites the open alert, and correcting the latest month so it no
+  longer breaches closes the alert with an automatic note.
+- `POST /ews/monitor` refuses a month past the facility's tenure (`422`).
+- Taking an alert that another officer is reviewing returns `409` instead of
+  silently reassigning it.
+- Version 1.3.0 (API, dashboard footer, Docker image tags).
 
 ### Fixed
 
+- Dashboard: the open-alert count and alert panel were worked out from the 5
+  worst alerts including resolved ones, so they could show 0 while an alert was
+  open; the score histogram dropped scores between whole-number edges (e.g.
+  40.5, 70.3).
+- Monitoring form: bureau balance and POS inflow no longer reject amounts that
+  are not multiples of 10,000.
+- The SHAP chart shows the facility ratio as a percentage of annual turnover
+  instead of a bare number.
+- The decision panel reloads when another officer decided first (`409`).
+- Docs: endpoint tables, configuration, layout, deployment diagram (PostgreSQL
+  service and volume), migration list and contributor guidance brought in line
+  with the code; README screenshots recaptured from 1.3.0.
 - `start.ps1` / `rebuild.bat` could report "docker compose up failed" after a
   successful start when the console was redirected, because compose's stdout
   was captured together with the exit code.
@@ -78,8 +105,9 @@ All notable changes to ForiFlow are recorded here. The format follows
 - `GET /auth/me`, `GET /auth/users`, `POST /auth/users`.
 - `JWT_SECRET_KEY` must be 32+ characters and not the placeholder; new
   passwords must be 12+ characters.
-- CI runs on every branch: backend tests on PostgreSQL 16 with both the
-  surrogate and the trained model, plus a frontend production build.
+- CI runs on every branch: backend tests (in-memory SQLite, plus parity tests
+  against a PostgreSQL 16 service) with both the surrogate and the trained
+  model, plus a frontend production build.
 - Intake form: explains how history is read and warns when a facility exceeds
   30% of estimated annual turnover.
 - `backend/README.md`: training-data sources with checksums, and measured

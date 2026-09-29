@@ -38,7 +38,8 @@ export default function MonitoringPanel({ onMonitored }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchApplications({ limit: 200 })
+    // Server-side filter, so older approved facilities are not cut off by the limit.
+    fetchApplications({ final_decision: DECISION_APPROVED, limit: 200 })
       .then((data) => {
         if (cancelled) return;
         // Only an approved application became a facility: Approved by the model,
@@ -178,7 +179,7 @@ export default function MonitoringPanel({ onMonitored }) {
             name="bureau_balance"
             type="number"
             min="0"
-            step="10000"
+            step="any"
             value={form.bureau_balance}
             onChange={handleChange}
             required
@@ -203,7 +204,7 @@ export default function MonitoringPanel({ onMonitored }) {
             name="pos_cash_balance"
             type="number"
             min="0"
-            step="10000"
+            step="any"
             value={form.pos_cash_balance}
             onChange={handleChange}
             required
