@@ -39,7 +39,11 @@ function Write-Step {
 
 function Invoke-Compose {
     param([Parameter(Mandatory = $true)][string[]]$ComposeArgs)
-    & docker compose @ComposeArgs
+    # Out-Host keeps compose's own output out of the return value. Without it,
+    # any line compose writes to stdout (e.g. when the console is redirected to
+    # a log file) joins the exit code in an array and a successful run reads
+    # as failed.
+    & docker compose @ComposeArgs | Out-Host
     return $LASTEXITCODE
 }
 

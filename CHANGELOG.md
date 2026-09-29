@@ -43,6 +43,9 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ### Fixed
 
+- `start.ps1` / `rebuild.bat` could report "docker compose up failed" after a
+  successful start when the console was redirected, because compose's stdout
+  was captured together with the exit code.
 - The root README no longer lists JWT authentication and PostgreSQL as roadmap
   items (both shipped in 1.1.0), describes the EWS as the rule-based check it
   is, and reports the measured scoring latency.
