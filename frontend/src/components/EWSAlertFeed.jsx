@@ -1,20 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { getStoredRole } from "../api/auth.js";
-import { apiErrorMessage, fetchAlerts, resolveAlert } from "../api/client.js";
+import {
+  apiErrorMessage,
+  fetchAlerts,
+  resolveAlert,
+  takeAlertForReview,
+} from "../api/client.js";
 import { alertSeverity, alertStatusStyle } from "../lib/decisions.js";
 import { formatDateTime, formatRelative } from "../lib/format.js";
 import { AlertStatusBadge } from "./common/Badges.jsx";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "./common/States.jsx";
 
-const STATUS_FILTERS = ["All", "Active", "Resolved"];
+// "Open" = not yet resolved (Active, or In Review with an officer).
+const STATUS_FILTERS = ["Open", "Active", "In Review", "Resolved", "All"];
+const NOTE_MIN = 5;
 
 /**
  * Early Warning System alert feed.
  *
- * Reads `GET /ews/alerts` (already sorted worst-first by the API) and lets an
- * officer close an alert through `PATCH /ews/alerts/{id}/resolve`.
+ * Reads `GET /ews/alerts` (already sorted worst-first by the API). Any officer
+ * can take an alert for review (`PATCH /ews/alerts/{id}/review`); an admin
+ * closes it with a note (`PATCH /ews/alerts/{id}/resolve`).
  */
 export default function EWSAlertFeed({
   limit = 50,
@@ -25,10 +33,12 @@ export default function EWSAlertFeed({
 }) {
   const navigate = useNavigate();
   const [alerts, setAlerts] = useState([]);
-  const [statusFilter, setStatusFilter] = useState("Active");
+  const [statusFilter, setStatusFilter] = useState("Open");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [resolvingId, setResolvingId] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [noteFor, setNoteFor] = useState(null);
+  const [note, setNote] = useState("");
   // The API enforces this (403 for analysts); hiding the button just avoids a dead click.
   const canResolve = getStoredRole() === "admin";
 
@@ -56,19 +66,34 @@ export default function EWSAlertFeed({
     loadAlerts();
   }, [loadAlerts, refreshToken]);
 
-  const handleResolve = async (alertId) => {
-    setResolvingId(alertId);
+  const replaceAlert = (updated) =>
+    setAlerts((previous) => {
+      const next = previous.map((alert) => (alert.id === updated.id ? updated : alert));
+      onAlertsLoadedRef.current?.(next);
+      return next;
+    });
+
+  const handleTakeForReview = async (alertId) => {
+    setBusyId(alertId);
     try {
-      const updated = await resolveAlert(alertId);
-      setAlerts((previous) => {
-        const next = previous.map((alert) => (alert.id === alertId ? updated : alert));
-        onAlertsLoadedRef.current?.(next);
-        return next;
-      });
+      replaceAlert(await takeAlertForReview(alertId));
+    } catch (requestError) {
+      setError(apiErrorMessage(requestError, "Could not take the alert for review."));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleResolve = async (alertId) => {
+    setBusyId(alertId);
+    try {
+      replaceAlert(await resolveAlert(alertId, note.trim()));
+      setNoteFor(null);
+      setNote("");
     } catch (requestError) {
       setError(apiErrorMessage(requestError, "Could not resolve the alert."));
     } finally {
-      setResolvingId(null);
+      setBusyId(null);
     }
   };
 
@@ -76,11 +101,17 @@ export default function EWSAlertFeed({
     () =>
       statusFilter === "All"
         ? alerts
-        : alerts.filter((alert) => alert.alert_status === statusFilter),
+        : statusFilter === "Open"
+          ? alerts.filter((alert) => alert.alert_status !== "Resolved")
+          : alerts.filter((alert) => alert.alert_status === statusFilter),
     [alerts, statusFilter],
   );
   const activeCount = useMemo(
     () => alerts.filter((alert) => alert.alert_status === "Active").length,
+    [alerts],
+  );
+  const inReviewCount = useMemo(
+    () => alerts.filter((alert) => alert.alert_status === "In Review").length,
     [alerts],
   );
   const resolvedCount = useMemo(
@@ -128,9 +159,10 @@ export default function EWSAlertFeed({
       </div>
 
       {!compact && visibleAlerts.length > 0 ? (
-        <div className="grid gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-3">
+        <div className="grid gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-4">
           <FeedStat label="Alerts shown" value={visibleAlerts.length} />
           <FeedStat label="Active" value={activeCount} tone="danger" />
+          <FeedStat label="In review" value={inReviewCount} />
           <FeedStat label="Worst score drop" value={`${worstDrop.toFixed(1)} pts`} tone="danger" />
         </div>
       ) : null}
@@ -168,9 +200,11 @@ export default function EWSAlertFeed({
                 const severity = alertSeverity(alert.score_drop);
                 const statusStyle = alertStatusStyle(alert.alert_status);
                 const isResolved = alert.alert_status === "Resolved";
+                const isBusy = busyId === alert.id;
 
                 return (
-                  <tr key={alert.id} className={`hover:bg-slate-50 ${statusStyle.rowClass}`}>
+                  <Fragment key={alert.id}>
+                  <tr className={`hover:bg-slate-50 ${statusStyle.rowClass}`}>
                     <td className="px-5 py-3">
                       <span className={`badge ${severity.className}`}>{severity.label}</span>
                     </td>
@@ -180,9 +214,11 @@ export default function EWSAlertFeed({
                         onClick={() => navigate(`/shap/${alert.borrower_id}`)}
                         className="font-semibold text-brand-700 hover:underline"
                       >
-                        Borrower #{alert.borrower_id}
+                        {alert.business_name ?? `Borrower #${alert.borrower_id}`}
                       </button>
-                      <p className="text-xs text-slate-500">Alert #{alert.id}</p>
+                      <p className="text-xs whitespace-nowrap text-slate-500">
+                        App #{alert.borrower_id} · Alert #{alert.id}
+                      </p>
                     </td>
                     <td className="tabular px-5 py-3 text-right text-slate-600">
                       {alert.baseline_score.toFixed(1)}
@@ -206,40 +242,108 @@ export default function EWSAlertFeed({
                     </td>
                     <td className="px-5 py-3">
                       <AlertStatusBadge status={alert.alert_status} />
+                      {isResolved && alert.resolved_by ? (
+                        <p className="mt-1 text-xs text-slate-500">by {alert.resolved_by}</p>
+                      ) : alert.assigned_to ? (
+                        <p className="mt-1 text-xs text-slate-500">with {alert.assigned_to}</p>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3 text-slate-600">
                       <span title={formatDateTime(alert.triggered_at)}>
                         {formatRelative(alert.triggered_at)}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-right">
+                    <td className="px-5 py-3 text-right whitespace-nowrap">
                       {isResolved ? (
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-slate-400" title={formatDateTime(alert.resolved_at)}>
                           {formatRelative(alert.resolved_at)}
                         </span>
-                      ) : !canResolve ? (
-                        <span
-                          className="text-xs text-slate-400"
-                          title="Resolving an alert needs the admin role."
-                        >
-                          Admin only
-                        </span>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleResolve(alert.id)}
-                          disabled={resolvingId === alert.id}
-                          className="btn-secondary py-1.5 text-xs"
-                        >
-                          {resolvingId === alert.id ? (
-                            <Spinner className="h-3.5 w-3.5" />
+                        <span className="inline-flex gap-2">
+                          {alert.alert_status === "Active" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleTakeForReview(alert.id)}
+                              disabled={isBusy}
+                              className="btn-secondary py-1.5 text-xs"
+                            >
+                              {isBusy && noteFor !== alert.id ? (
+                                <Spinner className="h-3.5 w-3.5" />
+                              ) : (
+                                "Take for review"
+                              )}
+                            </button>
+                          ) : null}
+                          {canResolve ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNoteFor(noteFor === alert.id ? null : alert.id);
+                                setNote("");
+                              }}
+                              disabled={isBusy}
+                              className="btn-secondary py-1.5 text-xs"
+                            >
+                              Resolve
+                            </button>
                           ) : (
-                            "Resolve"
+                            <span
+                              className="self-center text-xs text-slate-400"
+                              title="Resolving an alert needs the admin role."
+                            >
+                              Resolve: admin
+                            </span>
                           )}
-                        </button>
+                        </span>
                       )}
                     </td>
                   </tr>
+                  {isResolved && alert.resolution_note ? (
+                    <tr className={statusStyle.rowClass}>
+                      <td colSpan={9} className="px-5 pb-3 text-xs text-slate-600">
+                        <span className="font-semibold">Resolution:</span> {alert.resolution_note}
+                      </td>
+                    </tr>
+                  ) : null}
+                  {noteFor === alert.id && !isResolved ? (
+                    <tr className="bg-slate-50">
+                      <td colSpan={9} className="px-5 py-3">
+                        <label className="field-label" htmlFor={`resolve-note-${alert.id}`}>
+                          How was alert #{alert.id} resolved?
+                        </label>
+                        <div className="flex flex-wrap items-start gap-2">
+                          <input
+                            id={`resolve-note-${alert.id}`}
+                            type="text"
+                            maxLength={1000}
+                            value={note}
+                            onChange={(event) => setNote(event.target.value)}
+                            placeholder="e.g. Borrower paid the arrears on 12 Oct."
+                            className="field-input max-w-xl flex-1 py-1.5"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleResolve(alert.id)}
+                            disabled={isBusy || note.trim().length < NOTE_MIN}
+                            className="btn-primary py-1.5 text-xs"
+                          >
+                            {isBusy ? <Spinner className="h-3.5 w-3.5 text-white" /> : "Confirm resolve"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNoteFor(null)}
+                            className="btn-ghost py-1.5 text-xs"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Saved with your name. At least {NOTE_MIN} characters.
+                        </p>
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -251,6 +355,12 @@ export default function EWSAlertFeed({
 }
 
 function emptyStateDescription(statusFilter, { hasAny, resolvedCount }) {
+  if (statusFilter === "Open") {
+    if (resolvedCount > 0) {
+      return "No open alerts. Closed cases are listed under Resolved.";
+    }
+    return "No borrower has dropped more than 15 points below their origination score.";
+  }
   if (statusFilter === "Active") {
     if (resolvedCount > 0) {
       return "No active alerts. Closed cases are listed under Resolved.";
@@ -259,6 +369,9 @@ function emptyStateDescription(statusFilter, { hasAny, resolvedCount }) {
   }
   if (statusFilter === "Resolved") {
     return "No resolved alerts yet.";
+  }
+  if (statusFilter === "In Review") {
+    return "No alert is being handled right now. Use Take for review on an active alert.";
   }
   if (statusFilter === "All" && !hasAny) {
     return "No borrower has dropped more than 15 points below their origination score.";

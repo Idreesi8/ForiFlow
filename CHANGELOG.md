@@ -8,13 +8,38 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ### Added
 
+- **Officer decision on Manual Review.** `POST /score/applications/{id}/review`
+  (admin) approves or rejects a 41–70 case with a reason of at least 10
+  characters, recording who and when. The model's band stays in `decision`;
+  `final_decision` combines the two and is `null` while the review is
+  pending. A recorded decision cannot be changed (`409`). The dashboard shows
+  the decision panel under the SHAP report and after scoring, the register
+  has a Final decision column, a Pending review filter and a Review action,
+  and the approval rate and approved exposure count officer approvals.
+- Every assessment records the officer who scored it (`scored_by`).
+- EWS alerts can be taken for review by any officer (`PATCH
+  /ews/alerts/{id}/review`, status In Review with the officer's name).
+  Resolving now needs a note and records who resolved it; a resolved alert
+  cannot be resolved again (`409`). Alerts carry the borrower's business name.
+- Migration `0003_officer_decisions` adds the columns (all nullable, so
+  existing rows are kept as they are).
 - `show-data.bat` / `scripts/show-data.sql`: read-only view of what PostgreSQL
-  stores (latest applications and their SHAP explanations, EWS records, alerts,
-  hashed officer accounts) and which Docker volume holds it.
+  stores (latest applications and their SHAP explanations, officer decisions
+  on Manual Review cases, EWS records, alerts, hashed officer accounts) and
+  which Docker volume holds it.
 - `python -m ml.compare_models` benchmarks the served ensemble against logistic
   regression, XGBoost alone, Random Forest alone, LightGBM and an MLP under the
   production CV protocol, writing `ml/model_comparison.json`. The results and
   what they mean are in `backend/README.md`.
+
+### Changed
+
+- Only an approved facility can be monitored: a Manual Review case must be
+  approved by an officer first (before, any Manual Review application could be
+  monitored without a decision). Officer-rejected cases return `409` like
+  model-rejected ones.
+- `POST /explain/{id}?refresh=true` no longer overwrites the explanation stored
+  at scoring time, which is the audit record; it returns the recomputed one.
 
 ### Fixed
 

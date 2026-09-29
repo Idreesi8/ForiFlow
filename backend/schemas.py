@@ -20,6 +20,13 @@ class Decision(StrEnum):
     APPROVED = "Approved"
 
 
+class OfficerDecision(StrEnum):
+    """An officer's final call on a Manual Review application."""
+
+    APPROVED = "Approved"
+    REJECTED = "Rejected"
+
+
 class RiskBand(StrEnum):
     """Human-readable risk grade attached to a score."""
 
@@ -194,10 +201,16 @@ class ScoreResponse(BaseModel):
     )
     explanation: ExplanationResponse | None = None
     created_at: datetime
+    scored_by: str | None = Field(default=None, description="Officer who ran the assessment.")
 
 
 class ApplicationSummary(BaseModel):
-    """Compact application record for dashboard tables."""
+    """Compact application record for dashboard tables.
+
+    ``decision`` is always the model's band. For a Manual Review application
+    the officer's call is in ``review_decision``; ``final_decision`` combines
+    the two and is ``None`` while the review is still pending.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -209,6 +222,56 @@ class ApplicationSummary(BaseModel):
     risk_score: float
     decision: Decision
     created_at: datetime
+    scored_by: str | None = None
+    review_decision: OfficerDecision | None = None
+    review_note: str | None = None
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def final_decision(self) -> Decision | None:
+        """Model decision, or the officer's decision for Manual Review."""
+        if self.decision is not Decision.MANUAL_REVIEW:
+            return self.decision
+        if self.review_decision is None:
+            return None
+        return Decision(self.review_decision.value)
+
+
+class ReviewRequest(BaseModel):
+    """Officer decision on a Manual Review application."""
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        json_schema_extra={
+            "example": {
+                "decision": "Approved",
+                "note": "Five years of clean POS receipts; facility is 28% of turnover.",
+            }
+        },
+    )
+
+    decision: OfficerDecision
+    note: str = Field(
+        ...,
+        min_length=10,
+        max_length=1000,
+        description="Why the officer approved or rejected it. Kept on the credit file.",
+    )
+
+
+class AlertResolveRequest(BaseModel):
+    """How an EWS alert was closed."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    note: str = Field(
+        ...,
+        min_length=5,
+        max_length=1000,
+        description="What was done, e.g. 'Borrower paid arrears on 12 Oct'.",
+    )
 
 
 class EWSMonitorRequest(BaseModel):
@@ -258,6 +321,7 @@ class AlertResponse(BaseModel):
 
     id: int
     borrower_id: int
+    business_name: str | None = None
     baseline_score: float
     current_score: float
     score_drop: float
@@ -265,6 +329,9 @@ class AlertResponse(BaseModel):
     alert_status: AlertStatus
     triggered_at: datetime
     resolved_at: datetime | None = None
+    assigned_to: str | None = None
+    resolved_by: str | None = None
+    resolution_note: str | None = None
 
 
 class EWSTrackingResponse(BaseModel):

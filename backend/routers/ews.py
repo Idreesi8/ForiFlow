@@ -6,12 +6,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from models.database import Alert, Application, EWSTracking, get_db, utcnow
+from models.database import Alert, Application, EWSTracking, User, get_db, utcnow
 from schemas import (
+    AlertResolveRequest,
     AlertResponse,
     AlertStatus,
+    ApplicationSummary,
     Decision,
     EWSMonitorRequest,
     EWSMonitorResponse,
@@ -28,6 +30,35 @@ router = APIRouter(
 
 DbSession = Annotated[Session, Depends(get_db)]
 Monitor = Annotated[EWSService, Depends(get_ews_service)]
+Officer = Annotated[User, Depends(get_current_user)]
+Admin = Annotated[User, Depends(require_admin)]
+
+
+def _require_approved_facility(borrower: Application) -> None:
+    """Only an approved application became a facility, so only it is monitored.
+
+    Approved means Approved by the model, or Manual Review and then approved
+    by an officer. ForiFlow keeps no separate disbursement record.
+    """
+    final = ApplicationSummary.model_validate(borrower).final_decision
+    if final is Decision.APPROVED:
+        return
+    if final is None:
+        detail = (
+            f"Application {borrower.id} is still awaiting an officer decision "
+            "(Manual Review). Approve it first, then monitor it."
+        )
+    elif borrower.decision == Decision.MANUAL_REVIEW.value:
+        detail = (
+            f"Application {borrower.id} was rejected by {borrower.reviewed_by} after "
+            "manual review, so there is no facility to monitor."
+        )
+    else:
+        detail = (
+            f"Application {borrower.id} was Rejected at origination, so there "
+            "is no facility to monitor."
+        )
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
 def _load_borrower(borrower_id: int, db: Session) -> Application:
@@ -59,17 +90,7 @@ async def monitor_borrower(
     already-active alert is updated in place instead of being duplicated.
     """
     borrower = _load_borrower(payload.borrower_id, db)
-    if borrower.decision == Decision.REJECTED.value:
-        # ForiFlow keeps no disbursement record, so Approved and Manual Review
-        # applications (the latter may be approved after review) can be
-        # monitored. A Rejected application never became a facility.
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"Application {borrower.id} was Rejected at origination, so there "
-                "is no facility to monitor."
-            ),
-        )
+    _require_approved_facility(borrower)
 
     outcome = monitor.evaluate(
         baseline_score=borrower.risk_score,
@@ -154,7 +175,11 @@ async def list_alerts(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[AlertResponse]:
     """Return alerts ordered by severity so the worst cases surface first."""
-    statement = select(Alert).order_by(Alert.score_drop.desc(), Alert.triggered_at.desc())
+    statement = (
+        select(Alert)
+        .options(selectinload(Alert.borrower))
+        .order_by(Alert.score_drop.desc(), Alert.triggered_at.desc())
+    )
     if alert_status is not None:
         statement = statement.where(Alert.alert_status == alert_status.value)
 
@@ -179,23 +204,51 @@ async def borrower_history(borrower_id: int, db: DbSession) -> list[EWSTrackingR
     return [EWSTrackingResponse.model_validate(record) for record in records]
 
 
-@router.patch(
-    "/alerts/{alert_id}/resolve",
-    response_model=AlertResponse,
-    summary="Resolve an EWS alert (admin only)",
-    dependencies=[Depends(require_admin)],
-)
-async def resolve_alert(alert_id: int, db: DbSession) -> AlertResponse:
-    """Mark an alert as resolved and stamp the resolution time."""
-    alert = db.get(Alert, alert_id)
+def _load_open_alert(alert_id: int, db: Session) -> Alert:
+    """Fetch an alert that is not yet resolved, or raise ``404`` / ``409``."""
+    alert = db.get(Alert, alert_id, with_for_update=True)
     if alert is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Alert {alert_id} was not found.",
         )
+    if alert.alert_status == AlertStatus.RESOLVED.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Alert {alert_id} was already resolved by {alert.resolved_by or 'an officer'}.",
+        )
+    return alert
 
+
+@router.patch(
+    "/alerts/{alert_id}/review",
+    response_model=AlertResponse,
+    summary="Take an EWS alert for review",
+)
+async def review_alert(alert_id: int, db: DbSession, officer: Officer) -> AlertResponse:
+    """Mark an open alert In Review and record which officer is handling it."""
+    alert = _load_open_alert(alert_id, db)
+    alert.alert_status = AlertStatus.IN_REVIEW.value
+    alert.assigned_to = officer.username
+    db.commit()
+    db.refresh(alert)
+    return AlertResponse.model_validate(alert)
+
+
+@router.patch(
+    "/alerts/{alert_id}/resolve",
+    response_model=AlertResponse,
+    summary="Resolve an EWS alert with a note (admin only)",
+)
+async def resolve_alert(
+    alert_id: int, body: AlertResolveRequest, db: DbSession, officer: Admin
+) -> AlertResponse:
+    """Close an alert, recording who closed it, when, and what was done."""
+    alert = _load_open_alert(alert_id, db)
     alert.alert_status = AlertStatus.RESOLVED.value
     alert.resolved_at = utcnow()
+    alert.resolved_by = officer.username
+    alert.resolution_note = body.note
     db.commit()
     db.refresh(alert)
     return AlertResponse.model_validate(alert)

@@ -66,6 +66,21 @@ export function bandForDecision(decision) {
   return SCORE_BANDS.find((band) => band.decision === decision) ?? FALLBACK_BAND;
 }
 
+/**
+ * The decision that stands: the model's band, or the officer's call on a
+ * Manual Review case. `null` while that review is pending.
+ */
+export function finalDecisionOf(application) {
+  if (!application) return null;
+  if (application.final_decision !== undefined) return application.final_decision;
+  // Payloads without the field (older API) fall back to the model band.
+  return application.decision === DECISION_MANUAL_REVIEW ? null : application.decision;
+}
+
+export function isPendingReview(application) {
+  return application?.decision === DECISION_MANUAL_REVIEW && finalDecisionOf(application) === null;
+}
+
 /** Alert lifecycle styling. Active alerts are always red. */
 export const ALERT_STATUS_STYLES = {
   Active: {

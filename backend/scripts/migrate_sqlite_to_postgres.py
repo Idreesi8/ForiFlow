@@ -67,6 +67,22 @@ EXPECTED: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# The same tables after migration 0003 (officer decisions and alert handling).
+# A SQLite file created by this version has these; an older file has EXPECTED.
+_APP = EXPECTED["applications"]
+EXPECTED_0003: dict[str, tuple[str, ...]] = {
+    "applications": (
+        *_APP[: _APP.index("created_at")],
+        "scored_by",
+        "review_decision",
+        "review_note",
+        "reviewed_by",
+        "reviewed_at",
+        "created_at",
+    ),
+    "alerts": (*EXPECTED["alerts"], "assigned_to", "resolved_by", "resolution_note"),
+}
+
 # SQLite declared types we will copy without rewriting values.
 _INT = {"INT", "INTEGER", "BIGINT"}
 _FLOAT = {"REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "NUMERIC", "DECIMAL"}
@@ -107,8 +123,11 @@ def sqlite_columns(connection: sqlite3.Connection, table: str) -> list[tuple[str
     return [(str(row[1]), _affinity(str(row[2]))) for row in rows]
 
 
-def assert_schema(connection: sqlite3.Connection) -> None:
-    """Stop if column names differ or a type is not in the allowed set."""
+def assert_schema(connection: sqlite3.Connection) -> dict[str, tuple[str, ...]]:
+    """Stop if column names differ or a type is not in the allowed set.
+
+    Returns the column tuple to copy for each table present.
+    """
     existing_tables = {
         row[0]
         for row in connection.execute(
@@ -131,10 +150,11 @@ def assert_schema(connection: sqlite3.Connection) -> None:
         if name in existing_tables:
             tables_to_check[name] = columns
 
+    matched: dict[str, tuple[str, ...]] = {}
     for table, expected in tables_to_check.items():
         cols = sqlite_columns(connection, table)
         names = tuple(name for name, _type in cols)
-        if names != expected:
+        if names not in (expected, EXPECTED_0003.get(table)):
             raise MigrationError(
                 f"Table {table!r} columns {names} do not match expected {expected}."
             )
@@ -144,6 +164,8 @@ def assert_schema(connection: sqlite3.Connection) -> None:
                     f"Table {table!r} column {name!r} has type {declared!r} "
                     "which this script will not coerce."
                 )
+        matched[table] = names
+    return matched
 
 
 def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
@@ -157,17 +179,7 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
     sqlite_conn = sqlite3.connect(str(sqlite_path))
     sqlite_conn.row_factory = sqlite3.Row
     try:
-        assert_schema(sqlite_conn)
-        existing_tables = {
-            row[0]
-            for row in sqlite_conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-            )
-        }
-        copy_tables: dict[str, tuple[str, ...]] = dict(EXPECTED)
-        for name, columns in OPTIONAL.items():
-            if name in existing_tables:
-                copy_tables[name] = columns
+        copy_tables = assert_schema(sqlite_conn)
         table_order = tuple(copy_tables)
 
         pg = create_engine(postgres_url, future=True)

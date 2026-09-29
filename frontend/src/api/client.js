@@ -92,8 +92,16 @@ export const explainApplication = (applicationId, { refresh = false } = {}) =>
 export const fetchAlerts = (params = {}) =>
   client.get("/ews/alerts", { params }).then((response) => response.data);
 
-export const resolveAlert = (alertId) =>
-  client.patch(`/ews/alerts/${alertId}/resolve`).then((response) => response.data);
+export const reviewApplication = (applicationId, { decision, note }) =>
+  client
+    .post(`/score/applications/${applicationId}/review`, { decision, note })
+    .then((response) => response.data);
+
+export const takeAlertForReview = (alertId) =>
+  client.patch(`/ews/alerts/${alertId}/review`).then((response) => response.data);
+
+export const resolveAlert = (alertId, note) =>
+  client.patch(`/ews/alerts/${alertId}/resolve`, { note }).then((response) => response.data);
 
 export const fetchBorrowerHistory = (borrowerId) =>
   client.get(`/ews/borrowers/${borrowerId}/history`).then((response) => response.data);

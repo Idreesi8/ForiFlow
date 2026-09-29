@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { apiErrorMessage, fetchApplications } from "../api/client.js";
+import ReviewPanel from "../components/ReviewPanel.jsx";
 import ShapWaterfall from "../components/ShapWaterfall.jsx";
 import { EmptyState, ErrorState, LoadingState } from "../components/common/States.jsx";
 import { bandForDecision } from "../lib/decisions.js";
@@ -123,24 +124,27 @@ export default function ShapReportsPage() {
           )}
         </aside>
 
-        <section className="card">
-          <div className="card-header">
-            <h3 className="card-title">Feature attribution</h3>
-            {selectedId ? (
-              <span className="text-xs text-slate-500">POST /explain/{selectedId}</span>
-            ) : null}
-          </div>
-          <div className="px-5 py-5">
-            {selectedId ? (
-              <ShapWaterfall applicationId={selectedId} />
-            ) : (
-              <EmptyState
-                title="Select an application"
-                description="Choose an assessment on the left to see which factors drove its score."
-              />
-            )}
-          </div>
-        </section>
+        <div className="min-w-0 space-y-6">
+          <section className="card">
+            <div className="card-header">
+              <h3 className="card-title">Feature attribution</h3>
+              {selectedId ? (
+                <span className="text-xs text-slate-500">POST /explain/{selectedId}</span>
+              ) : null}
+            </div>
+            <div className="px-5 py-5">
+              {selectedId ? (
+                <ShapWaterfall applicationId={selectedId} />
+              ) : (
+                <EmptyState
+                  title="Select an application"
+                  description="Choose an assessment on the left to see which factors drove its score."
+                />
+              )}
+            </div>
+          </section>
+          {selectedId ? <ReviewPanel key={selectedId} applicationId={selectedId} /> : null}
+        </div>
       </div>
     </div>
   );

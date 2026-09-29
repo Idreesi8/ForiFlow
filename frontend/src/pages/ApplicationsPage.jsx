@@ -13,7 +13,7 @@ export default function ApplicationsPage() {
           <h2 className="text-xl font-bold text-slate-900">Applications</h2>
           <p className="mt-1 text-sm text-slate-500">
             Every assessment on file. Sort any column, then open the SHAP report used
-            for the credit decision.
+            for the credit decision. Manual Review cases are approved or rejected there.
           </p>
         </div>
         <button type="button" className="btn-primary" onClick={() => navigate("/scoring")}>

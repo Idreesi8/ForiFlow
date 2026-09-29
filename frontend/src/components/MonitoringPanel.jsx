@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { apiErrorMessage, fetchApplications, monitorBorrower } from "../api/client.js";
+import { DECISION_APPROVED, finalDecisionOf } from "../lib/decisions.js";
 import { formatPKR } from "../lib/format.js";
 import { Spinner } from "./common/States.jsx";
 
@@ -40,8 +41,11 @@ export default function MonitoringPanel({ onMonitored }) {
     fetchApplications({ limit: 200 })
       .then((data) => {
         if (cancelled) return;
-        // A Rejected application was never disbursed; the API answers 409.
-        const monitorable = data.filter((application) => application.decision !== "Rejected");
+        // Only an approved application became a facility: Approved by the model,
+        // or Manual Review approved by an officer. The API answers 409 otherwise.
+        const monitorable = data.filter(
+          (application) => finalDecisionOf(application) === DECISION_APPROVED,
+        );
         setBorrowers(monitorable);
         setForm((previous) =>
           previous.borrower_id || monitorable.length === 0
@@ -113,10 +117,19 @@ export default function MonitoringPanel({ onMonitored }) {
             </option>
             {borrowers.map((borrower) => (
               <option key={borrower.id} value={borrower.id}>
-                #{borrower.id} · {borrower.business_name} · {borrower.decision}
+                #{borrower.id} · {borrower.business_name} ·{" "}
+                {borrower.decision === DECISION_APPROVED
+                  ? "Approved"
+                  : `Approved by ${borrower.reviewed_by}`}
               </option>
             ))}
           </select>
+          {borrowers.length === 0 ? (
+            <p className="mt-1 text-xs text-slate-500">
+              No approved facility yet. Score an application that is Approved, or approve
+              a Manual Review case from its SHAP report.
+            </p>
+          ) : null}
         </div>
 
         <div>

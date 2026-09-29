@@ -9,9 +9,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models.database import Application, get_db
-from schemas import ApplicationSummary, Decision, SMEApplicant, ScoreResponse
-from services.auth_service import get_current_user
+from models.database import Application, User, get_db, utcnow
+from schemas import (
+    ApplicationSummary,
+    Decision,
+    ReviewRequest,
+    ScoreResponse,
+    SMEApplicant,
+)
+from services.auth_service import get_current_user, require_admin
 from services.scoring_service import ScoringService, get_scoring_service
 
 router = APIRouter(
@@ -22,6 +28,8 @@ router = APIRouter(
 
 DbSession = Annotated[Session, Depends(get_db)]
 Scorer = Annotated[ScoringService, Depends(get_scoring_service)]
+Officer = Annotated[User, Depends(get_current_user)]
+Admin = Annotated[User, Depends(require_admin)]
 
 
 @router.post(
@@ -34,6 +42,7 @@ async def score_application(
     applicant: SMEApplicant,
     db: DbSession,
     scorer: Scorer,
+    officer: Officer,
     include_explanation: Annotated[
         bool, Query(description="Embed the SHAP explanation in the response.")
     ] = True,
@@ -61,6 +70,7 @@ async def score_application(
         num_employees=applicant.num_employees,
         risk_score=result.risk_score,
         decision=result.decision.value,
+        scored_by=officer.username,
     )
 
     db.add(application)
@@ -90,6 +100,7 @@ async def score_application(
         model_version=scorer.model_version,
         explanation=explanation if include_explanation else None,
         created_at=application.created_at,
+        scored_by=application.scored_by,
     )
 
 
@@ -101,7 +112,11 @@ async def score_application(
 async def list_applications(
     db: DbSession,
     decision: Annotated[
-        Decision | None, Query(description="Filter by credit decision.")
+        Decision | None, Query(description="Filter by the model's credit decision.")
+    ] = None,
+    pending_review: Annotated[
+        bool | None,
+        Query(description="true: Manual Review cases still awaiting an officer decision."),
     ] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -110,6 +125,16 @@ async def list_applications(
     statement = select(Application).order_by(Application.created_at.desc())
     if decision is not None:
         statement = statement.where(Application.decision == decision.value)
+    if pending_review is True:
+        statement = statement.where(
+            Application.decision == Decision.MANUAL_REVIEW.value,
+            Application.review_decision.is_(None),
+        )
+    elif pending_review is False:
+        statement = statement.where(
+            (Application.decision != Decision.MANUAL_REVIEW.value)
+            | Application.review_decision.is_not(None)
+        )
 
     applications = db.scalars(statement.offset(offset).limit(limit)).all()
     return [ApplicationSummary.model_validate(app) for app in applications]
@@ -122,10 +147,59 @@ async def list_applications(
 )
 async def get_application(application_id: int, db: DbSession) -> ApplicationSummary:
     """Return a single application or raise ``404`` if it does not exist."""
-    application = db.get(Application, application_id)
+    return ApplicationSummary.model_validate(_load_application(application_id, db))
+
+
+@router.post(
+    "/applications/{application_id}/review",
+    response_model=ApplicationSummary,
+    summary="Record the officer decision on a Manual Review application (admin only)",
+)
+async def review_application(
+    application_id: int, body: ReviewRequest, db: DbSession, officer: Admin
+) -> ApplicationSummary:
+    """Approve or reject a Manual Review case, with the reason, once.
+
+    The model's band stays in ``decision``; the officer's call, note, name and
+    time are stored beside it. Approved and Rejected bands are already final,
+    and a recorded review cannot be overwritten.
+    """
+    # Row lock, so two officers deciding at once cannot both record a decision.
+    application = _load_application(application_id, db, for_update=True)
+    if application.decision != Decision.MANUAL_REVIEW.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Application {application.id} was {application.decision} by the model. "
+                "Only Manual Review cases need an officer decision."
+            ),
+        )
+    if application.review_decision is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Application {application.id} was already {application.review_decision} "
+                f"by {application.reviewed_by}. A recorded decision is not changed."
+            ),
+        )
+
+    application.review_decision = body.decision.value
+    application.review_note = body.note
+    application.reviewed_by = officer.username
+    application.reviewed_at = utcnow()
+    db.commit()
+    db.refresh(application)
+    return ApplicationSummary.model_validate(application)
+
+
+def _load_application(
+    application_id: int, db: Session, *, for_update: bool = False
+) -> Application:
+    """Fetch an application or raise ``404``."""
+    application = db.get(Application, application_id, with_for_update=for_update)
     if application is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Application {application_id} was not found.",
         )
-    return ApplicationSummary.model_validate(application)
+    return application

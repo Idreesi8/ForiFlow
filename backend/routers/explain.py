@@ -62,26 +62,35 @@ async def explain_application(
 ) -> ExplanationResponse:
     """Return the additive feature attributions behind a credit decision.
 
-    The explanation cached at scoring time is returned unless ``refresh`` is
-    set, in which case it is recomputed from the stored features and persisted
-    again. Contributions are additive: their sum plus ``base_value`` equals the
-    application's score.
+    The explanation stored at scoring time is returned unless ``refresh`` is
+    set, in which case it is recomputed from the stored features with the
+    current model. The stored explanation is the audit record of why the
+    decision was made, so a refresh never overwrites it; it is only written
+    when none is stored or the stored one can no longer be read.
+    Contributions are additive: their sum plus ``base_value`` equals the score.
     """
     application = _load_application(application_id, db)
 
-    if not refresh and application.shap_explanation_json:
+    stored: ExplanationResponse | None = None
+    if application.shap_explanation_json:
         try:
-            return ExplanationResponse.model_validate_json(
+            stored = ExplanationResponse.model_validate_json(
                 application.shap_explanation_json
             )
         except ValueError:
-            # A schema change made the cached payload unreadable; fall through
-            # and regenerate it rather than failing the request.
-            pass
+            # A schema change made the stored payload unreadable; regenerate
+            # it rather than failing the request.
+            stored = None
+
+    if stored is not None and not refresh:
+        return stored
 
     explanation = _build_explanation(application, scorer)
-    application.shap_explanation_json = json.dumps(explanation.model_dump(mode="json"))
-    db.commit()
+    if stored is None:
+        application.shap_explanation_json = json.dumps(
+            explanation.model_dump(mode="json")
+        )
+        db.commit()
     return explanation
 
 

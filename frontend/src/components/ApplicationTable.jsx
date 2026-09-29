@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { getStoredRole } from "../api/auth.js";
 import { apiErrorMessage, fetchApplications } from "../api/client.js";
-import { bandForDecision } from "../lib/decisions.js";
+import { bandForDecision, finalDecisionOf, isPendingReview } from "../lib/decisions.js";
 import { formatDateTime, formatPKRCompact, parseApiDate } from "../lib/format.js";
-import { DecisionBadge } from "./common/Badges.jsx";
+import { DecisionBadge, FinalDecisionBadge } from "./common/Badges.jsx";
 import { EmptyState, ErrorState, LoadingState } from "./common/States.jsx";
 
 const COLUMNS = [
@@ -14,11 +15,18 @@ const COLUMNS = [
   { key: "loan_amount_pkr", label: "Facility", type: "number", align: "right" },
   { key: "tenure_months", label: "Tenure", type: "number", align: "right" },
   { key: "risk_score", label: "Score", type: "number", align: "right" },
-  { key: "decision", label: "Decision", type: "string", align: "left" },
+  { key: "decision", label: "Model", type: "string", align: "left" },
+  { key: "final", label: "Final decision", type: "string", align: "left" },
   { key: "created_at", label: "Assessed", type: "date", align: "left" },
 ];
 
-const DECISION_FILTERS = ["All", "Approved", "Manual Review", "Rejected"];
+// Approved / Rejected filter on the decision that stands (the officer's call
+// for a reviewed Manual Review case); the Model column still shows the band.
+const DECISION_FILTERS = ["All", "Pending review", "Approved", "Rejected"];
+
+function sortValue(application, key) {
+  return key === "final" ? (finalDecisionOf(application) ?? "Pending review") : application[key];
+}
 
 function compareValues(a, b, column) {
   if (column.type === "number") return Number(a) - Number(b);
@@ -42,6 +50,7 @@ export default function ApplicationTable({
   refreshToken = 0,
 }) {
   const navigate = useNavigate();
+  const canDecide = getStoredRole() === "admin";
   const [applications, setApplications] = useState(providedApplications ?? []);
   const [isLoading, setIsLoading] = useState(!providedApplications);
   const [error, setError] = useState(null);
@@ -76,7 +85,13 @@ export default function ApplicationTable({
 
     return applications
       .filter((application) => {
-        if (decisionFilter !== "All" && application.decision !== decisionFilter) {
+        if (decisionFilter === "Pending review" && !isPendingReview(application)) {
+          return false;
+        }
+        if (
+          (decisionFilter === "Approved" || decisionFilter === "Rejected") &&
+          finalDecisionOf(application) !== decisionFilter
+        ) {
           return false;
         }
         if (!term) return true;
@@ -87,7 +102,7 @@ export default function ApplicationTable({
         );
       })
       .sort((a, b) => {
-        const result = compareValues(a[sort.key], b[sort.key], column);
+        const result = compareValues(sortValue(a, sort.key), sortValue(b, sort.key), column);
         return sort.direction === "asc" ? result : -result;
       });
   }, [applications, search, decisionFilter, sort]);
@@ -240,6 +255,14 @@ export default function ApplicationTable({
                     <td className="px-5 py-3 whitespace-nowrap">
                       <DecisionBadge decision={application.decision} />
                     </td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <FinalDecisionBadge application={application} />
+                      {application.reviewed_by ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          by {application.reviewed_by}
+                        </p>
+                      ) : null}
+                    </td>
                     <td className="px-5 py-3 whitespace-nowrap text-slate-600">
                       {formatDateTime(application.created_at)}
                     </td>
@@ -247,9 +270,13 @@ export default function ApplicationTable({
                       <button
                         type="button"
                         onClick={() => navigate(`/shap/${application.id}`)}
-                        className="btn-ghost py-1.5 text-xs"
+                        className={
+                          canDecide && isPendingReview(application)
+                            ? "btn-primary py-1.5 text-xs"
+                            : "btn-ghost py-1.5 text-xs"
+                        }
                       >
-                        View SHAP
+                        {canDecide && isPendingReview(application) ? "Review" : "View SHAP"}
                       </button>
                     </td>
                   </tr>

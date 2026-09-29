@@ -75,6 +75,12 @@ class Application(Base):
     """
 
     __tablename__ = "applications"
+    __table_args__ = (
+        CheckConstraint(
+            "review_decision IS NULL OR review_decision IN ('Approved', 'Rejected')",
+            name="ck_applications_review_decision",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     applicant_name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -95,6 +101,18 @@ class Application(Base):
     risk_score: Mapped[float] = mapped_column(Float, nullable=False, index=True)
     decision: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     shap_explanation_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Who ran the assessment. NULL only for rows scored before migration 0003.
+    scored_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # The officer's final call on a Manual Review application. ``decision``
+    # keeps the model's band unchanged, so the file shows both.
+    review_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False, index=True
@@ -143,8 +161,17 @@ class Alert(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # The officer who took the alert for review, and who closed it and why.
+    assigned_to: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     borrower: Mapped["Application"] = relationship(back_populates="alerts")
+
+    @property
+    def business_name(self) -> str:
+        """The borrower's business, so an alert is readable without a lookup."""
+        return self.borrower.business_name
 
     def __repr__(self) -> str:  # pragma: no cover - debugging helper
         return (

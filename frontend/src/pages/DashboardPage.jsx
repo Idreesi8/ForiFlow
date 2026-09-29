@@ -18,7 +18,13 @@ import ApplicationTable from "../components/ApplicationTable.jsx";
 import EWSAlertFeed from "../components/EWSAlertFeed.jsx";
 import ScoreDial from "../components/ScoreDial.jsx";
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
-import { SCORE_BANDS, bandForDecision } from "../lib/decisions.js";
+import {
+  DECISION_APPROVED,
+  SCORE_BANDS,
+  bandForDecision,
+  finalDecisionOf,
+  isPendingReview,
+} from "../lib/decisions.js";
 import { formatPKRCompact } from "../lib/format.js";
 
 // Bucket edges land on the policy boundaries (40 and 70) so no bar mixes
@@ -56,12 +62,14 @@ export default function DashboardPage() {
   }, [loadApplications]);
 
   const handleAlertsLoaded = useCallback((alerts) => {
-    setActiveAlerts(alerts.filter((alert) => alert.alert_status === "Active"));
+    // Open = not yet resolved: Active, or In Review with an officer.
+    setActiveAlerts(alerts.filter((alert) => alert.alert_status !== "Resolved"));
   }, []);
 
   const stats = useMemo(() => {
     const total = applications.length;
-    const approved = applications.filter((app) => app.decision === "Approved");
+    // Approved by the model, or Manual Review approved by an officer.
+    const approved = applications.filter((app) => finalDecisionOf(app) === DECISION_APPROVED);
     const averageScore = total
       ? applications.reduce((sum, app) => sum + app.risk_score, 0) / total
       : 0;
@@ -72,7 +80,7 @@ export default function DashboardPage() {
       approvalRate: total ? (approved.length / total) * 100 : 0,
       averageScore,
       exposure,
-      pending: applications.filter((app) => app.decision === "Manual Review").length,
+      pending: applications.filter(isPendingReview).length,
     };
   }, [applications]);
 
@@ -118,7 +126,7 @@ export default function DashboardPage() {
         <StatCard
           label="Approval rate"
           value={`${stats.approvalRate.toFixed(0)}%`}
-          hint={`${stats.pending} awaiting manual review`}
+          hint={`${stats.pending} awaiting an officer decision`}
           accent="emerald"
         />
         <StatCard
@@ -134,7 +142,7 @@ export default function DashboardPage() {
           accent="slate"
         />
         <StatCard
-          label="Active EWS alerts"
+          label="Open EWS alerts"
           value={activeAlerts.length}
           hint={
             activeAlerts.length
@@ -148,7 +156,7 @@ export default function DashboardPage() {
       <section className="grid gap-6 xl:grid-cols-3">
         <div className="card">
           <div className="card-header">
-            <h2 className="card-title">Decision mix</h2>
+            <h2 className="card-title">Model decision mix</h2>
           </div>
           <div className="px-5 py-4" style={{ height: 300 }}>
             {decisionData.length === 0 ? (

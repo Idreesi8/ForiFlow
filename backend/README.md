@@ -41,14 +41,16 @@ Tables are created automatically on startup.
 | Method  | Path                                 | Purpose                                        |
 | ------- | ------------------------------------ | ---------------------------------------------- |
 | `POST`  | `/score`                             | Score an SME application and persist it        |
-| `GET`   | `/score/applications`                | List scored applications (filter by decision)  |
+| `GET`   | `/score/applications`                | List applications (filter by decision, pending review) |
 | `GET`   | `/score/applications/{id}`           | Fetch one application                          |
+| `POST`  | `/score/applications/{id}/review`    | Approve or reject a Manual Review case (admin) |
 | `POST`  | `/explain/{application_id}`          | Generate the SHAP explanation                  |
 | `GET`   | `/explain/{application_id}`          | Read the stored explanation                    |
 | `POST`  | `/ews/monitor`                       | Record a monitored month, alert on score drops |
 | `GET`   | `/ews/alerts`                        | List alerts, worst first                       |
 | `GET`   | `/ews/borrowers/{id}/history`        | Monthly score trend for one borrower           |
-| `PATCH` | `/ews/alerts/{id}/resolve`           | Resolve an alert                               |
+| `PATCH` | `/ews/alerts/{id}/review`            | Take an alert for review                       |
+| `PATCH` | `/ews/alerts/{id}/resolve`           | Resolve an alert with a note (admin)           |
 
 ### Decision policy
 
@@ -60,6 +62,12 @@ The score runs from 0 (worst) to 100 (best):
 | 41 – 70     | Manual Review | Medium Risk |
 | 71 – 100    | Approved      | Low Risk    |
 
+A Manual Review case is decided by an admin (`Approved` or `Rejected`, with a
+written reason of at least 10 characters). The model's band is kept in
+`decision` and the officer's call, name and time sit beside it, so the file
+shows both. A recorded decision cannot be changed. Every application also
+records the officer who scored it.
+
 ### EWS alerting
 
 The origination score is the borrower's baseline. Each monitored month is
@@ -68,9 +76,10 @@ bureau balance, and POS settlement inflows. There is no live bureau pull. A
 drop of **more than 15 points** raises an alert with an estimated runway to
 default. An unresolved alert is updated in place rather than duplicated, and
 re-submitting a month (e.g. after a corrected typed balance) overwrites that
-observation. Rejected applications cannot be monitored (`409`); ForiFlow keeps
-no disbursement record, so Approved and Manual Review applications can.
-Resolving an alert needs the `admin` role.
+observation. Only an approved facility can be monitored: Approved by the
+model, or Manual Review approved by an officer; anything else returns `409`.
+Any officer can take an alert for review (`In Review`, with their name);
+resolving it needs the `admin` role and a note, and records who resolved it.
 
 ## Layout
 

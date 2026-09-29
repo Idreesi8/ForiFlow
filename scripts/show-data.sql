@@ -17,10 +17,21 @@ UNION ALL SELECT 'alerts', count(*) FROM alerts
 UNION ALL SELECT 'users', count(*) FROM users;
 
 \echo '=== Latest scored applications ==='
-SELECT id, business_name, loan_amount_pkr, risk_score, decision,
+SELECT id, business_name, loan_amount_pkr, risk_score, decision AS model_decision,
+       CASE WHEN decision <> 'Manual Review' THEN decision
+            ELSE coalesce(review_decision, 'Pending review') END AS final_decision,
+       scored_by, reviewed_by,
        to_char(created_at, 'YYYY-MM-DD HH24:MI') AS scored_at
 FROM applications
 ORDER BY id DESC
+LIMIT 5;
+
+\echo '=== Officer decisions on Manual Review cases (with the reason) ==='
+SELECT id, business_name, review_decision, reviewed_by,
+       to_char(reviewed_at, 'YYYY-MM-DD HH24:MI') AS reviewed_at, review_note
+FROM applications
+WHERE review_decision IS NOT NULL
+ORDER BY reviewed_at DESC
 LIMIT 5;
 
 \echo '=== The SHAP explanation stored with the latest application (audit trail) ==='
@@ -54,7 +65,7 @@ LIMIT 5;
 
 \echo '=== Latest EWS alerts ==='
 SELECT id, borrower_id, baseline_score, current_score, score_drop,
-       estimated_days_to_default, alert_status
+       estimated_days_to_default, alert_status, assigned_to, resolved_by, resolution_note
 FROM alerts
 ORDER BY id DESC
 LIMIT 5;

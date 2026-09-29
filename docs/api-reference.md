@@ -20,6 +20,8 @@ from the token, so changing a user's role takes effect immediately.
 | --- | --- | --- |
 | Score, explain, list applications | yes | yes |
 | Record EWS observations, read alerts and history | yes | yes |
+| Take an EWS alert for review | yes | yes |
+| Approve or reject a Manual Review application | no (`403`) | yes |
 | Resolve an EWS alert | no (`403`) | yes |
 | List or create officer accounts | no (`403`) | yes |
 
@@ -179,8 +181,9 @@ Query: `include_explanation` (default `true`).
 
 List scored applications, newest first.
 
-Query: `decision` (`Rejected` | `Manual Review` | `Approved`), `limit` (1–200,
-default 50), `offset`.
+Query: `decision` (the model's band: `Rejected` | `Manual Review` | `Approved`),
+`pending_review` (`true`: Manual Review cases still awaiting an officer
+decision; `false`: every other row), `limit` (1–200, default 50), `offset`.
 
 **Response `200`**
 
@@ -194,18 +197,49 @@ default 50), `offset`.
     "tenure_months": 24,
     "risk_score": 67.23,
     "decision": "Manual Review",
-    "created_at": "2026-09-25T10:47:02.821460+05:00"
+    "created_at": "2026-09-25T10:47:02.821460+05:00",
+    "scored_by": "officer.two",
+    "review_decision": null,
+    "review_note": null,
+    "reviewed_by": null,
+    "reviewed_at": null,
+    "final_decision": null
   }
 ]
 ```
 
+`decision` is always the model's band. `final_decision` is the decision that
+stands: the model's band for Approved and Rejected, the officer's
+`review_decision` for a reviewed Manual Review case, and `null` while that
+review is pending. `scored_by` is `null` for rows scored before version 1.3.
+
 `GET /score/applications/{id}` returns one row or `404`.
+
+## POST `/score/applications/{id}/review` (admin)
+
+Record the final decision on a Manual Review application, with the reason.
+
+```json
+{ "decision": "Approved", "note": "Five years of clean POS receipts; facility is 28% of turnover." }
+```
+
+`decision` is `Approved` or `Rejected`; `note` is 10–1000 characters.
+**Response `200`**: the application, as in `GET /score/applications/{id}`,
+with `review_decision`, `review_note`, `reviewed_by` and `reviewed_at` set.
+
+**Errors:** `404` unknown id; `409` if the model's band is Approved or
+Rejected (only Manual Review needs an officer decision) or if a decision is
+already recorded (it cannot be changed); `403` for analysts; `422` for a
+missing or short note.
 
 ## POST `/explain/{application_id}`
 
 Rebuild or return the stored SHAP explanation for a scored application.
 
-Query: `refresh` (default `false`) — recompute from the current engine.
+Query: `refresh` (default `false`) — recompute from the current engine. The
+explanation stored at scoring time is the audit record, so a refresh returns
+the recomputed explanation without overwriting it (it is only written when
+none is stored).
 
 **Response `200`** — same body as `ScoreResponse.explanation` above.
 
@@ -235,10 +269,11 @@ monthly score drops more than 15 points from the originating application.
 `Default`. `data_source_primary`: `ECIB`, `POS`, `Bank Statement`,
 `Self Reported`.
 
-`borrower_id` is an application id. An unknown id returns `404`; an
-application whose decision was `Rejected` returns `409`, because it never
-became a facility. ForiFlow keeps no disbursement record, so `Approved` and
-`Manual Review` applications can both be monitored.
+`borrower_id` is an application id. An unknown id returns `404`. Only an
+approved application became a facility, so only it can be monitored: Approved
+by the model, or Manual Review and then approved by an officer. Anything else
+returns `409`: a model Rejected application, a Manual Review case still
+awaiting its decision, or one an officer rejected.
 
 **Response `201`**
 
@@ -273,7 +308,11 @@ became a facility. ForiFlow keeps no disbursement record, so `Approved` and
     "estimated_days_to_default": 74,
     "alert_status": "Active",
     "triggered_at": "2026-09-25T10:47:16.580236+05:00",
-    "resolved_at": null
+    "resolved_at": null,
+    "business_name": "Siddiqui Textiles (Faisalabad)",
+    "assigned_to": null,
+    "resolved_by": null,
+    "resolution_note": null
   }
 }
 ```
@@ -299,10 +338,29 @@ Query: `alert_status` (`Active` | `In Review` | `Resolved`), `limit`, `offset`.
     "estimated_days_to_default": 74,
     "alert_status": "Active",
     "triggered_at": "2026-09-25T10:47:16.580236+05:00",
-    "resolved_at": null
+    "resolved_at": null,
+    "business_name": "Siddiqui Textiles (Faisalabad)",
+    "assigned_to": null,
+    "resolved_by": null,
+    "resolution_note": null
   }
 ]
 ```
 
-Related: `GET /ews/borrowers/{id}/history` and
-`PATCH /ews/alerts/{id}/resolve` (admin only; an analyst gets `403`).
+Related: `GET /ews/borrowers/{id}/history`.
+
+## PATCH `/ews/alerts/{id}/review`
+
+Any officer takes an open alert for review: `alert_status` becomes
+`In Review` and `assigned_to` records who. `404` unknown id, `409` if the
+alert is already resolved.
+
+## PATCH `/ews/alerts/{id}/resolve` (admin)
+
+```json
+{ "note": "Borrower paid the arrears on 12 Oct." }
+```
+
+Closes an Active or In Review alert, recording `resolved_at`, `resolved_by`
+and `resolution_note` (5–1000 characters). `404` unknown id, `409` if already
+resolved, `403` for analysts, `422` without a note.

@@ -176,10 +176,14 @@ def test_resolving_an_alert_stamps_the_resolution_time(
         json=_healthy_month(borrower["id"], 2, current_score=borrower["baseline"] - 25),
     ).json()["alert"]
 
-    resolved = client.patch(f"/ews/alerts/{opened['id']}/resolve")
+    resolved = client.patch(
+        f"/ews/alerts/{opened['id']}/resolve", json={"note": "Arrears cleared in full."}
+    )
     assert resolved.status_code == 200
     assert resolved.json()["alert_status"] == "Resolved"
     assert resolved.json()["resolved_at"] is not None
+    assert resolved.json()["resolved_by"] == "admin"
+    assert resolved.json()["resolution_note"] == "Arrears cleared in full."
     assert client.get("/ews/alerts", params={"alert_status": "Active"}).json() == []
 
     relapse = client.post(
@@ -210,7 +214,8 @@ def test_monitoring_unknown_borrower_returns_404(client: TestClient) -> None:
 
 def test_resolving_unknown_alert_returns_404(client: TestClient) -> None:
     """Resolving a missing alert must fail cleanly."""
-    assert client.patch("/ews/alerts/555/resolve").status_code == 404
+    response = client.patch("/ews/alerts/555/resolve", json={"note": "Not a real alert."})
+    assert response.status_code == 404
 
 
 @pytest.mark.parametrize(

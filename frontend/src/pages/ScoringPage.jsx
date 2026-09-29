@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import ApplicationForm from "../components/ApplicationForm.jsx";
+import ReviewPanel from "../components/ReviewPanel.jsx";
 import ShapWaterfall from "../components/ShapWaterfall.jsx";
 
 /** Intake workspace: score an SME and immediately read the rationale. */
@@ -13,7 +14,8 @@ export default function ScoringPage() {
         <h2 className="text-xl font-bold text-slate-900">Credit Scoring</h2>
         <p className="mt-1 text-sm text-slate-500">
           Score a thin-file SME on alternative data. The decision follows the policy
-          matrix: 0-40 Rejected, 41-70 Manual Review, 71-100 Approved.
+          matrix: 0-40 Rejected, 41-70 Manual Review, 71-100 Approved. A Manual
+          Review case is approved or rejected by an admin, with a written reason.
         </p>
       </header>
 
@@ -31,6 +33,10 @@ export default function ScoringPage() {
             <ShapWaterfall explanation={lastScored.explanation} compact />
           </div>
         </section>
+      ) : null}
+
+      {lastScored?.decision === "Manual Review" ? (
+        <ReviewPanel key={lastScored.application_id} applicationId={lastScored.application_id} />
       ) : null}
     </div>
   );
