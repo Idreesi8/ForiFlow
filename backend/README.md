@@ -278,7 +278,8 @@ near 50 and spreads applicants across the policy bands.
 
 `python -m ml.evaluate_model` leaves the served model untouched. It rebuilds the
 training 80/20 split, fits an isotonic regression on 5-fold out-of-fold
-predictions of the 80% part, and measures the served model plus that calibrator
+predictions of the 80% part (averaged in bins of 250 loans, so no reported
+probability rests on a handful of loans), and measures the served model plus that calibrator
 on the 20% hold-out (6,517 loans). Results and the calibrator's breakpoints are
 in `ml/model_evaluation.json`; the API serves them at `GET /model/evaluation`.
 It needs the raw CSV in `ml/data/`, and must be re-run after every retrain: a
@@ -287,7 +288,7 @@ calibrator from another training run is ignored at start-up.
 | Hold-out | AUC-ROC | Brier | ECE | Mean predicted PD |
 | -------- | ------: | ----: | --: | ----------------: |
 | Raw ensemble | 0.7731 | 0.1852 | 0.2261 | 44.4% |
-| After isotonic calibration | 0.7725 | 0.1305 | 0.0088 | 21.9% |
+| After isotonic calibration | 0.7725 | 0.1302 | 0.0091 | 21.8% |
 | Always predict the base rate | 0.5 | 0.1706 | - | 21.8% |
 
 The raw probabilities score worse than predicting the base rate for everyone,

@@ -102,6 +102,11 @@ class Application(Base):
     decision: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     shap_explanation_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Line of business, for portfolio concentration. NULL before migration 0004.
+    business_sector: Mapped[str | None] = mapped_column(
+        String(40), nullable=True, index=True
+    )
+
     # Who ran the assessment. NULL only for rows scored before migration 0003.
     scored_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
@@ -202,6 +207,8 @@ class EWSTracking(Base):
     pos_cash_balance: Mapped[float] = mapped_column(Float, nullable=False)
     monthly_score: Mapped[float] = mapped_column(Float, nullable=False)
     data_source_primary: Mapped[str] = mapped_column(String(32), nullable=False)
+    # What the borrower paid this month. NULL when the officer did not record it.
+    amount_paid_pkr: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     borrower: Mapped["Application"] = relationship(back_populates="ews_records")
 

@@ -121,7 +121,7 @@ in `frontend/`. Vite proxies `/api` to the API.
 ## 📊 Performance
 
 - **AUC-ROC:** 5-fold CV 0.7752 ± 0.0073, hold-out 0.7731 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio). 0.85+ remains a bank-data target, not a measured result.
-- **Calibration (hold-out, 6,517 loans):** Brier 0.1852 raw → 0.1305 after isotonic calibration (0.1706 for always predicting the base rate). Observed default rate: Rejected 59.5%, Manual Review 14.6%, Approved 8.4%. Calibrated to the public file's 21.8% default rate, not to Pakistani SMEs.
+- **Calibration (hold-out, 6,517 loans):** Brier 0.1852 raw → 0.1302 after isotonic calibration (0.1706 for always predicting the base rate). Observed default rate: Rejected 59.5%, Manual Review 14.6%, Approved 8.4%. Calibrated to the public file's 21.8% default rate, not to Pakistani SMEs.
 - **Response time:** median 150 ms, p90 207 ms per score including SHAP (30 runs in the Docker container on the development laptop, 26 September 2026)
 - **Concurrency:** not load-tested; the shipped Compose stack runs a single uvicorn process behind nginx, sized for a single-branch pilot
 

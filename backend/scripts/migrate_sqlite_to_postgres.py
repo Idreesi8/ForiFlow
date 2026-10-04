@@ -83,6 +83,18 @@ EXPECTED_0003: dict[str, tuple[str, ...]] = {
     "alerts": (*EXPECTED["alerts"], "assigned_to", "resolved_by", "resolution_note"),
 }
 
+# After migration 0004 (business sector, amount paid per monitored month).
+_APP3 = EXPECTED_0003["applications"]
+EXPECTED_0004: dict[str, tuple[str, ...]] = {
+    "applications": (
+        *_APP3[: _APP3.index("scored_by")],
+        "business_sector",
+        *_APP3[_APP3.index("scored_by") :],
+    ),
+    "alerts": EXPECTED_0003["alerts"],
+    "ews_tracking": (*EXPECTED["ews_tracking"], "amount_paid_pkr"),
+}
+
 # SQLite declared types we will copy without rewriting values.
 _INT = {"INT", "INTEGER", "BIGINT"}
 _FLOAT = {"REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "NUMERIC", "DECIMAL"}
@@ -154,7 +166,7 @@ def assert_schema(connection: sqlite3.Connection) -> dict[str, tuple[str, ...]]:
     for table, expected in tables_to_check.items():
         cols = sqlite_columns(connection, table)
         names = tuple(name for name, _type in cols)
-        if names not in (expected, EXPECTED_0003.get(table)):
+        if names not in (expected, EXPECTED_0003.get(table), EXPECTED_0004.get(table)):
             raise MigrationError(
                 f"Table {table!r} columns {names} do not match expected {expected}."
             )

@@ -16,6 +16,7 @@ import {
 import { apiErrorMessage, fetchApplications, fetchPortfolioStats } from "../api/client.js";
 import ApplicationTable from "../components/ApplicationTable.jsx";
 import EWSAlertFeed from "../components/EWSAlertFeed.jsx";
+import PortfolioPanel from "../components/PortfolioPanel.jsx";
 import ScoreDial from "../components/ScoreDial.jsx";
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
 import { SCORE_BANDS, bandForDecision } from "../lib/decisions.js";
@@ -226,6 +227,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      <PortfolioPanel />
 
       <EWSAlertFeed
         maxRows={5}

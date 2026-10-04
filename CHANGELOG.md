@@ -15,8 +15,9 @@ All notable changes to ForiFlow are recorded here. The format follows
   stores its breakpoints in `ml/model_evaluation.json`. Every score now returns
   `probability_of_default`, and it is saved inside the stored explanation. On
   the hold-out the Brier score falls from 0.1852 (worse than the 0.1706 of
-  always predicting the base rate) to 0.1305, and the mean prediction from
-  44.4% to 21.9% against 21.8% observed. The calibrator is monotone, so the
+  always predicting the base rate) to 0.1302, and the mean prediction from
+  44.4% to 21.8%, matching the 21.8% observed. It is fitted over bins of 250
+  loans, so no probability is reported from a handful of loans. The calibrator is monotone, so the
   score, the policy bands and the SHAP values are unchanged. It is calibrated
   to the public training file, not to a Pakistani SME portfolio, and it is
   ignored if it belongs to another training run.

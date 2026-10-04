@@ -11,7 +11,8 @@ the number itself too high. This script fixes that without touching the model:
 1. Rebuild the exact 80 / 20 split used by :mod:`ml.train_real_model`.
 2. On the 80% training part only, collect out-of-fold predictions (5 folds,
    scaler + SMOTE fitted inside each fold) and fit an isotonic regression that
-   maps the raw probability to the observed default rate.
+   maps the raw probability to the observed default rate. It is fitted over
+   bins of 250 loans, so no reported probability rests on a handful of loans.
 3. Apply the served model plus that calibrator to the 20% hold-out, which
    neither of them has seen, and record ROC, confusion matrix, threshold
    trade-offs, reliability and the default rate inside each policy band.
@@ -46,6 +47,8 @@ from ml.train_real_model import (
 # Policy bands on the 0-100 score, mirrored from services.scoring_service.
 REJECT_UPPER_BOUND = 40.0
 MANUAL_REVIEW_UPPER_BOUND = 70.0
+# Loans averaged into each calibration bin; no reported PD rests on fewer.
+CALIBRATION_BIN_ROWS = 250
 RELIABILITY_BINS = 10
 ROC_POINTS = 120
 # Score cut-offs shown in the threshold table: "flag everything at or below".
@@ -136,6 +139,25 @@ def roc_points(probabilities: np.ndarray, y: np.ndarray) -> list[dict]:
     return [{"fpr": float(fpr[i]), "tpr": float(tpr[i])} for i in keep]
 
 
+def fit_calibrator(raw: np.ndarray, y: np.ndarray) -> IsotonicRegression:
+    """Isotonic regression over equal-size bins of the raw probability.
+
+    Fitted row by row, isotonic regression ends in tiny blocks at both extremes
+    and reports a probability of exactly 0% or 100% from a handful of loans.
+    Averaging :data:`CALIBRATION_BIN_ROWS` loans per bin first means every level
+    of the calibrator is the default rate of at least that many loans.
+    """
+    order = np.argsort(raw, kind="stable")
+    bins = np.array_split(order, max(len(raw) // CALIBRATION_BIN_ROWS, 2))
+    centres = np.array([raw[chunk].mean() for chunk in bins])
+    rates = np.array([y[chunk].mean() for chunk in bins])
+    weights = np.array([len(chunk) for chunk in bins], dtype=float)
+
+    calibrator = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
+    calibrator.fit(centres, rates, sample_weight=weights)
+    return calibrator
+
+
 def main() -> int:
     """Fit the calibrator, evaluate on the hold-out and write the JSON."""
     metadata = load_feature_metadata()
@@ -159,8 +181,7 @@ def main() -> int:
         pipeline.fit(X_train.iloc[fit_index], y_train.iloc[fit_index])
         out_of_fold[predict_index] = pipeline.predict_proba(X_train.iloc[predict_index])[:, 1]
 
-    calibrator = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
-    calibrator.fit(out_of_fold, y_train_arr)
+    calibrator = fit_calibrator(out_of_fold, y_train_arr)
 
     model = joblib.load(MODEL_PATH)
     scaler = joblib.load(SCALER_PATH)
@@ -181,7 +202,7 @@ def main() -> int:
         "rows": {"train": int(len(X_train)), "holdout": int(len(X_test))},
         "default_rate": {"train": base_rate, "holdout": float(y_test_arr.mean())},
         "calibrator": {
-            "method": "isotonic",
+            "method": f"isotonic over bins of {CALIBRATION_BIN_ROWS} loans",
             "raw_probability": [float(v) for v in calibrator.X_thresholds_],
             "calibrated_probability": [float(v) for v in calibrator.y_thresholds_],
         },

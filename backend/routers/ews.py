@@ -135,6 +135,7 @@ async def monitor_borrower(
     tracking.pos_cash_balance = payload.pos_cash_balance
     tracking.monthly_score = outcome.current_score
     tracking.data_source_primary = payload.data_source_primary.value
+    tracking.amount_paid_pkr = payload.amount_paid_pkr
     db.flush()
 
     latest_month = db.scalar(

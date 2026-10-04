@@ -21,6 +21,7 @@ const INITIAL_FORM = {
   installment_status: "On Time",
   bureau_balance: "",
   pos_cash_balance: "",
+  amount_paid_pkr: "",
   data_source_primary: "ECIB",
 };
 
@@ -60,6 +61,9 @@ export default function MonitoringPanel({ onMonitored }) {
     };
   }, []);
 
+  const selectedBorrower =
+    borrowers.find((borrower) => String(borrower.id) === String(form.borrower_id)) ?? null;
+
   const handleChange = (event) => {
     const { name, value } = event.target;
     setForm((previous) => ({ ...previous, [name]: value }));
@@ -76,6 +80,10 @@ export default function MonitoringPanel({ onMonitored }) {
         installment_status: form.installment_status,
         bureau_balance: Number(form.bureau_balance),
         pos_cash_balance: Number(form.pos_cash_balance),
+        // Optional: a month without it is left out of the collection figures.
+        ...(form.amount_paid_pkr === ""
+          ? {}
+          : { amount_paid_pkr: Number(form.amount_paid_pkr) }),
         data_source_primary: form.data_source_primary,
       });
       setResult(response);
@@ -215,6 +223,31 @@ export default function MonitoringPanel({ onMonitored }) {
               {formatPKR(form.pos_cash_balance)}
             </p>
           ) : null}
+        </div>
+
+        <div>
+          <label className="field-label" htmlFor="amount_paid_pkr">
+            Amount paid this month <span className="text-xs text-slate-400">(PKR, optional)</span>
+          </label>
+          <input
+            id="amount_paid_pkr"
+            name="amount_paid_pkr"
+            type="number"
+            min="0"
+            step="any"
+            value={form.amount_paid_pkr}
+            onChange={handleChange}
+            className="field-input"
+          />
+          <p className="tabular mt-1 text-xs text-slate-500">
+            {form.amount_paid_pkr
+              ? formatPKR(form.amount_paid_pkr)
+              : selectedBorrower
+                ? `Installment due: ${formatPKR(
+                    selectedBorrower.loan_amount_pkr / selectedBorrower.tenure_months,
+                  )}`
+                : "Feeds the collection and arrears figures on the dashboard."}
+          </p>
         </div>
 
         <div>

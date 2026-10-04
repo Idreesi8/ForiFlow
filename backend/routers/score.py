@@ -72,6 +72,7 @@ async def score_application(
         cash_flow_proxy=applicant.cash_flow_proxy,
         years_in_operation=applicant.years_in_operation,
         num_employees=applicant.num_employees,
+        business_sector=applicant.business_sector.value if applicant.business_sector else None,
         risk_score=result.risk_score,
         decision=result.decision.value,
         scored_by=officer.username,

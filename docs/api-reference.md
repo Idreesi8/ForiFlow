@@ -128,7 +128,7 @@ Query: `include_explanation` (default `true`).
   "decision": "Manual Review",
   "risk_band": "Medium Risk",
   "confidence": 43.7,
-  "probability_of_default": 0.0913,
+  "probability_of_default": 0.0888,
   "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26",
   "explanation": {
     "application_id": 1,

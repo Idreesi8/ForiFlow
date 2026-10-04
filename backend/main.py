@@ -24,7 +24,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from config import env_flag, jwt_secret_key
 from models.database import DATABASE_URL, engine, init_db
-from routers import auth, ews, explain, model, score
+from routers import auth, ews, explain, model, portfolio, score
 from schemas import HealthResponse
 from services.auth_service import jwt_secret_problem
 from services.scoring_service import get_scoring_service
@@ -98,6 +98,7 @@ app.include_router(score.router)
 app.include_router(explain.router)
 app.include_router(ews.router)
 app.include_router(model.router)
+app.include_router(portfolio.router)
 
 
 @app.exception_handler(RequestValidationError)
@@ -150,6 +151,7 @@ async def root() -> dict[str, str | list[str]]:
             "/explain/{application_id}",
             "/ews/monitor",
             "/ews/alerts",
+            "/portfolio/summary",
             "/model/evaluation",
             "/model/comparison",
         ],

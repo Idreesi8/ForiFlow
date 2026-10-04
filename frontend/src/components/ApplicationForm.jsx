@@ -7,6 +7,20 @@ import PathToApproval from "./PathToApproval.jsx";
 import ScoreDial from "./ScoreDial.jsx";
 import { Spinner } from "./common/States.jsx";
 
+/** Mirrors `BusinessSector` in backend/schemas.py. */
+const BUSINESS_SECTORS = [
+  "Retail",
+  "Wholesale & Trading",
+  "Manufacturing",
+  "Textile & Garments",
+  "Food & Hospitality",
+  "Agriculture & Livestock",
+  "Services",
+  "Transport & Logistics",
+  "Construction",
+  "Other",
+];
+
 /** Field definitions mirror the backend's Pydantic ranges exactly. */
 const FIELD_GROUPS = [
   {
@@ -28,6 +42,14 @@ const FIELD_GROUPS = [
         placeholder: "e.g. Siddiqui Textiles (Faisalabad)",
         minLength: 2,
         maxLength: 160,
+      },
+      {
+        name: "business_sector",
+        label: "Business sector",
+        type: "select",
+        options: BUSINESS_SECTORS,
+        optional: true,
+        hint: "For portfolio reports only. The model does not read it.",
       },
     ],
   },
@@ -177,6 +199,7 @@ const SAMPLE_PROFILES = [
     values: {
       applicant_name: "Ayesha Siddiqui",
       business_name: "Siddiqui Textiles (Faisalabad)",
+      business_sector: "Textile & Garments",
       loan_amount_pkr: "2400000",
       tenure_months: "36",
       monthly_digital_payments: "3200000",
@@ -195,6 +218,7 @@ const SAMPLE_PROFILES = [
     values: {
       applicant_name: "Hina Raza",
       business_name: "Raza Kiryana Store (Lahore)",
+      business_sector: "Retail",
       loan_amount_pkr: "1200000",
       tenure_months: "24",
       monthly_digital_payments: "500000",
@@ -213,6 +237,7 @@ const SAMPLE_PROFILES = [
     values: {
       applicant_name: "Bilal Ahmed",
       business_name: "Ahmed Auto Spares (Karachi)",
+      business_sector: "Wholesale & Trading",
       loan_amount_pkr: "3000000",
       tenure_months: "12",
       monthly_digital_payments: "25000",
@@ -234,9 +259,10 @@ function validate(values) {
     const raw = String(values[field.name] ?? "").trim();
 
     if (!raw) {
-      errors[field.name] = "Required.";
+      if (!field.optional) errors[field.name] = "Required.";
       continue;
     }
+    if (field.type === "select") continue;
 
     if (field.type === "text") {
       if (raw.length < field.minLength) {
@@ -265,7 +291,8 @@ function validate(values) {
 function toPayload(values) {
   const payload = {};
   for (const field of ALL_FIELDS) {
-    const raw = String(values[field.name]).trim();
+    const raw = String(values[field.name] ?? "").trim();
+    if (!raw && field.optional) continue;
     payload[field.name] = field.type === "number" ? Number(raw) : raw;
   }
   return payload;
@@ -499,20 +526,37 @@ function FormField({ field, value, error, note, onChange }) {
           <span className="ml-1 text-xs font-normal text-slate-400">(PKR)</span>
         ) : null}
       </label>
-      <input
-        id={field.name}
-        name={field.name}
-        type={field.type}
-        value={value}
-        onChange={onChange}
-        placeholder={field.placeholder}
-        min={field.min}
-        max={field.max}
-        step={field.step}
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? `${field.name}-error` : undefined}
-        className={`field-input ${error ? "field-input-error" : ""}`}
-      />
+      {field.type === "select" ? (
+        <select
+          id={field.name}
+          name={field.name}
+          value={value ?? ""}
+          onChange={onChange}
+          className="field-input"
+        >
+          <option value="">Not recorded</option>
+          {field.options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          id={field.name}
+          name={field.name}
+          type={field.type}
+          value={value}
+          onChange={onChange}
+          placeholder={field.placeholder}
+          min={field.min}
+          max={field.max}
+          step={field.step}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${field.name}-error` : undefined}
+          className={`field-input ${error ? "field-input-error" : ""}`}
+        />
+      )}
       {error ? (
         <p id={`${field.name}-error`} className="mt-1 text-xs font-medium text-rose-600">
           {error}

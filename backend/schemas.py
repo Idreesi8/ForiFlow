@@ -57,6 +57,24 @@ class InstallmentStatus(StrEnum):
     DEFAULT = "Default"
 
 
+class BusinessSector(StrEnum):
+    """Line of business, used only for portfolio concentration reporting.
+
+    The model does not read it: the public training data has no sector column.
+    """
+
+    RETAIL = "Retail"
+    WHOLESALE = "Wholesale & Trading"
+    MANUFACTURING = "Manufacturing"
+    TEXTILE = "Textile & Garments"
+    FOOD = "Food & Hospitality"
+    AGRICULTURE = "Agriculture & Livestock"
+    SERVICES = "Services"
+    TRANSPORT = "Transport & Logistics"
+    CONSTRUCTION = "Construction"
+    OTHER = "Other"
+
+
 class DataSource(StrEnum):
     """Officer-selected label for which typed source dominated the month.
 
@@ -134,6 +152,10 @@ class SMEApplicant(BaseModel):
         ..., ge=0, le=100, description="Years the business has been trading."
     )
     num_employees: int = Field(..., ge=0, le=5_000, description="Headcount including owners.")
+    business_sector: BusinessSector | None = Field(
+        default=None,
+        description="Line of business. Used for portfolio reporting, not by the model.",
+    )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -289,6 +311,7 @@ class ApplicationSummary(BaseModel):
     risk_score: float
     decision: Decision
     created_at: datetime
+    business_sector: str | None = None
     scored_by: str | None = None
     review_decision: OfficerDecision | None = None
     review_note: str | None = None
@@ -400,6 +423,15 @@ class EWSMonitorRequest(BaseModel):
         ..., ge=0, le=1_000_000_000, description="Monthly POS settlement inflow in PKR."
     )
     data_source_primary: DataSource = DataSource.ECIB
+    amount_paid_pkr: float | None = Field(
+        default=None,
+        ge=0,
+        le=1_000_000_000,
+        description=(
+            "What the borrower paid this month in PKR. Optional; months without it "
+            "are left out of the collection figures."
+        ),
+    )
     current_score: float | None = Field(
         default=None,
         ge=0,
@@ -441,6 +473,74 @@ class EWSTrackingResponse(BaseModel):
     pos_cash_balance: float
     monthly_score: float
     data_source_primary: DataSource
+    amount_paid_pkr: float | None = None
+
+
+class StatusExposure(BaseModel):
+    """Monitored facilities whose latest month shows this repayment status."""
+
+    status: InstallmentStatus
+    facilities: int
+    outstanding_pkr: float
+
+
+class DecisionMatrixRow(BaseModel):
+    """What happened to the applications the model placed in one band."""
+
+    model_decision: Decision
+    approved: int
+    rejected: int
+    pending: int
+
+
+class SectorRow(BaseModel):
+    """Portfolio concentration for one line of business."""
+
+    sector: str
+    applications: int
+    approved: int
+    approval_rate: float = Field(..., description="approved / applications, in percent.")
+    approved_exposure_pkr: float
+    average_score: float
+    overdue_pkr: float
+    open_alerts: int
+
+
+class PortfolioSummary(BaseModel):
+    """Repayment position of the approved book, from officer-recorded months.
+
+    Installments are straight-line (facility / tenure): ForiFlow holds no
+    interest rate. Collection figures cover only months where the officer
+    recorded an amount; ``months_without_amount`` says how many did not.
+    """
+
+    approved_facilities: int
+    monitored_facilities: int
+    disbursed_pkr: float = Field(..., description="Sum of approved facility amounts.")
+    due_pkr: float = Field(..., description="Installments due in months with an amount.")
+    collected_pkr: float
+    collection_rate: float | None = Field(
+        ..., description="collected / due, in percent. Null when nothing is due yet."
+    )
+    overdue_pkr: float = Field(
+        ..., description="Per facility, due minus collected where that is positive."
+    )
+    outstanding_pkr: float = Field(..., description="Approved amounts not yet collected.")
+    defaulted_facilities: int = Field(..., description="Latest month recorded as Default.")
+    defaulted_outstanding_pkr: float
+    par30: float | None = Field(
+        ...,
+        description=(
+            "Portfolio at risk: outstanding on monitored facilities 30 or more days "
+            "late in their latest month, over outstanding on all monitored "
+            "facilities, in percent. Null when nothing is monitored."
+        ),
+    )
+    months_with_amount: int
+    months_without_amount: int
+    latest_status: list[StatusExposure]
+    decision_matrix: list[DecisionMatrixRow]
+    sectors: list[SectorRow]
 
 
 class EWSMonitorResponse(BaseModel):

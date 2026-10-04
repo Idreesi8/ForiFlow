@@ -112,6 +112,9 @@ export const fetchBorrowerHistory = (borrowerId) =>
 export const monitorBorrower = (payload) =>
   client.post("/ews/monitor", payload).then((response) => response.data);
 
+export const fetchPortfolioSummary = () =>
+  client.get("/portfolio/summary").then((response) => response.data);
+
 export const fetchModelEvaluation = () =>
   client.get("/model/evaluation").then((response) => response.data);
 
