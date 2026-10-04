@@ -555,6 +555,23 @@ class EWSMonitorResponse(BaseModel):
     alert_triggered: bool
     alert_threshold: float
     estimated_days_to_default: int | None = None
+    default_probability_3m: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Probability of reaching Default within three months, from a Markov "
+            "chain fitted on monthly repayment histories of consumer card accounts "
+            "(UCI, Taiwan 2005), not on SME loans. Null when no chain is loaded."
+        ),
+    )
+    runway_basis: str = Field(
+        default="rules",
+        description=(
+            "'markov': estimated_days_to_default is the chain's mean time to "
+            "Default given it happens within 12 months. 'rules': the heuristic."
+        ),
+    )
     recommended_action: str
     tracking: EWSTrackingResponse
     alert: AlertResponse | None = None

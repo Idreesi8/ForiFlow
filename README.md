@@ -30,7 +30,7 @@ ForiFlow is an end-to-end AI credit intelligence platform that:
 
 - Scores unbanked SMEs using **alternative data** (digital payments and other officer-entered signals)
 - Provides **SHAP explainability** for every decision, stored on-premise to support an SBP-oriented review (ForiFlow is not SBP-certified and has no live ECIB connector)
-- Monitors approved borrowers (model-approved, or Manual Review approved by an officer) with an **Early Warning System** that raises an alert when the monthly score drops more than 15 points below origination, with an estimated runway to default (a heuristic, not validated on repayment data)
+- Monitors approved borrowers (model-approved, or Manual Review approved by an officer) with an **Early Warning System** that raises an alert when the monthly score drops more than 15 points below origination, or when a Markov chain puts default within three months at 10% or more. The chain is fitted on real monthly repayment histories (UCI credit card accounts, Taiwan 2005), not on SME loans
 
 ## 🏗️ Architecture
 
@@ -64,7 +64,7 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 | 🧭 **Path to approval** | For a rejected or referred applicant, the exact facility size and the evidenced turnover at which the same business would reach the next band, found by searching the monotone model |
 | 💼 **Loan book analytics** | Disbursed, collected, overdue and outstanding amounts, portfolio at risk (30+ days), defaults, a decision matrix and a per-sector table, from the months officers record |
 | ✅ **Officer decision on Manual Review** | An admin approves or rejects each 41–70 case with a written reason; the model band, the officer's call, name and time are all kept, and only approved facilities can be monitored |
-| 🚨 **Early Warning System** | Officer-submitted monthly observation; a rule-based score is derived from the origination baseline and an alert fires on a >15-point drop |
+| 🚨 **Early Warning System** | Officer-submitted monthly observation. A Markov chain fitted on 24,000 real repayment histories gives the probability of default within three months and the expected days to default; an alert fires at 10% or more, or on a >15-point score drop |
 | 🏦 **PKR Banking Context** | PKR amounts; designed for SBP-oriented explainability (not SBP-certified, no live ECIB feed) |
 | 🐳 **Docker Ready** | One-command deployment for bank demos |
 | 🔐 **JWT Authentication** | On-premise login (bcrypt, HS256, 8-hour tokens); roles admin and analyst, with Manual Review decisions, resolving alerts and creating officer accounts admin-only; every assessment records who scored it |

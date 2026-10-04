@@ -13,7 +13,12 @@ import {
   YAxis,
 } from "recharts";
 
-import { apiErrorMessage, fetchModelComparison, fetchModelEvaluation } from "../api/client.js";
+import {
+  apiErrorMessage,
+  fetchEarlyWarningModel,
+  fetchModelComparison,
+  fetchModelEvaluation,
+} from "../api/client.js";
 import { bandForDecision } from "../lib/decisions.js";
 import { formatCount, formatPercent, formatSigned } from "../lib/format.js";
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
@@ -42,6 +47,7 @@ const MODEL_LABELS = {
 export default function ModelPage() {
   const [evaluation, setEvaluation] = useState(null);
   const [comparison, setComparison] = useState(null);
+  const [earlyWarning, setEarlyWarning] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -49,13 +55,15 @@ export default function ModelPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [evaluationData, comparisonData] = await Promise.all([
+      const [evaluationData, comparisonData, earlyWarningData] = await Promise.all([
         fetchModelEvaluation(),
-        // The comparison is optional: the page still works without it.
+        // These two are optional: the page still works without them.
         fetchModelComparison().catch(() => null),
+        fetchEarlyWarningModel().catch(() => null),
       ]);
       setEvaluation(evaluationData);
       setComparison(comparisonData);
+      setEarlyWarning(earlyWarningData);
     } catch (requestError) {
       setError(apiErrorMessage(requestError, "Could not load the model evaluation."));
     } finally {
@@ -390,6 +398,218 @@ export default function ModelPage() {
       {comparison ? <ComparisonTable comparison={comparison} /> : null}
 
       <p className="text-xs text-slate-500">{evaluation.protocol}</p>
+
+      {earlyWarning ? <EarlyWarningSection chain={earlyWarning} /> : null}
+    </div>
+  );
+}
+
+const EWS_MODEL_LABELS = {
+  markov_first_order: "Markov chain, this month only (served)",
+  markov_second_order: "Markov chain, this and last month",
+  logistic_hazard: "Logistic hazard model",
+  gradient_boosting_hazard: "Gradient boosting hazard model",
+};
+
+function EarlyWarningSection({ chain }) {
+  const alternatives = chain.alternatives;
+  const rows = Object.entries(alternatives.models).sort(
+    ([, a], [, b]) => b.auc_roc - a.auc_roc,
+  );
+
+  return (
+    <div className="space-y-6 border-t border-slate-200 pt-6">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">Early-warning model</h2>
+        <p className="mt-1 max-w-3xl text-sm text-slate-600">
+          A Markov chain: how often an account moves from one repayment state to
+          another in a month. Fitted on {formatCount(chain.clients.train)} accounts and
+          checked on {formatCount(chain.clients.holdout)} others. {chain.source}
+        </p>
+      </div>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <div className="card min-w-0">
+          <div className="card-header">
+            <h3 className="card-title">Monthly transition matrix</h3>
+            <span className="text-xs text-slate-500">from this month's state to next month's</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+                  <th className="px-5 py-3 font-medium">From</th>
+                  {chain.states.map((state) => (
+                    <th key={state} className="px-3 py-3 text-right font-medium whitespace-nowrap">
+                      {state}
+                    </th>
+                  ))}
+                  <th className="px-5 py-3 text-right font-medium">Months seen</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {chain.states.slice(0, -1).map((state, index) => (
+                  <tr key={state}>
+                    <td className="px-5 py-3 font-medium whitespace-nowrap text-slate-900">{state}</td>
+                    {chain.transition_matrix[index].map((value, column) => (
+                      <td
+                        key={chain.states[column]}
+                        className={`tabular px-3 py-3 text-right ${
+                          column === index ? "font-semibold text-slate-900" : ""
+                        }`}
+                      >
+                        {formatPercent(value)}
+                      </td>
+                    ))}
+                    <td className="tabular px-5 py-3 text-right text-slate-500">
+                      {formatCount(
+                        chain.transition_counts[index].reduce((sum, count) => sum + count, 0),
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
+            {chain.state_definition} ForiFlow's "Late 1-29" and "Late 30-59" both map to
+            Late 1-59, because the data does not separate them.
+          </p>
+        </div>
+
+        <div className="card min-w-0">
+          <div className="card-header">
+            <h3 className="card-title">What monitoring reports</h3>
+            <span className="text-xs text-slate-500">by the state of the latest month</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+                  <th className="px-5 py-3 font-medium">State</th>
+                  <th className="px-3 py-3 text-right font-medium">Default in 3 months</th>
+                  <th className="px-3 py-3 text-right font-medium">In 12 months</th>
+                  <th className="px-5 py-3 text-right font-medium">Days to default</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {chain.state_outlook.slice(0, -1).map((row) => (
+                  <tr key={row.state}>
+                    <td className="px-5 py-3 font-medium whitespace-nowrap text-slate-900">
+                      {row.state}
+                    </td>
+                    <td className="tabular px-3 py-3 text-right font-semibold text-slate-900">
+                      {formatPercent(row.default_within_3_months)}
+                    </td>
+                    <td className="tabular px-3 py-3 text-right">
+                      {formatPercent(row.default_within_12_months)}
+                    </td>
+                    <td className="tabular px-5 py-3 text-right">
+                      {row.expected_days_to_default}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
+            "Days to default" is the average time to default for accounts that do default
+            within {chain.outlook_months} months. An alert is raised at 10% or more in 3
+            months, or when the score drops more than 15 points.
+          </p>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <div className="card min-w-0">
+          <div className="card-header">
+            <h3 className="card-title">Check on unseen accounts</h3>
+            <span className="text-xs text-slate-500">default within 5 months of April</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+                  <th className="px-5 py-3 font-medium">State in April</th>
+                  <th className="px-3 py-3 text-right font-medium">Accounts</th>
+                  <th className="px-3 py-3 text-right font-medium">Predicted</th>
+                  <th className="px-5 py-3 text-right font-medium">Actual</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {chain.holdout_check.map((row) => (
+                  <tr key={row.april_state}>
+                    <td className="px-5 py-3 font-medium whitespace-nowrap text-slate-900">
+                      {row.april_state}
+                    </td>
+                    <td className="tabular px-3 py-3 text-right">{formatCount(row.clients)}</td>
+                    <td className="tabular px-3 py-3 text-right">
+                      {formatPercent(row.predicted_default, 2)}
+                    </td>
+                    <td className="tabular px-5 py-3 text-right font-semibold text-slate-900">
+                      {formatPercent(row.actual_default, 2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
+            The chain is close where it has many accounts. It under-predicts for accounts
+            already 60-89 days late in April, a group of only{" "}
+            {formatCount(chain.holdout_check[chain.holdout_check.length - 1].clients)}, so
+            treat that row with care.
+          </p>
+        </div>
+
+        <div className="card min-w-0">
+          <div className="card-header">
+            <h3 className="card-title">Alternatives we tested</h3>
+            <span className="text-xs text-slate-500">
+              {alternatives.target.toLowerCase()}, {formatCount(alternatives.holdout_defaults)}{" "}
+              defaults in {formatCount(alternatives.holdout_client_months)} account-months
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
+                  <th className="px-5 py-3 font-medium">Model</th>
+                  <th className="px-3 py-3 text-right font-medium">AUC-ROC</th>
+                  <th className="px-3 py-3 text-right font-medium">Brier</th>
+                  <th className="px-5 py-3 text-right font-medium">AUC gap to served (95%)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.map(([key, row]) => (
+                  <tr key={key} className={key === "markov_first_order" ? "bg-brand-50" : undefined}>
+                    <td className="px-5 py-3 font-medium text-slate-900">
+                      {EWS_MODEL_LABELS[key] ?? key}
+                    </td>
+                    <td className="tabular px-3 py-3 text-right">{row.auc_roc.toFixed(4)}</td>
+                    <td className="tabular px-3 py-3 text-right">{row.brier.toFixed(5)}</td>
+                    <td className="tabular px-5 py-3 text-right whitespace-nowrap">
+                      {key === "markov_first_order"
+                        ? "—"
+                        : `${formatSigned(row.auc_gap_to_served_95[0], 3)} to ${formatSigned(
+                            row.auc_gap_to_served_95[1],
+                            3,
+                          )}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
+            The hazard models rank accounts better than the served chain. They also need
+            card utilisation and the share of the bill paid, which have no clean
+            counterpart on a term loan, so they are measured here but not served. The
+            old rule-based penalties rank accounts exactly like the chain, but give no
+            probability.
+          </p>
+        </div>
+      </section>
     </div>
   );
 }

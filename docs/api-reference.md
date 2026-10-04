@@ -66,7 +66,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts"]
@@ -83,7 +83,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "database": "connected"
 }
 ```
@@ -294,7 +294,11 @@ none is stored).
 ## POST `/ews/monitor`
 
 Record one month of post-disbursement surveillance. Triggers an alert when the
-monthly score drops more than 15 points from the originating application.
+monthly score drops more than 15 points from the originating application, or
+when the fitted Markov chain puts default within three months at 10% or more.
+`default_probability_3m` and, when `runway_basis` is `"markov"`,
+`estimated_days_to_default` come from that chain (see `GET
+/model/early-warning`); it is fitted on consumer card accounts, not SME loans.
 
 **Request**
 
@@ -339,7 +343,9 @@ approved first.
   "score_drop": 20.22,
   "alert_triggered": true,
   "alert_threshold": 15.0,
-  "estimated_days_to_default": 74,
+  "estimated_days_to_default": 160,
+  "default_probability_3m": 0.0266,
+  "runway_basis": "markov",
   "recommended_action": "Relationship manager to contact the borrower within 7 days and verify POS settlement trends.",
   "tracking": {
     "id": 1,
@@ -357,7 +363,7 @@ approved first.
     "baseline_score": 67.23,
     "current_score": 47.01,
     "score_drop": 20.22,
-    "estimated_days_to_default": 74,
+    "estimated_days_to_default": 160,
     "alert_status": "Active",
     "triggered_at": "2026-09-25T10:47:16.580236+05:00",
     "resolved_at": null,
@@ -389,7 +395,7 @@ Query: `alert_status` (`Active` | `In Review` | `Resolved`), `limit`, `offset`.
     "baseline_score": 67.23,
     "current_score": 47.01,
     "score_drop": 20.22,
-    "estimated_days_to_default": 74,
+    "estimated_days_to_default": 160,
     "alert_status": "Active",
     "triggered_at": "2026-09-25T10:47:16.580236+05:00",
     "resolved_at": null,
@@ -481,6 +487,15 @@ expected calibration error, mean prediction), `brier_no_skill`, `roc_curve`,
 rate and calibrated PD per policy band), `reliability_raw` and
 `reliability_calibrated`. These describe the public training file, not the
 live portfolio.
+
+## GET `/model/early-warning`
+
+The early-warning Markov chain recorded by `python -m ml.ews_markov`: `states`,
+`transition_counts`, `transition_matrix`, `state_outlook` (default within 3 and
+12 months and expected days to default per state), `holdout_check`,
+`markov_assumption`, and `alternatives` (AUC and Brier of the served chain, a
+second-order chain, a logistic hazard model and gradient boosting, with a
+bootstrap interval of each AUC gap). Any signed-in officer.
 
 ## GET `/model/comparison`
 

@@ -29,7 +29,7 @@ from schemas import HealthResponse
 from services.auth_service import jwt_secret_problem
 from services.scoring_service import get_scoring_service
 
-API_VERSION = "1.5.0"
+API_VERSION = "1.6.0"
 
 logging.basicConfig(
     level=os.getenv("FORIFLOW_LOG_LEVEL", "INFO"),
@@ -154,6 +154,7 @@ async def root() -> dict[str, str | list[str]]:
             "/portfolio/summary",
             "/model/evaluation",
             "/model/comparison",
+            "/model/early-warning",
         ],
     }
 

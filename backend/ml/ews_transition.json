@@ -1,0 +1,223 @@
+{
+  "source": "UCI Default of Credit Card Clients (Yeh, 2009), CC BY 4.0. Consumer card accounts in Taiwan, April to September 2005. Not SME loans.",
+  "states": [
+    "Current",
+    "Late 1-59",
+    "Late 60-89",
+    "Default"
+  ],
+  "state_definition": "Months of delay in the file: 0 or less = Current, 1-2 = Late 1-59, 3 = Late 60-89, 4 or more = Default (absorbing).",
+  "clients": {
+    "train": 24000,
+    "holdout": 6000
+  },
+  "transition_counts": [
+    [
+      98874,
+      6426,
+      0,
+      0
+    ],
+    [
+      3320,
+      8853,
+      754,
+      0
+    ],
+    [
+      139,
+      353,
+      142,
+      207
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "transition_matrix": [
+    [
+      0.938974358974359,
+      0.06102564102564102,
+      0.0,
+      0.0
+    ],
+    [
+      0.25682679662721436,
+      0.6848456718496171,
+      0.05832753152316856,
+      0.0
+    ],
+    [
+      0.16527942925089179,
+      0.41973840665873957,
+      0.16884661117717004,
+      0.24613555291319858
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "state_outlook": [
+    {
+      "state": "Current",
+      "default_within_3_months": 0.0008761133473643776,
+      "default_within_12_months": 0.023631146011731094,
+      "expected_days_to_default": 246
+    },
+    {
+      "state": "Late 1-59",
+      "default_within_3_months": 0.02661249474436069,
+      "default_within_12_months": 0.07162570675966023,
+      "expected_days_to_default": 160
+    },
+    {
+      "state": "Late 60-89",
+      "default_within_3_months": 0.3007377949427048,
+      "default_within_12_months": 0.3344096915593291,
+      "expected_days_to_default": 54
+    },
+    {
+      "state": "Default",
+      "default_within_3_months": 1.0,
+      "default_within_12_months": 1.0,
+      "expected_days_to_default": 0
+    }
+  ],
+  "outlook_months": 12,
+  "holdout_check": [
+    {
+      "april_state": "Current",
+      "clients": 5409,
+      "predicted_default": 0.004493801426844415,
+      "actual_default": 0.004437049362174155
+    },
+    {
+      "april_state": "Late 1-59",
+      "clients": 536,
+      "predicted_default": 0.04325542183911815,
+      "actual_default": 0.048507462686567165
+    },
+    {
+      "april_state": "Late 60-89",
+      "clients": 34,
+      "predicted_default": 0.31369051842105977,
+      "actual_default": 0.5294117647058824
+    }
+  ],
+  "alternatives": {
+    "target": "Default within 3 months",
+    "holdout_client_months": 11920,
+    "holdout_defaults": 83,
+    "observed_rate": 0.006963087248322147,
+    "features_of_hazard_models": [
+      "delay",
+      "previous_delay",
+      "utilisation",
+      "paid_share"
+    ],
+    "models": {
+      "markov_first_order": {
+        "auc_roc": 0.8552970011328579,
+        "brier": 0.0063160235028627615,
+        "mean_predicted": 0.005038610026575242,
+        "auc_gap_to_served_95": [
+          0.0,
+          0.0
+        ]
+      },
+      "markov_second_order": {
+        "auc_roc": 0.859827923674083,
+        "brier": 0.006246268323514419,
+        "mean_predicted": 0.005416625203232931,
+        "auc_gap_to_served_95": [
+          0.000631427933903031,
+          0.00842313164671932
+        ]
+      },
+      "logistic_hazard": {
+        "auc_roc": 0.9148499039666311,
+        "brier": 0.006363376266526763,
+        "mean_predicted": 0.00525092280294787,
+        "auc_gap_to_served_95": [
+          0.032947744426115665,
+          0.08833195843497321
+        ]
+      },
+      "gradient_boosting_hazard": {
+        "auc_roc": 0.9211885134523055,
+        "brier": 0.0065408305920628095,
+        "mean_predicted": 0.005501379993851131,
+        "auc_gap_to_served_95": [
+          0.03630818855311486,
+          0.09562155530150498
+        ]
+      }
+    }
+  },
+  "markov_assumption": [
+    {
+      "previous": "Current",
+      "current": "Late 1-59",
+      "months": 4193,
+      "back_to_current": 0.38445027426663486,
+      "worse": 0.06153112330073933
+    },
+    {
+      "previous": "Late 1-59",
+      "current": "Late 1-59",
+      "months": 6286,
+      "back_to_current": 0.14953865733375757,
+      "worse": 0.05806554247534203
+    },
+    {
+      "previous": "Late 60-89",
+      "current": "Late 1-59",
+      "months": 218,
+      "back_to_current": 0.0779816513761468,
+      "worse": 0.12844036697247707
+    },
+    {
+      "previous": "Late 1-59",
+      "current": "Late 60-89",
+      "months": 579,
+      "back_to_current": 0.17443868739205526,
+      "worse": 0.2659758203799655
+    },
+    {
+      "previous": "Late 60-89",
+      "current": "Late 60-89",
+      "months": 112,
+      "back_to_current": 0.03571428571428571,
+      "worse": 0.08035714285714286
+    }
+  ],
+  "october_default_by_state": [
+    {
+      "september_state": "Current",
+      "clients": 23142,
+      "october_default_rate": 0.13767176562094893
+    },
+    {
+      "september_state": "Late 1-59",
+      "clients": 6195,
+      "october_default_rate": 0.4841000807102502
+    },
+    {
+      "september_state": "Late 60-89",
+      "clients": 259,
+      "october_default_rate": 0.7413127413127413
+    },
+    {
+      "september_state": "Default",
+      "clients": 404,
+      "october_default_rate": 0.6410891089108911
+    }
+  ],
+  "recorded_at": "2026-10-04T20:32:08"
+}

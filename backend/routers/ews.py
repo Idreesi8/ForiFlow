@@ -206,6 +206,8 @@ async def monitor_borrower(
         alert_triggered=raised,
         alert_threshold=monitor.alert_threshold,
         estimated_days_to_default=outcome.estimated_days_to_default if raised else None,
+        default_probability_3m=outcome.default_probability_3m,
+        runway_basis=outcome.runway_basis,
         recommended_action=recommended_action,
         tracking=EWSTrackingResponse.model_validate(tracking),
         alert=AlertResponse.model_validate(alert) if alert is not None else None,

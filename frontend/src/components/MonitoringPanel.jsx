@@ -312,6 +312,14 @@ export default function MonitoringPanel({ onMonitored }) {
               value={`${result.score_drop >= 0 ? "−" : "+"}${Math.abs(result.score_drop).toFixed(1)}`}
               tone={result.alert_triggered ? "danger" : "normal"}
             />
+            {result.default_probability_3m !== null &&
+            result.default_probability_3m !== undefined ? (
+              <Metric
+                label="Default within 3 months"
+                value={`${(result.default_probability_3m * 100).toFixed(1)}%`}
+                tone={result.alert_triggered ? "danger" : "normal"}
+              />
+            ) : null}
             {result.estimated_days_to_default !== null ? (
               <Metric
                 label="Days to default"
@@ -330,6 +338,14 @@ export default function MonitoringPanel({ onMonitored }) {
             </span>
           </div>
           <p className="mt-2 text-sm text-slate-700">{result.recommended_action}</p>
+          {result.runway_basis === "markov" ? (
+            <p className="mt-1 text-xs text-slate-500">
+              The probability and the days come from a Markov chain fitted on monthly
+              repayment histories of consumer card accounts (UCI, Taiwan 2005), not on
+              SME loans. Days are the average time to default if it happens within 12
+              months.
+            </p>
+          ) : null}
         </div>
       ) : null}
     </section>

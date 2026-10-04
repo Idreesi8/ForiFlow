@@ -40,6 +40,23 @@ BASE_RUNWAY_DAYS: dict[InstallmentStatus, int] = {
 MIN_RUNWAY_DAYS: int = 7
 MAX_RUNWAY_DAYS: int = 365
 
+# How each officer-entered ageing bucket maps onto the fitted Markov chain
+# (ml.ews_markov). The UCI file the chain is fitted on does not separate one
+# and two missed payments before its last month, so the two lightest buckets
+# share a state.
+STATUS_TO_CHAIN_STATE: dict[InstallmentStatus, str] = {
+    InstallmentStatus.ON_TIME: "Current",
+    InstallmentStatus.LATE_1_29: "Late 1-59",
+    InstallmentStatus.LATE_30_59: "Late 1-59",
+    InstallmentStatus.LATE_60_89: "Late 60-89",
+    InstallmentStatus.DEFAULT: "Default",
+}
+
+# Model trigger: alert when the chain puts default within three months at or
+# above this. The fitted states sit at about 0.1%, 2.7% and 30%, so any value
+# between 3% and 30% draws the same line; 10% is where a bank would start.
+MODEL_ALERT_PROBABILITY: float = 0.10
+
 
 @dataclass(frozen=True, slots=True)
 class MonitoringOutcome:
@@ -51,6 +68,9 @@ class MonitoringOutcome:
     alert_triggered: bool
     estimated_days_to_default: int
     recommended_action: str
+    # From the Markov chain; None when no fitted chain is loaded.
+    default_probability_3m: float | None = None
+    runway_basis: str = "rules"
 
 
 class EWSService:
@@ -60,11 +80,26 @@ class EWSService:
     can be tuned per portfolio without touching the endpoint.
     """
 
-    def __init__(self, alert_threshold: float = ALERT_SCORE_DROP_THRESHOLD) -> None:
-        """Store the score-drop threshold, in score points, that raises an alert."""
+    def __init__(
+        self,
+        alert_threshold: float = ALERT_SCORE_DROP_THRESHOLD,
+        chain: dict | None = None,
+    ) -> None:
+        """Store the score-drop threshold and, if given, the fitted Markov chain.
+
+        ``chain`` is the content of ``ml/ews_transition.json``. Without it the
+        service keeps the rule-based runway and reports no probability.
+        """
         if alert_threshold <= 0:
             raise ValueError("The alert threshold must be a positive number of points.")
         self.alert_threshold = alert_threshold
+        self.outlook: dict[str, dict] = {
+            row["state"]: row for row in (chain or {}).get("state_outlook", [])
+        }
+
+    def chain_outlook(self, installment_status: InstallmentStatus) -> dict | None:
+        """The fitted chain's outlook for a facility in this ageing bucket."""
+        return self.outlook.get(STATUS_TO_CHAIN_STATE[installment_status])
 
     def derive_monthly_score(
         self,
@@ -165,21 +200,36 @@ class EWSService:
         score_drop = round(baseline_score - current_score, 2)
         alert_triggered = score_drop > self.alert_threshold
 
+        # The score drop carries the bureau and POS signals; the chain adds what
+        # repayment histories say about this ageing bucket. Either can alert.
+        outlook = self.chain_outlook(payload.installment_status)
+        probability = days = None
+        if outlook is not None:
+            probability = round(float(outlook["default_within_3_months"]), 4)
+            days = outlook["expected_days_to_default"]
+            alert_triggered = alert_triggered or probability >= MODEL_ALERT_PROBABILITY
+
         return MonitoringOutcome(
             baseline_score=round(baseline_score, 2),
             current_score=round(current_score, 2),
             score_drop=score_drop,
             alert_triggered=alert_triggered,
-            estimated_days_to_default=self.estimate_days_to_default(
-                score_drop, payload.installment_status
+            estimated_days_to_default=(
+                int(days)
+                if days is not None
+                else self.estimate_days_to_default(score_drop, payload.installment_status)
             ),
             recommended_action=self.recommended_action(
                 alert_triggered, score_drop, payload.installment_status
             ),
+            default_probability_3m=probability,
+            runway_basis="markov" if days is not None else "rules",
         )
 
 
 @lru_cache(maxsize=1)
 def get_ews_service() -> EWSService:
-    """FastAPI dependency returning the shared EWS engine."""
-    return EWSService()
+    """FastAPI dependency returning the shared EWS engine, with the fitted chain."""
+    from ml.features import load_ews_transition
+
+    return EWSService(chain=load_ews_transition())

@@ -38,6 +38,18 @@ async def model_evaluation() -> dict[str, Any]:
     return _require(load_model_evaluation(), "evaluate_model")
 
 
+@router.get("/early-warning", summary="The fitted early-warning Markov chain")
+async def early_warning_model() -> dict[str, Any]:
+    """Transition matrix, outlook per state, hold-out check and alternatives.
+
+    Fitted by ``ml.ews_markov`` on the UCI credit card file: monthly repayment
+    histories of consumer card accounts in Taiwan, not SME loans.
+    """
+    from ml.features import load_ews_transition
+
+    return _require(load_ews_transition(), "ews_markov")
+
+
 @router.get("/comparison", summary="Served model against the alternatives")
 async def model_comparison() -> dict[str, Any]:
     """Cross-validated metrics of every model the ensemble was chosen over.

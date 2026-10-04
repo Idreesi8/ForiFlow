@@ -54,6 +54,8 @@ SHAP_EXPLAINER_PATH = ML_DIR / "shap_explainer.pkl"
 FEATURE_NAMES_PATH = ML_DIR / "feature_names.json"
 # Written by ml.evaluate_model; optional at serving time.
 EVALUATION_PATH = ML_DIR / "model_evaluation.json"
+# Written by ml.ews_markov; optional at serving time.
+EWS_TRANSITION_PATH = ML_DIR / "ews_transition.json"
 # Written by ml.compare_models.
 COMPARISON_PATH = ML_DIR / "model_comparison.json"
 
@@ -211,6 +213,14 @@ def load_model_comparison() -> dict | None:
     if not COMPARISON_PATH.exists():
         return None
     with COMPARISON_PATH.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def load_ews_transition() -> dict | None:
+    """Read the fitted early-warning chain, if ``ml.ews_markov`` has run."""
+    if not EWS_TRANSITION_PATH.exists():
+        return None
+    with EWS_TRANSITION_PATH.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 

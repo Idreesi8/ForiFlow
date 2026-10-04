@@ -14,9 +14,9 @@ export default function AlertsPage() {
         <p className="mt-1 text-sm text-slate-500">
           Post-disbursement surveillance for approved facilities. Each month an
           officer records the repayment status, a typed bureau balance and POS
-          figures; a rule-based score is derived from the origination score, and an
-          alert is raised on a drop of more than 15 points. There is no live ECIB
-          connector.
+          figures. An alert is raised when the score drops more than 15 points, or
+          when a Markov chain fitted on real repayment histories puts default within
+          three months at 10% or more. There is no live ECIB connector.
         </p>
       </header>
 

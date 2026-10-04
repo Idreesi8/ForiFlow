@@ -6,6 +6,36 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-04
+
+### Added
+
+- **Early-warning Markov chain.** `python -m ml.ews_markov` fits monthly
+  transitions between Current, Late 1-59, Late 60-89 and Default on the UCI
+  "Default of Credit Card Clients" file (30,000 accounts, six months each),
+  using 24,000 accounts to fit and 6,000 to check, and writes
+  `ml/ews_transition.json`. Monitoring now returns `default_probability_3m`
+  (0.09%, 2.66% and 30.07% for the three live states) and takes
+  `estimated_days_to_default` from the chain (246, 160 and 54 days; the mean
+  time to Default given it happens within 12 months). An alert is raised at
+  10% or more, or on the existing drop of more than 15 points, which still
+  carries the bureau and POS signals.
+- The script also records how the chain does on unseen accounts and against
+  a second-order chain, a logistic hazard model and gradient boosting. The
+  hazard models rank better (AUC 0.915 and 0.921 against 0.855) but need
+  inputs with no clean counterpart on a term loan, so they are not served.
+- `GET /model/early-warning`, and an Early-warning model section on the Model
+  Performance page: transition matrix, outlook per state, hold-out check,
+  alternatives.
+
+### Changed
+
+- `estimated_days_to_default` no longer comes from the hand-set runway table
+  when the chain is loaded: a Late 60-89 month reports 54 days, not 12 to 45.
+  The rule-based estimate remains as the fallback (`runway_basis: "rules"`).
+- The chain is fitted on consumer card accounts in Taiwan in 2005, not on
+  Pakistani SME loans; the API, the screens and the risk register say so.
+
 ## [1.5.0] - 2026-10-04
 
 ### Added

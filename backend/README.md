@@ -92,8 +92,9 @@ records the officer who scored it.
 The origination score is the borrower's baseline. Each monitored month is
 re-scored from the officer-entered repayment ageing bucket, an officer-typed
 bureau balance, and POS settlement inflows. There is no live bureau pull. A
-drop of **more than 15 points** raises an alert with an estimated runway to
-default. An unresolved alert is updated in place rather than duplicated, and
+drop of **more than 15 points** raises an alert. So does a probability of
+default within three months of **10% or more** from the fitted Markov chain
+(next section), which also supplies the days-to-default estimate. An unresolved alert is updated in place rather than duplicated, and
 re-submitting a month (e.g. after a corrected typed balance) overwrites that
 observation. Only an approved facility can be monitored: Approved by the
 model, or Manual Review approved by an officer; anything else returns `409`.
@@ -123,6 +124,7 @@ backend/
   ml/predict_sample.py        # single-applicant smoke test
   ml/compare_models.py        # served ensemble vs LR, XGB, RF, LightGBM, MLP
   ml/evaluate_model.py        # isotonic calibrator + hold-out ROC, confusion, bands
+  ml/ews_markov.py            # early-warning Markov chain fitted on UCI monthly histories
   ml/shap_utils.py            # SHAP output normalisation helpers
   ml/data/                    # raw CSV training data (not committed)
   tests/                      # pytest suite (in-memory SQLite, plus PostgreSQL parity tests)
@@ -273,6 +275,54 @@ calibrated to a 50% prior rather than the portfolio's true default rate. The
 score is therefore a **relative creditworthiness ranking** on a 0-100 scale, not
 an absolute default probability — which is also what keeps the SHAP base value
 near 50 and spreads applicants across the policy bands.
+
+### Early-warning Markov chain
+
+`python -m ml.ews_markov` fits how accounts move between repayment states from
+one month to the next. ForiFlow's own training files hold one row per loan, so
+it uses the UCI "Default of Credit Card Clients" file (Yeh, 2009, CC BY 4.0):
+30,000 consumer card accounts in Taiwan with six months of repayment status.
+It fits on 24,000 accounts, checks on the other 6,000 and writes
+`ml/ews_transition.json`, served at `GET /model/early-warning`. The data file
+is not committed; see the module docstring.
+
+| From / to | Current | Late 1-59 | Late 60-89 | Default | Months seen |
+| --------- | ------: | --------: | ---------: | ------: | ----------: |
+| Current | 93.90% | 6.10% | 0% | 0% | 105,300 |
+| Late 1-59 | 25.68% | 68.48% | 5.83% | 0% | 12,927 |
+| Late 60-89 | 16.53% | 41.97% | 16.88% | 24.61% | 841 |
+
+Default (four or more missed payments) is absorbing. The file does not
+separate one and two missed payments before its last month, so ForiFlow's
+`Late 1-29` and `Late 30-59` both map to `Late 1-59`.
+
+| State of the latest month | Default within 3 months | Within 12 months | Days to default |
+| ------------------------- | ----------------------: | ---------------: | --------------: |
+| Current | 0.09% | 2.36% | 246 |
+| Late 1-59 | 2.66% | 7.16% | 160 |
+| Late 60-89 | 30.07% | 33.44% | 54 |
+
+"Days to default" is the mean time to Default given that it happens within 12
+months. On the hold-out accounts the chain predicts default within five months
+of April at 0.45% for Current (actual 0.44%, n=5,409) and 4.33% for Late 1-59
+(actual 4.85%, n=536). For the 34 accounts already Late 60-89 in April it
+predicts 31.4% against 52.9% actual: it under-predicts there, on a small group.
+
+**Alternatives.** For default within three months (83 defaults in 11,920
+hold-out account-months) the served chain reaches AUC 0.855. A chain that also
+looks at last month reaches 0.860. A logistic hazard model and gradient
+boosting, which add card utilisation and the share of the bill paid, reach
+0.915 and 0.921; the 95% bootstrap interval of their gap to the chain is
++0.033 to +0.088 and +0.036 to +0.096. They rank better, but their extra
+inputs have no clean counterpart on a term loan, so they are measured and not
+served. The earlier rule-based penalties rank accounts exactly like the chain
+and give no probability. The month-to-month independence the chain assumes
+does not fully hold: an account that was Current last month returns to Current
+38% of the time from Late 1-59, against 15% for one that was already late.
+
+**Limits.** Consumer card accounts in Taiwan in 2005 are not Pakistani SME
+term loans. A bank would refit the chain on its own monthly records with the
+same script.
 
 ### Calibrated probability of default and hold-out evaluation
 

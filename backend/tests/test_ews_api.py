@@ -105,7 +105,7 @@ def test_delinquency_alone_triggers_an_alert(
 
     assert body["alert_triggered"] is True
     assert body["score_drop"] > ALERT_SCORE_DROP_THRESHOLD
-    assert 0 < body["estimated_days_to_default"] <= 45
+    assert 0 < body["estimated_days_to_default"] <= 90
 
 
 def test_collapsing_pos_inflows_reduce_the_monthly_score(
