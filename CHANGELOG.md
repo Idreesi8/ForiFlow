@@ -6,6 +6,41 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-04
+
+### Added
+
+- **Path to approval.** For a Rejected or Manual Review outcome the trained
+  ensemble reports the largest facility (rounded down to PKR 1,000) and the
+  smallest evidenced monthly turnover (rounded up) at which the same applicant
+  reaches Manual Review and Approved. Both members carry monotone constraints,
+  so each crossing point is unique; three batched grid passes find it in about
+  60 ms and the result is re-scored after rounding. When no facility size
+  reaches a band, the factors holding it back are named. Stored with the
+  explanation as `approval_path` and shown under the SHAP report and the
+  scoring result. It is a model output for the officer, not an offer.
+- **Loan book analytics.** `GET /portfolio/summary` reports disbursed, due,
+  collected, overdue and outstanding amounts, the collection rate, portfolio
+  at risk (outstanding 30 or more days late in the latest month), defaulted
+  facilities, the model-band by final-outcome decision matrix, and a table
+  per business sector. The dashboard shows it as a Loan book section.
+  Installments are straight-line (facility / tenure): ForiFlow holds no
+  interest rate. Months without a recorded amount are counted and left out
+  of the collection figures, never estimated.
+- Applications take an optional `business_sector` (reporting only, the model
+  does not read it) and `POST /ews/monitor` an optional `amount_paid_pkr`.
+  Migration `0004_portfolio_fields` adds both columns as nullable.
+- `docs/risk-register.md`: model, data, process and security risks, what
+  ForiFlow does about each today and what a bank would still need.
+- `ml.evaluate_model` records the Spearman correlation between the model's
+  features (largest 0.055 in absolute value).
+
+### Changed
+
+- The calibrator is fitted over bins of 250 loans, so it never reports a
+  probability of exactly 0% or 100% from a handful of loans. Hold-out Brier
+  0.1302, expected calibration error 0.0091.
+
 ## [1.4.0] - 2026-10-03
 
 ### Added
@@ -15,9 +50,8 @@ All notable changes to ForiFlow are recorded here. The format follows
   stores its breakpoints in `ml/model_evaluation.json`. Every score now returns
   `probability_of_default`, and it is saved inside the stored explanation. On
   the hold-out the Brier score falls from 0.1852 (worse than the 0.1706 of
-  always predicting the base rate) to 0.1302, and the mean prediction from
-  44.4% to 21.8%, matching the 21.8% observed. It is fitted over bins of 250
-  loans, so no probability is reported from a handful of loans. The calibrator is monotone, so the
+  always predicting the base rate) to 0.1305, and the mean prediction from
+  44.4% to 21.9% against 21.8% observed. The calibrator is monotone, so the
   score, the policy bands and the SHAP values are unchanged. It is calibrated
   to the public training file, not to a Pakistani SME portfolio, and it is
   ignored if it belongs to another training run.

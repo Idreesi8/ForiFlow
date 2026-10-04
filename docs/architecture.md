@@ -147,8 +147,8 @@ flowchart TB
     officer[Officer browser] --> fe
 ```
 
-Images: `foriflow-backend:1.4.0` (`python:3.12-slim` + `libgomp1`) and
-`foriflow-frontend:1.4.0` (Node 20 build, nginx 1.27). See
+Images: `foriflow-backend:1.5.0` (`python:3.12-slim` + `libgomp1`) and
+`foriflow-frontend:1.5.0` (Node 20 build, nginx 1.27). See
 [deployment.md](deployment.md).
 
 ## Repository map
@@ -158,7 +158,7 @@ Images: `foriflow-backend:1.4.0` (`python:3.12-slim` + `libgomp1`) and
 | `backend/main.py` | App factory, CORS, lifespan (eager model load) |
 | `backend/routers/` | `/auth`, `/score` (incl. Manual Review decision and stats), `/explain`, `/ews` |
 | `backend/services/` | Scoring engines, EWS rules, auth (bcrypt, JWT, roles) |
-| `backend/alembic/` | PostgreSQL schema migrations (0001–0003) |
+| `backend/alembic/` | PostgreSQL schema migrations (0001–0004) |
 | `backend/ml/` | Feature schema, training, artefacts |
 | `frontend/src/pages/` | Five officer workspaces |
 | `frontend/src/api/client.js` | Axios client, base `/api` |

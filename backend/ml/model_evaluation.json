@@ -10,6 +10,11 @@
     "train": 0.21815531000613875,
     "holdout": 0.21819855761853613
   },
+  "feature_correlation_spearman": {
+    "loan_to_income ~ payment_history_score": -0.03610345606725563,
+    "loan_to_income ~ years_in_operation": -0.05478999804462127,
+    "payment_history_score ~ years_in_operation": 0.0346088818736008
+  },
   "calibrator": {
     "method": "isotonic over bins of 250 loans",
     "raw_probability": [
@@ -812,5 +817,5 @@
       }
     ]
   },
-  "recorded_at": "2026-10-04T19:01:56"
+  "recorded_at": "2026-10-04T19:05:04"
 }

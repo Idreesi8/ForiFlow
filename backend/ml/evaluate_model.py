@@ -201,6 +201,13 @@ def main() -> int:
         ),
         "rows": {"train": int(len(X_train)), "holdout": int(len(X_test))},
         "default_rate": {"train": base_rate, "holdout": float(y_test_arr.mean())},
+        # SHAP splits credit between correlated inputs, so low values here mean
+        # each attribution can be read on its own.
+        "feature_correlation_spearman": {
+            f"{a} ~ {b}": float(X_train[a].corr(X_train[b], method="spearman"))
+            for i, a in enumerate(features)
+            for b in features[i + 1 :]
+        },
         "calibrator": {
             "method": f"isotonic over bins of {CALIBRATION_BIN_ROWS} loans",
             "raw_probability": [float(v) for v in calibrator.X_thresholds_],

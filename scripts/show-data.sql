@@ -17,7 +17,8 @@ UNION ALL SELECT 'alerts', count(*) FROM alerts
 UNION ALL SELECT 'users', count(*) FROM users;
 
 \echo '=== Latest scored applications ==='
-SELECT id, business_name, loan_amount_pkr, risk_score, decision AS model_decision,
+SELECT id, business_name, business_sector, loan_amount_pkr, risk_score,
+       decision AS model_decision,
        CASE WHEN decision <> 'Manual Review' THEN decision
             ELSE coalesce(review_decision, 'Pending review') END AS final_decision,
        scored_by, reviewed_by,
@@ -57,8 +58,8 @@ ORDER BY id DESC
 LIMIT 1;
 
 \echo '=== Latest EWS monthly observations ==='
-SELECT id, borrower_id, month_number, installment_status, bureau_balance,
-       pos_cash_balance, monthly_score
+SELECT id, borrower_id, month_number, installment_status, amount_paid_pkr,
+       bureau_balance, pos_cash_balance, monthly_score
 FROM ews_tracking
 ORDER BY id DESC
 LIMIT 5;

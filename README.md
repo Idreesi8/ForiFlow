@@ -61,6 +61,8 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 | 🎯 **AI Credit Scoring** | XGBoost + Random Forest soft-voting ensemble. Score: 0-100 |
 | 📊 **SHAP Waterfall Charts** | Every decision explained with feature attribution |
 | 📈 **Calibrated PD & Model Performance** | Each score carries a probability of default calibrated on out-of-fold predictions; a Model Performance page shows the hold-out ROC curve, confusion matrix, threshold table, default rate per band and the six-model comparison |
+| 🧭 **Path to approval** | For a rejected or referred applicant, the exact facility size and the evidenced turnover at which the same business would reach the next band, found by searching the monotone model |
+| 💼 **Loan book analytics** | Disbursed, collected, overdue and outstanding amounts, portfolio at risk (30+ days), defaults, a decision matrix and a per-sector table, from the months officers record |
 | ✅ **Officer decision on Manual Review** | An admin approves or rejects each 41–70 case with a written reason; the model band, the officer's call, name and time are all kept, and only approved facilities can be monitored |
 | 🚨 **Early Warning System** | Officer-submitted monthly observation; a rule-based score is derived from the origination baseline and an alert fires on a >15-point drop |
 | 🏦 **PKR Banking Context** | PKR amounts; designed for SBP-oriented explainability (not SBP-certified, no live ECIB feed) |
@@ -86,6 +88,7 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 ![EWS Alerts](docs/screenshots/05-ews-alerts.png)
 ![Applications](docs/screenshots/06-applications.png)
 ![API Docs](docs/screenshots/07-swagger.png)
+![Model Performance](docs/screenshots/08-model-performance.png)
 
 
 ## 🚀 Quick Start

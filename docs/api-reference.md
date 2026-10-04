@@ -66,7 +66,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts"]
@@ -83,7 +83,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "database": "connected"
 }
 ```
@@ -218,7 +218,9 @@ other row), `limit` (1–200, default 50), `offset`.
 stands: the model's band for Approved and Rejected, the officer's
 `review_decision` for a reviewed Manual Review case, and `null` while that
 review is pending. `scored_by` is `null` for rows scored before migration
-`0003_officer_decisions` (version 1.3.0).
+`0003_officer_decisions` (version 1.3.0). `business_sector` is `null` when the
+officer did not record one, and for every row from before
+`0004_portfolio_fields` (version 1.5.0).
 
 ## GET `/score/stats`
 
@@ -416,6 +418,56 @@ alert is already resolved or is being reviewed by another officer.
 Closes an Active or In Review alert, recording `resolved_at`, `resolved_by`
 and `resolution_note` (5–1000 characters). `404` unknown id, `409` if already
 resolved, `403` for analysts, `422` without a note.
+
+## GET `/portfolio/summary`
+
+The repayment position of every approved facility, read from the monthly
+observations recorded through `POST /ews/monitor`. Any signed-in officer.
+
+| Field | Meaning |
+| ----- | ------- |
+| `disbursed_pkr` | Sum of approved facility amounts. |
+| `due_pkr`, `collected_pkr`, `collection_rate` | Installments due and amounts paid in months where an amount was recorded; rate in percent, `null` when nothing is due. |
+| `overdue_pkr` | Per facility, due minus collected where positive. One facility paying ahead does not hide another's arrears. |
+| `outstanding_pkr` | Approved amounts not yet collected. |
+| `par30` | Outstanding on monitored facilities whose latest month is 30 or more days late, over outstanding on all monitored facilities, in percent. |
+| `defaulted_facilities`, `defaulted_outstanding_pkr` | Facilities whose latest month is `Default`. |
+| `months_with_amount`, `months_without_amount` | How many monthly records carry an amount paid. |
+| `latest_status` | Facilities and outstanding per repayment status of the latest month. |
+| `decision_matrix` | For each model band: how many ended Approved, Rejected or still pending. |
+| `sectors` | Per business sector: applications, approved, approval rate, approved exposure, average score, overdue, open alerts. |
+
+Installments are straight-line (facility / tenure); ForiFlow holds no interest
+rate. `POST /score` accepts an optional `business_sector` and `POST
+/ews/monitor` an optional `amount_paid_pkr`; neither is read by the model.
+
+## Path to approval
+
+For a Rejected or Manual Review outcome from the trained ensemble, the
+explanation carries `approval_path`:
+
+```json
+{
+  "requested_loan_pkr": 547920.0,
+  "monthly_turnover_pkr": 150000.0,
+  "steps": [
+    {"target_decision": "Manual Review", "max_loan_pkr": 547000.0, "score_at_max_loan": 49.57,
+     "required_monthly_turnover_pkr": 151000.0, "score_at_turnover": 50.23},
+    {"target_decision": "Approved", "max_loan_pkr": 177000.0, "score_at_max_loan": 70.11,
+     "required_monthly_turnover_pkr": 463000.0, "score_at_turnover": 70.08}
+  ],
+  "blocked_by": []
+}
+```
+
+`max_loan_pkr` is the largest facility, rounded down to PKR 1,000, at which
+the same applicant reaches the band; `required_monthly_turnover_pkr` is the
+smallest turnover, rounded up, at which the requested facility reaches it.
+Either is `null` when no value reaches the band, and `blocked_by` then names
+the factors holding it back. Both model members are monotone in facility size
+against turnover, so each threshold is unique. It is `null` for Approved
+outcomes, the surrogate engine and explanations stored before 1.5.0. These are
+model outputs, not an offer.
 
 ## GET `/model/evaluation`
 
