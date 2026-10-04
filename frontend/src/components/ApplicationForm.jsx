@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { apiErrorMessage, scoreApplication } from "../api/client.js";
 import { formatPKR, formatPKRCompact, formatPercent } from "../lib/format.js";
+import PathToApproval from "./PathToApproval.jsx";
 import ScoreDial from "./ScoreDial.jsx";
 import { Spinner } from "./common/States.jsx";
 
@@ -464,6 +465,8 @@ export default function ApplicationForm({ onScored }) {
                   </p>
                 </div>
               ) : null}
+
+              <PathToApproval path={result.explanation?.approval_path} compact />
 
               <button
                 type="button"

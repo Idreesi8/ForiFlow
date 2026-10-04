@@ -14,6 +14,7 @@ import {
 
 import { apiErrorMessage, explainApplication } from "../api/client.js";
 import { formatPKRCompact } from "../lib/format.js";
+import PathToApproval from "./PathToApproval.jsx";
 import { DecisionBadge } from "./common/Badges.jsx";
 import { EmptyState, ErrorState, LoadingState } from "./common/States.jsx";
 
@@ -288,6 +289,8 @@ export default function ShapWaterfall({
           tone="negative"
         />
       </div>
+
+      <PathToApproval path={explanation.approval_path} />
 
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
         <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">

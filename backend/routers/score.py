@@ -81,7 +81,10 @@ async def score_application(
     db.flush()  # assigns the primary key needed by the explanation payload
 
     explanation = scorer.build_explanation(
-        result, application_id=application.id, business_name=application.business_name
+        result,
+        application_id=application.id,
+        business_name=application.business_name,
+        applicant=applicant,
     )
     # Persisted so the rationale can be retrieved later even if the model
     # is retrained. Not an SBP certification.

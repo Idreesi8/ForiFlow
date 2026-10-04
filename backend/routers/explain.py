@@ -43,6 +43,7 @@ def _build_explanation(
         result,
         application_id=application.id,
         business_name=application.business_name,
+        applicant=application,
     )
 
 

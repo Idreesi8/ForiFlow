@@ -155,6 +155,47 @@ class ShapFeatureContribution(BaseModel):
     weight: float = Field(..., description="Relative model weight of the feature (0-1).")
 
 
+class ApprovalStep(BaseModel):
+    """What would move this application into a better policy band."""
+
+    target_decision: Decision
+    max_loan_pkr: float | None = Field(
+        default=None,
+        description=(
+            "Largest facility, rounded down to PKR 1,000, at which this applicant "
+            "reaches the target band with everything else unchanged. Null when no "
+            "facility size reaches it."
+        ),
+    )
+    score_at_max_loan: float | None = None
+    required_monthly_turnover_pkr: float | None = Field(
+        default=None,
+        description=(
+            "Smallest documented monthly turnover, rounded up to PKR 1,000, at "
+            "which the requested facility reaches the target band. Null when no "
+            "turnover reaches it."
+        ),
+    )
+    score_at_turnover: float | None = None
+
+
+class ApprovalPath(BaseModel):
+    """Exact routes to a better decision, found by searching the monotone model.
+
+    The model can only score a smaller facility, or a higher turnover, the same
+    or better, so each threshold is unique. These are model outputs for the
+    officer, not an offer: a higher turnover has to be evidenced.
+    """
+
+    requested_loan_pkr: float
+    monthly_turnover_pkr: float
+    steps: list[ApprovalStep]
+    blocked_by: list[str] = Field(
+        default_factory=list,
+        description="Factors that keep a step out of reach whatever the facility size.",
+    )
+
+
 class ExplanationResponse(BaseModel):
     """SHAP-style explanation for one scored application."""
 
@@ -171,6 +212,14 @@ class ExplanationResponse(BaseModel):
     compliance_note: str
     model_version: str | None = Field(
         default=None, description="Engine that produced this explanation, for audit trails."
+    )
+    approval_path: ApprovalPath | None = Field(
+        default=None,
+        description=(
+            "For a Rejected or Manual Review outcome from the trained ensemble: the "
+            "facility size and the turnover at which the same applicant reaches the "
+            "next bands. Absent for Approved outcomes and for the surrogate engine."
+        ),
     )
     probability_of_default: float | None = Field(
         default=None,

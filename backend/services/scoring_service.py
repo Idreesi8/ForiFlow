@@ -26,10 +26,19 @@ import logging
 import math
 import os
 from dataclasses import dataclass, field
+from collections.abc import Callable
 from functools import lru_cache
+from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
 
-from schemas import Decision, ExplanationResponse, RiskBand, ShapFeatureContribution
+from schemas import (
+    ApprovalPath,
+    ApprovalStep,
+    Decision,
+    ExplanationResponse,
+    RiskBand,
+    ShapFeatureContribution,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -328,8 +337,18 @@ class ScoringService:
         return " ".join(sentences)
 
 
+    def approval_path(
+        self, applicant: SMEApplicantLike, result: ScoreResult
+    ) -> ApprovalPath | None:
+        """Routes to a better band. Only the monotone trained ensemble has them."""
+        return None
+
     def build_explanation(
-        self, result: ScoreResult, application_id: int, business_name: str
+        self,
+        result: ScoreResult,
+        application_id: int,
+        business_name: str,
+        applicant: SMEApplicantLike | None = None,
     ) -> ExplanationResponse:
         """Assemble the full explanation payload for a scored application."""
         contributions = self.explain(result)
@@ -351,6 +370,9 @@ class ScoringService:
             compliance_note=self.compliance_note,
             model_version=self.model_version,
             probability_of_default=result.calibrated_pd,
+            approval_path=(
+                self.approval_path(applicant, result) if applicant is not None else None
+            ),
         )
 
 
@@ -368,6 +390,12 @@ INTAKE_TO_ML_FEATURE: dict[str, str | None] = {
     "inventory_turnover": None,
     "num_employees": None,
 }
+
+# Path-to-approval search: three passes of this many grid points bracket the
+# crossing point to well under PKR 1,000 for any facility the form accepts.
+APPROVAL_SEARCH_POINTS: int = 257
+APPROVAL_SEARCH_PASSES: int = 3
+APPROVAL_ROUNDING_PKR: float = 1_000.0
 
 # Confidence blends how far the score sits from a decision boundary with how
 # closely the two ensemble members agree.
@@ -438,6 +466,7 @@ class MLScoringService(ScoringService):
 
         self.history_levels = payment_history_levels(metadata)
         self.calibration = self._calibration_breakpoints(evaluation)
+        self.monotone: dict[str, int] = metadata.get("monotone_constraints", {})
         self.explainers: dict[str, Any] = _rebind_shap_links(shap_bundle["explainers"])
         self.shap_weights: dict[str, float] = shap_bundle["weights"]
         self.output_space: str = shap_bundle.get("output_space", "probability")
@@ -715,6 +744,201 @@ class MLScoringService(ScoringService):
             CONFIDENCE_AGREEMENT_WEIGHT * agreement + CONFIDENCE_MARGIN_WEIGHT * margin
         )
         return round(confidence * 100.0, 1)
+
+    # -- path to approval -------------------------------------------------
+
+    def _scores_for(self, applicants: list[SMEApplicantLike]) -> list[float]:
+        """Score many what-if applicants in one model pass, without SHAP."""
+        import numpy as np
+
+        from ml.features import apply_clips, build_raw_features, snap_payment_history
+
+        rows = []
+        for applicant in applicants:
+            raw = build_raw_features(applicant)
+            clipped = apply_clips(raw, self.feature_clips)
+            if self.history_levels is not None and "payment_history_score" in clipped:
+                clipped["payment_history_score"] = snap_payment_history(
+                    raw["payment_history_score"], self.history_levels
+                )
+            rows.append([clipped[name] for name in self.feature_names])
+        scaled = self.scaler.transform(np.array(rows, dtype=float))
+
+        total_weight = sum(self.shap_weights[name] for name in self.member_names)
+        probability = sum(
+            self.shap_weights[name] * estimator.predict_proba(scaled)[:, 1]
+            for name, estimator in zip(self.member_names, self.model.estimators_, strict=True)
+        ) / total_weight
+        return [
+            round(clamp(100.0 * (1.0 - float(value)), 0.0, 100.0), 2)
+            for value in probability
+        ]
+
+    def _thresholds(
+        self, searches: list[tuple[Callable[[float], SMEApplicantLike], float, float, float]]
+    ) -> list[tuple[float, float] | None]:
+        """For each search, the value closest to ``worse`` that clears its floor.
+
+        A search is ``(make, worse, better, floor_score)``: ``make`` builds the
+        what-if applicant for a value, and the score can only stay level or
+        improve from ``worse`` towards ``better`` (monotone constraints). Grid
+        passes bracket the single crossing point, then the result is snapped to
+        PKR 1,000 on the safe side and re-scored. Every pass scores all searches
+        in one model call, which keeps the whole search to a few predictions.
+        """
+        import numpy as np
+
+        brackets: list[tuple[float, float] | None] = [
+            (worse, better) for _, worse, better, _ in searches
+        ]
+        for _ in range(APPROVAL_SEARCH_PASSES):
+            grids = [
+                np.linspace(bracket[0], bracket[1], APPROVAL_SEARCH_POINTS)
+                if bracket is not None
+                else None
+                for bracket in brackets
+            ]
+            scores = iter(
+                self._scores_for(
+                    [
+                        make(float(value))
+                        for (make, *_), grid in zip(searches, grids, strict=True)
+                        if grid is not None
+                        for value in grid
+                    ]
+                )
+            )
+            for index, ((_, _, _, floor_score), grid) in enumerate(
+                zip(searches, grids, strict=True)
+            ):
+                if grid is None:
+                    continue
+                row = [next(scores) for _ in grid]
+                first = next((i for i, score in enumerate(row) if score > floor_score), None)
+                if first is None:
+                    brackets[index] = None
+                elif first == 0:
+                    brackets[index] = (float(grid[0]), float(grid[0]))
+                else:
+                    brackets[index] = (float(grid[first - 1]), float(grid[first]))
+
+        # Snap away from the failing side: down for a loan, up for turnover.
+        step = APPROVAL_ROUNDING_PKR
+        candidates: list[list[float]] = []
+        for (_, worse, better, _), bracket in zip(searches, brackets, strict=True):
+            if bracket is None:
+                candidates.append([])
+            elif better < worse:
+                snapped = math.floor(bracket[1] / step) * step
+                candidates.append([v for v in (snapped, snapped - step) if v > 0])
+            else:
+                snapped = math.ceil(bracket[1] / step) * step
+                candidates.append([snapped, snapped + step])
+        scores = iter(
+            self._scores_for(
+                [
+                    make(value)
+                    for (make, *_), values in zip(searches, candidates, strict=True)
+                    for value in values
+                ]
+            )
+            if any(candidates)
+            else []
+        )
+        results: list[tuple[float, float] | None] = []
+        for (_, _, _, floor_score), values in zip(searches, candidates, strict=True):
+            scored = [(value, next(scores)) for value in values]
+            results.append(
+                next(((value, score) for value, score in scored if score > floor_score), None)
+            )
+        return results
+
+    def approval_path(
+        self, applicant: SMEApplicantLike, result: ScoreResult
+    ) -> ApprovalPath | None:
+        """Facility size and turnover at which this applicant reaches the next bands."""
+        from ml.features import monthly_turnover_proxy
+
+        if result.decision is Decision.APPROVED:
+            return None
+        if self.monotone.get("loan_to_income") != 1:
+            return None  # without the constraint the crossing point is not unique
+
+        loan = float(applicant.loan_amount_pkr)
+        turnover = monthly_turnover_proxy(applicant)
+        base = {
+            name: getattr(applicant, name)
+            for name in (
+                "tenure_months",
+                "monthly_digital_payments",
+                "payment_history_score",
+                "existing_debt_pkr",
+                "cash_flow_proxy",
+                "years_in_operation",
+            )
+        }
+
+        def with_loan(value: float) -> SMEApplicantLike:
+            return SimpleNamespace(**base, loan_amount_pkr=value)
+
+        def with_turnover(value: float) -> SMEApplicantLike:
+            return SimpleNamespace(
+                **{**base, "monthly_digital_payments": value}, loan_amount_pkr=loan
+            )
+
+        # Below the lowest ratio seen in training the model cannot tell loans
+        # apart, so that ratio bounds both searches.
+        lowest_ratio = float(self.feature_clips.get("loan_to_income", [0.02])[0]) or 0.02
+        smallest_loan = min(loan, lowest_ratio * turnover * 12.0)
+        largest_turnover = max(turnover, loan / (lowest_ratio * 12.0))
+
+        targets = [(Decision.APPROVED, MANUAL_REVIEW_UPPER_BOUND)]
+        if result.decision is Decision.REJECTED:
+            targets.insert(0, (Decision.MANUAL_REVIEW, REJECT_UPPER_BOUND))
+
+        searches = []
+        for _, floor_score in targets:
+            if turnover > 0:
+                searches.append((with_loan, loan, smallest_loan, floor_score))
+            searches.append((with_turnover, turnover, largest_turnover, floor_score))
+        found = iter(self._thresholds(searches))
+
+        steps = []
+        for decision, _ in targets:
+            by_loan = next(found) if turnover > 0 else None
+            by_turnover = next(found)
+            steps.append(
+                ApprovalStep(
+                    target_decision=decision,
+                    max_loan_pkr=by_loan[0] if by_loan else None,
+                    score_at_max_loan=by_loan[1] if by_loan else None,
+                    required_monthly_turnover_pkr=by_turnover[0] if by_turnover else None,
+                    score_at_turnover=by_turnover[1] if by_turnover else None,
+                )
+            )
+
+        from ml.features import FEATURE_LABELS as ML_FEATURE_LABELS
+
+        unreachable = any(step.max_loan_pkr is None for step in steps)
+        blocked_by = (
+            [
+                ML_FEATURE_LABELS.get(name, name)
+                for name, impact in sorted(
+                    (result.contributions or {}).items(), key=lambda item: item[1]
+                )
+                if impact < 0 and name != "loan_to_income"
+            ]
+            if unreachable
+            else []
+        )
+        if turnover <= 0:
+            blocked_by.insert(0, "No documented turnover")
+        return ApprovalPath(
+            requested_loan_pkr=loan,
+            monthly_turnover_pkr=turnover,
+            steps=steps,
+            blocked_by=blocked_by,
+        )
 
     # -- explaining -------------------------------------------------------
 
