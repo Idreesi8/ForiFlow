@@ -9,7 +9,10 @@ WORKDIR /app
 # linux-x64 native binaries for Tailwind's oxide engine. Copying host
 # node_modules would drop Windows/macOS binaries into a Linux image.
 COPY package.json package-lock.json ./
-RUN npm ci
+# esbuild's install script runs its own binary straight after writing it, and
+# on Docker Desktop that occasionally fails with ETXTBSY ("text file busy").
+# It is a timing fault, not a dependency problem, so one clean retry is enough.
+RUN npm ci || (rm -rf node_modules && npm ci)
 
 COPY . .
 RUN npm run build

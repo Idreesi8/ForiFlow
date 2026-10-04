@@ -68,7 +68,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts"]
@@ -85,7 +85,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "database": "connected"
 }
 ```

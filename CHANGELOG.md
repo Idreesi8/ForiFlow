@@ -6,6 +6,14 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-10-04
+
+### Fixed
+
+- The frontend image build retries `npm ci` once. On Docker Desktop the
+  esbuild install step can fail with `ETXTBSY` ("text file busy"), which
+  stopped the 1.7.0 rebuild; it is a timing fault and a clean retry passes.
+
 ## [1.7.0] - 2026-10-04
 
 ### Added

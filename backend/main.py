@@ -29,7 +29,7 @@ from schemas import HealthResponse
 from services.auth_service import jwt_secret_problem
 from services.scoring_service import get_scoring_service
 
-API_VERSION = "1.7.0"
+API_VERSION = "1.7.1"
 
 logging.basicConfig(
     level=os.getenv("FORIFLOW_LOG_LEVEL", "INFO"),
