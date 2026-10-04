@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--role",
         default=os.getenv("FORIFLOW_ADMIN_ROLE", "admin"),
-        help="admin or analyst (default: FORIFLOW_ADMIN_ROLE or admin).",
+        help="admin, manager or analyst (default: FORIFLOW_ADMIN_ROLE or admin).",
     )
     parser.add_argument(
         "--reset-password",

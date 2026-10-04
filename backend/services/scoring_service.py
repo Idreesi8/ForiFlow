@@ -63,8 +63,9 @@ class SMEApplicantLike(Protocol):
     years_in_operation: float
     num_employees: int
 
-# Weights sum to 1.0. Ordering reflects the relative importance agreed with the
-# credit policy team for thin-file Pakistani SMEs.
+# Weights sum to 1.0. They are our own judgement of relative importance, set by
+# hand for the fallback engine; they were not fitted to data or agreed with a
+# bank. The trained ensemble (MLScoringService) does not use them.
 FEATURE_WEIGHTS: dict[str, float] = {
     "payment_history_score": 0.22,
     "loan_affordability": 0.18,
@@ -87,8 +88,9 @@ FEATURE_LABELS: dict[str, str] = {
     "num_employees": "Business size (employees)",
 }
 
-# Normalisation bounds, calibrated on the SME reference portfolio. Monthly
-# digital receipts below the floor carry no signal for a formal facility.
+# Normalisation bounds for the fallback engine, chosen by hand (there is no SME
+# reference portfolio behind them). Monthly digital receipts below the floor
+# are treated as carrying no signal for a formal facility.
 DIGITAL_PAYMENTS_FLOOR_PKR: float = 50_000.0
 DIGITAL_PAYMENTS_CAP_PKR: float = 5_000_000.0
 INVENTORY_TURNOVER_CAP: float = 12.0

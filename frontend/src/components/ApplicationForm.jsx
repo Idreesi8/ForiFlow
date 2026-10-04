@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { apiErrorMessage, scoreApplication } from "../api/client.js";
+import { apiErrorMessage, scoreApplication, summariseStatement } from "../api/client.js";
 import { formatPKR, formatPKRCompact, formatPercent } from "../lib/format.js";
 import PathToApproval from "./PathToApproval.jsx";
 import ScoreDial from "./ScoreDial.jsx";
@@ -50,6 +50,16 @@ const FIELD_GROUPS = [
         options: BUSINESS_SECTORS,
         optional: true,
         hint: "For portfolio reports only. The model does not read it.",
+      },
+      {
+        name: "contact_phone",
+        label: "Contact number",
+        type: "text",
+        optional: true,
+        placeholder: "e.g. +923001234567",
+        pattern: /^\+?[0-9]{10,15}$/,
+        patternHint: "Digits only, 10 to 15, with an optional + in front.",
+        hint: "For payment reminders. Optional.",
       },
     ],
   },
@@ -264,6 +274,10 @@ function validate(values) {
     }
     if (field.type === "select") continue;
 
+    if (field.type === "text" && field.pattern) {
+      if (!field.pattern.test(raw)) errors[field.name] = field.patternHint;
+      continue;
+    }
     if (field.type === "text") {
       if (raw.length < field.minLength) {
         errors[field.name] = `At least ${field.minLength} characters.`;
@@ -288,6 +302,13 @@ function validate(values) {
   return errors;
 }
 
+/** Fields the statement fills, and the summary key each one comes from. */
+const STATEMENT_FIELDS = {
+  monthly_digital_payments: "suggested_monthly_digital_payments",
+  cash_flow_proxy: "suggested_cash_flow_proxy",
+  order_consistency: "suggested_order_consistency",
+};
+
 function toPayload(values) {
   const payload = {};
   for (const field of ALL_FIELDS) {
@@ -311,6 +332,8 @@ export default function ApplicationForm({ onScored }) {
   const [submitError, setSubmitError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [statement, setStatement] = useState(null);
+  const [statementError, setStatementError] = useState(null);
   const turnoverRatio = facilityToTurnover(values);
   const fieldNotes = {
     loan_amount_pkr:
@@ -334,9 +357,37 @@ export default function ApplicationForm({ onScored }) {
     setValues(sample.values);
     setErrors({});
     setSubmitError(null);
+    setStatement(null);
+  };
+
+  // Read the chosen CSV in the browser, let the API summarise it, and fill the
+  // turnover fields. The same text is sent again with the application, so the
+  // API can store what the statement really shows.
+  const handleStatement = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setStatementError(null);
+    try {
+      const csv = await file.text();
+      const summary = await summariseStatement(csv);
+      setStatement({ csv, summary, fileName: file.name });
+      setValues((previous) => ({
+        ...previous,
+        ...Object.fromEntries(
+          Object.entries(STATEMENT_FIELDS).map(([name, key]) => [name, String(summary[key])]),
+        ),
+      }));
+      setErrors({});
+    } catch (error) {
+      setStatement(null);
+      setStatementError(apiErrorMessage(error, "The statement could not be read."));
+    }
   };
 
   const handleReset = () => {
+    setStatement(null);
+    setStatementError(null);
     setValues(EMPTY_FORM);
     setErrors({});
     setSubmitError(null);
@@ -355,7 +406,10 @@ export default function ApplicationForm({ onScored }) {
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      const scored = await scoreApplication(toPayload(values));
+      const scored = await scoreApplication({
+        ...toPayload(values),
+        ...(statement ? { statement_csv: statement.csv } : {}),
+      });
       setResult(scored);
       onScored?.(scored);
     } catch (error) {
@@ -391,6 +445,13 @@ export default function ApplicationForm({ onScored }) {
         </div>
 
         <div className="space-y-7 px-5 py-5">
+          <StatementBox
+            statement={statement}
+            error={statementError}
+            values={values}
+            onPick={handleStatement}
+            onRemove={() => setStatement(null)}
+          />
           {FIELD_GROUPS.map((group) => (
             <fieldset key={group.title} className="space-y-4">
               <legend className="text-sm font-semibold text-slate-900">
@@ -511,6 +572,75 @@ export default function ApplicationForm({ onScored }) {
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+/**
+ * Fill the turnover fields from a wallet or bank statement instead of typing
+ * them. Shows what the statement says and whether the form still matches it.
+ */
+function StatementBox({ statement, error, values, onPick, onRemove }) {
+  const summary = statement?.summary;
+  const edited =
+    summary &&
+    ["monthly_digital_payments", "cash_flow_proxy"].some(
+      (name) => Number(values[name]) !== summary[STATEMENT_FIELDS[name]],
+    );
+
+  return (
+    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Fill turnover from a statement</p>
+          <p className="text-xs text-slate-500">
+            A CSV export of the applicant's wallet or bank account, at least 3 full months.
+            It replaces typing the turnover, which drives most of the score.
+          </p>
+        </div>
+        <label className="btn-secondary cursor-pointer px-3 py-1.5 text-xs">
+          {statement ? "Choose another file" : "Choose CSV file"}
+          <input type="file" accept=".csv,text/csv" className="sr-only" onChange={onPick} />
+        </label>
+      </div>
+
+      {error ? (
+        <p role="alert" className="mt-2 text-xs font-medium text-rose-700">
+          {error}
+        </p>
+      ) : null}
+
+      {summary ? (
+        <div className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-700">
+          <p>
+            <span className="font-semibold text-slate-900">{statement.fileName}</span>:{" "}
+            {summary.full_months} full months, {summary.transactions.toLocaleString("en-PK")}{" "}
+            transactions, {summary.period_start} to {summary.period_end}.
+          </p>
+          <p className="tabular mt-1">
+            Median money in per month {formatPKR(summary.monthly_inflow_median)} · median net{" "}
+            {formatPKR(summary.monthly_net_median)} · monthly spread{" "}
+            {(summary.inflow_variation * 100).toFixed(0)}% of the average.
+          </p>
+          {summary.warnings.map((warning) => (
+            <p key={warning} className="mt-1 font-medium text-amber-800">
+              Check: {warning}
+            </p>
+          ))}
+          <p className={`mt-1 font-medium ${edited ? "text-amber-800" : "text-brand-700"}`}>
+            {edited
+              ? "The turnover fields no longer match the statement. The credit file will say so."
+              : "Digital payments, cash flow and order consistency are filled from this file."}
+          </p>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="mt-1 text-xs font-semibold text-slate-500 underline hover:text-slate-700"
+          >
+            Remove statement
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

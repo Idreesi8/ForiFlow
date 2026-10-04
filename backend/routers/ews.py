@@ -19,7 +19,7 @@ from schemas import (
     EWSMonitorResponse,
     EWSTrackingResponse,
 )
-from services.auth_service import get_current_user, require_admin
+from services.auth_service import get_current_user, require_manager
 from services.ews_service import EWSService, get_ews_service
 
 router = APIRouter(
@@ -31,7 +31,7 @@ router = APIRouter(
 DbSession = Annotated[Session, Depends(get_db)]
 Monitor = Annotated[EWSService, Depends(get_ews_service)]
 Officer = Annotated[User, Depends(get_current_user)]
-Admin = Annotated[User, Depends(require_admin)]
+Manager = Annotated[User, Depends(require_manager)]
 
 
 def _require_approved_facility(borrower: Application) -> None:
@@ -299,10 +299,10 @@ async def review_alert(alert_id: int, db: DbSession, officer: Officer) -> AlertR
 @router.patch(
     "/alerts/{alert_id}/resolve",
     response_model=AlertResponse,
-    summary="Resolve an EWS alert with a note (admin only)",
+    summary="Resolve an EWS alert with a note (manager or admin)",
 )
 async def resolve_alert(
-    alert_id: int, body: AlertResolveRequest, db: DbSession, officer: Admin
+    alert_id: int, body: AlertResolveRequest, db: DbSession, officer: Manager
 ) -> AlertResponse:
     """Close an alert, recording who closed it, when, and what was done."""
     alert = _load_open_alert(alert_id, db)

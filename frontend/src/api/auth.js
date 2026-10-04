@@ -14,6 +14,16 @@ export function getStoredRole() {
   return window.localStorage.getItem(ROLE_KEY) ?? "";
 }
 
+/** Managers and admins decide Manual Review cases and resolve alerts. */
+export function canDecideCredit() {
+  return ["admin", "manager"].includes(getStoredRole());
+}
+
+/** Only admins manage officer accounts. */
+export function canManageTeam() {
+  return getStoredRole() === "admin";
+}
+
 export function storeSession({ access_token, username, role }) {
   window.localStorage.setItem(TOKEN_KEY, access_token);
   window.localStorage.setItem(USER_KEY, username ?? "");

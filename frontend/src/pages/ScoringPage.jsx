@@ -15,7 +15,7 @@ export default function ScoringPage() {
         <p className="mt-1 text-sm text-slate-500">
           Score a thin-file SME on alternative data. The decision follows the policy
           matrix: 0-40 Rejected, 41-70 Manual Review, 71-100 Approved. A Manual
-          Review case is approved or rejected by an admin, with a written reason.
+          Review case is approved or rejected by a manager or admin, with a written reason.
         </p>
       </header>
 

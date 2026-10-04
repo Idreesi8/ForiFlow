@@ -109,7 +109,7 @@ backend/
   config.py                   # environment: database URL, JWT secret, flags
   schemas.py                  # Pydantic request/response models + enums
   models/database.py          # engine, session, Application / Alert / EWSTracking / User
-  alembic/versions/           # PostgreSQL schema: 0001 initial, 0002 users, 0003 officer decisions, 0004 portfolio fields
+  alembic/versions/           # PostgreSQL schema: 0001 initial, 0002 users, 0003 officer decisions, 0004 portfolio fields, 0005 roles and evidence
   routers/auth.py             # login, current officer, officer accounts
   routers/score.py            # scoring, applications, Manual Review decision, portfolio stats
   routers/explain.py          # SHAP-style explanations

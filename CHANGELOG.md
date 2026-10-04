@@ -6,6 +6,41 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-04
+
+### Added
+
+- **Turnover from a statement.** `POST /score/statement` reads a wallet or bank
+  statement CSV and returns the median monthly inflow and net cash flow over
+  full calendar months, how much the inflows vary, and warnings to check by
+  hand (one inflow above 25% of the total, months with more out than in,
+  failed or unreadable rows). The scoring form fills digital payments, cash
+  flow and order consistency from it. When the statement is sent with the
+  application, the API re-reads it and stores the summary as
+  `turnover_evidence`, with `matches_statement` false if a figure was changed
+  afterwards. Raw transactions are not kept. The parser matches common column
+  names; it does not compute a repayment-history score, which the model reads
+  as a bureau record. `docs/samples/` has a synthetic statement for demos.
+- **Manager role.** Three roles, each including the one below: `analyst`
+  (score, monitor, take alerts), `manager` (also decide Manual Review cases
+  and resolve alerts), `admin` (also manage officer accounts). Existing
+  accounts keep their role. A Team & Roles page lets an admin list and create
+  accounts.
+- **Payment reminders.** `GET /portfolio/reminders` lists installments that
+  are overdue, due within 7 days, or unpaid from earlier months, with a
+  drafted message in English and Roman Urdu. The schedule runs monthly from
+  the approval date; an installment is cleared once its month is recorded.
+  The Reminders page copies the message or opens it in WhatsApp when the
+  application carries the optional `contact_phone`. ForiFlow sends nothing.
+- Migration `0005_roles_and_evidence`: widens the role check, adds nullable
+  `turnover_evidence_json` and `contact_phone`.
+
+### Fixed
+
+- Comments on the fallback engine's weights and bounds claimed they were
+  agreed with a credit policy team and calibrated on a reference portfolio.
+  They were set by hand; the comments now say so.
+
 ## [1.6.0] - 2026-10-04
 
 ### Added

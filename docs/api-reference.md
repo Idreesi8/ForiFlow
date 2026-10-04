@@ -9,21 +9,23 @@ All amounts are PKR. Timestamps are UTC ISO-8601.
 
 ## Authentication and roles
 
+Three roles, each including the one below: `analyst`, `manager`, `admin`.
+
 `GET /`, `GET /health`, `POST /auth/login` and the interactive docs are public.
 Every other route needs `Authorization: Bearer <token>`; a missing, expired or
 invalid token returns `401`.
 
-Two roles exist. The role is read from the `users` table on every request, not
-from the token, so changing a user's role takes effect immediately.
+The role is read from the `users` table on every request, not from the token,
+so changing a user's role takes effect immediately.
 
-| Action | `analyst` | `admin` |
-| --- | --- | --- |
-| Score, explain, list applications | yes | yes |
-| Record EWS observations, read alerts and history | yes | yes |
-| Take an EWS alert for review | yes | yes |
-| Approve or reject a Manual Review application | no (`403`) | yes |
-| Resolve an EWS alert | no (`403`) | yes |
-| List or create officer accounts | no (`403`) | yes |
+| Action | `analyst` | `manager` | `admin` |
+| --- | --- | --- | --- |
+| Score, explain, list applications | yes | yes | yes |
+| Record EWS observations, read alerts, reminders and history | yes | yes | yes |
+| Take an EWS alert for review | yes | yes | yes |
+| Approve or reject a Manual Review application | no (`403`) | yes | yes |
+| Resolve an EWS alert | no (`403`) | yes | yes |
+| List or create officer accounts | no (`403`) | no (`403`) | yes |
 
 The API refuses to sign tokens while `JWT_SECRET_KEY` is empty, shorter than 32
 characters, or still the `.env.example` placeholder (login returns `500` and
@@ -66,7 +68,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts"]
@@ -83,7 +85,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "database": "connected"
 }
 ```
@@ -259,7 +261,7 @@ is counted once; the edges 40 and 70 are the policy boundaries.
 
 `GET /score/applications/{id}` returns one row or `404`.
 
-## POST `/score/applications/{id}/review` (admin)
+## POST `/score/applications/{id}/review` (manager or admin)
 
 Record the final decision on a Manual Review application, with the reason.
 
@@ -415,7 +417,7 @@ Any officer takes an open alert for review: `alert_status` becomes
 `In Review` and `assigned_to` records who. `404` unknown id, `409` if the
 alert is already resolved or is being reviewed by another officer.
 
-## PATCH `/ews/alerts/{id}/resolve` (admin)
+## PATCH `/ews/alerts/{id}/resolve` (manager or admin)
 
 ```json
 { "note": "Borrower paid the arrears on 12 Oct." }
@@ -424,6 +426,30 @@ alert is already resolved or is being reviewed by another officer.
 Closes an Active or In Review alert, recording `resolved_at`, `resolved_by`
 and `resolution_note` (5–1000 characters). `404` unknown id, `409` if already
 resolved, `403` for analysts, `422` without a note.
+
+## POST `/score/statement`
+
+Summarise a wallet or bank statement. Body: `{"csv": "<CSV text>"}` (up to
+2 MB). The CSV needs a date column and either an `amount` column (signed, or
+with a `type` column of CR / DR) or `credit` and `debit` columns; a `status`
+column is optional. Returns `full_months`, `months`, `transactions`,
+`monthly_inflow_median`, `monthly_net_median`, `inflow_variation`,
+`inflow_to_outflow`, the three `suggested_*` form values and `warnings`. The
+first and last months are left out when the statement starts after the 5th or
+ends before the 25th. `422` with the reason if fewer than 3 full months
+remain or the columns are not recognised. Nothing is stored.
+
+`POST /score` accepts the same text as `statement_csv`. The API re-reads it
+and stores the summary on the application as `turnover_evidence`, including
+`matches_statement`. It also accepts an optional `contact_phone`.
+
+## GET `/portfolio/reminders`
+
+Payment reminders for approved facilities, most urgent first. `kind` is
+`overdue`, `arrears` or `due_soon` (within 7 days). Each carries the
+installment number and amount, the due date, `days_until_due`, `arrears_pkr`,
+and `message_en` / `message_ur`. Facilities in Default are left out. The
+schedule runs monthly from the approval date. ForiFlow sends nothing.
 
 ## GET `/portfolio/summary`
 

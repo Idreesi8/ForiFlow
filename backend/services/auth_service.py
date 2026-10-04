@@ -163,3 +163,5 @@ def require_role(*roles: UserRole):
 
 
 require_admin = require_role(UserRole.ADMIN)
+# Credit decisions: Manual Review outcomes and closing EWS alerts.
+require_manager = require_role(UserRole.ADMIN, UserRole.MANAGER)

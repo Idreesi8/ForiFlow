@@ -20,9 +20,11 @@ from schemas import (
     ScoreBucket,
     ScoreResponse,
     SMEApplicant,
+    StatementRequest,
 )
-from services.auth_service import get_current_user, require_admin
+from services.auth_service import get_current_user, require_manager
 from services.scoring_service import ScoringService, get_scoring_service
+from services.statement_service import StatementError, parse_statement
 
 router = APIRouter(
     prefix="/score",
@@ -33,7 +35,7 @@ router = APIRouter(
 DbSession = Annotated[Session, Depends(get_db)]
 Scorer = Annotated[ScoringService, Depends(get_scoring_service)]
 Officer = Annotated[User, Depends(get_current_user)]
-Admin = Annotated[User, Depends(require_admin)]
+Manager = Annotated[User, Depends(require_manager)]
 
 
 @router.post(
@@ -57,6 +59,7 @@ async def score_application(
     policy bands: 0-40 ``Rejected``, 41-70 ``Manual Review``, 71-100
     ``Approved``.
     """
+    evidence = _turnover_evidence(applicant)
     result = scorer.score(applicant)
 
     application = Application(
@@ -73,6 +76,8 @@ async def score_application(
         years_in_operation=applicant.years_in_operation,
         num_employees=applicant.num_employees,
         business_sector=applicant.business_sector.value if applicant.business_sector else None,
+        contact_phone=applicant.contact_phone,
+        turnover_evidence_json=json.dumps(evidence) if evidence else None,
         risk_score=result.risk_score,
         decision=result.decision.value,
         scored_by=officer.username,
@@ -184,6 +189,46 @@ def _in_bucket(lower: float, upper: float):
     return and_(Application.risk_score > lower, Application.risk_score <= upper)
 
 
+def _turnover_evidence(applicant: SMEApplicant) -> dict | None:
+    """Re-read the attached statement and record how it relates to the figures.
+
+    The summary is computed here, not taken from the browser, so the stored
+    evidence cannot claim more than the statement shows. ``matches_statement``
+    is false when the officer changed a figure after filling it from the file.
+    """
+    if not applicant.statement_csv:
+        return None
+    try:
+        summary = parse_statement(applicant.statement_csv)
+    except StatementError as exc:
+        raise HTTPException(status_code=422, detail=f"Statement: {exc}") from None
+
+    def close(typed: float, computed: float) -> bool:
+        return abs(typed - computed) <= max(1.0, 0.01 * computed)
+
+    return {
+        **summary.as_dict(),
+        "matches_statement": close(
+            applicant.monthly_digital_payments, summary.suggested_monthly_digital_payments
+        )
+        and close(applicant.cash_flow_proxy, summary.suggested_cash_flow_proxy),
+    }
+
+
+@router.post("/statement", summary="Summarise a wallet or bank statement")
+async def summarise_statement(body: StatementRequest) -> dict:
+    """Monthly turnover from a statement CSV, to fill the application form.
+
+    Returns the median monthly inflow and net cash flow over full calendar
+    months, how much the inflows vary, and warnings to check by hand. Nothing
+    is stored by this call.
+    """
+    try:
+        return parse_statement(body.csv).as_dict()
+    except StatementError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
 @router.get(
     "/stats",
     response_model=PortfolioStats,
@@ -256,10 +301,10 @@ async def get_application(application_id: int, db: DbSession) -> ApplicationSumm
 @router.post(
     "/applications/{application_id}/review",
     response_model=ApplicationSummary,
-    summary="Record the officer decision on a Manual Review application (admin only)",
+    summary="Record the officer decision on a Manual Review application (manager or admin)",
 )
 async def review_application(
-    application_id: int, body: ReviewRequest, db: DbSession, officer: Admin
+    application_id: int, body: ReviewRequest, db: DbSession, officer: Manager
 ) -> ApplicationSummary:
     """Approve or reject a Manual Review case, with the reason, once.
 

@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { getStoredRole } from "../api/auth.js";
+import { canDecideCredit } from "../api/auth.js";
 import {
   apiErrorMessage,
   fetchAlerts,
@@ -41,7 +41,7 @@ export default function EWSAlertFeed({
   const [noteFor, setNoteFor] = useState(null);
   const [note, setNote] = useState("");
   // The API enforces this (403 for analysts); hiding the button just avoids a dead click.
-  const canResolve = getStoredRole() === "admin";
+  const canResolve = canDecideCredit();
 
   // Held in a ref so a parent re-render never retriggers the fetch effect.
   const onAlertsLoadedRef = useRef(onAlertsLoaded);

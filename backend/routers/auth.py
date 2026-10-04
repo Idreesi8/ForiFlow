@@ -74,7 +74,7 @@ async def list_users(_: Admin, db: DbSession) -> list[UserResponse]:
     summary="Create an officer account (admin only)",
 )
 async def create_user(body: UserCreate, _: Admin, db: DbSession) -> UserResponse:
-    """Create an ``analyst`` (default) or ``admin`` account."""
+    """Create an ``analyst`` (default), ``manager`` or ``admin`` account."""
     try:
         validate_new_password(body.password)
     except ValueError as exc:

@@ -86,9 +86,11 @@ def test_an_overpayment_does_not_hide_another_facilitys_arrears(client: TestClie
 
 def test_a_payment_rounded_to_whole_rupees_is_not_arrears(client: TestClient) -> None:
     facility = _score(client, {**STRONG_APPLICANT, "loan_amount_pkr": 250_000, "tenure_months": 12})
-    _month(client, facility, 1, amount_paid_pkr=20_833)  # installment is 20,833.33
+    for month in (1, 2, 3):
+        _month(client, facility, month, amount_paid_pkr=20_833)  # installment is 20,833.33
 
     assert _summary(client)["overdue_pkr"] == 0
+    assert client.get("/portfolio/reminders").json() == []
 
 
 def test_par30_uses_the_latest_month_of_each_facility(client: TestClient) -> None:

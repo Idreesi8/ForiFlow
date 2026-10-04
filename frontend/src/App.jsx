@@ -9,6 +9,8 @@ import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import ModelPage from "./pages/ModelPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
+import RemindersPage from "./pages/RemindersPage.jsx";
+import TeamPage from "./pages/TeamPage.jsx";
 import ScoringPage from "./pages/ScoringPage.jsx";
 import ShapReportsPage from "./pages/ShapReportsPage.jsx";
 
@@ -17,13 +19,15 @@ const NAV_ITEMS = [
   { to: "/scoring", label: "Credit Scoring", icon: GaugeIcon },
   { to: "/shap", label: "SHAP Reports", icon: ChartIcon },
   { to: "/alerts", label: "EWS Alerts", icon: BellIcon },
+  { to: "/reminders", label: "Reminders", icon: MessageIcon },
   { to: "/applications", label: "Applications", icon: ListIcon },
   { to: "/model", label: "Model Performance", icon: CurveIcon },
+  { to: "/team", label: "Team & Roles", icon: UsersIcon },
 ];
 
 /**
  * Application shell: persistent sidebar navigation, a status header and the
- * six routed workspaces used by credit officers.
+ * eight routed workspaces used by credit officers.
  */
 export default function App() {
   return (
@@ -43,6 +47,8 @@ export default function App() {
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/applications" element={<ApplicationsPage />} />
         <Route path="/model" element={<ModelPage />} />
+        <Route path="/reminders" element={<RemindersPage />} />
+        <Route path="/team" element={<TeamPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
@@ -184,7 +190,7 @@ function OfficerShell() {
         </main>
 
         <footer className="border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500">
-          ForiFlow v1.6 · API {API_BASE_LABEL} · All amounts in PKR
+          ForiFlow v1.7 · API {API_BASE_LABEL} · All amounts in PKR
         </footer>
       </div>
     </div>
@@ -255,6 +261,25 @@ function CurveIcon({ className }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
       <path d="M4 4v16h16" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M4 20c2-9 6-13 16-15" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MessageIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M4 5h16v11H9l-5 4V5z" strokeLinejoin="round" />
+      <path d="M8 9h8M8 12h5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function UsersIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3 19c0-3 2.7-5 6-5s6 2 6 5" strokeLinecap="round" />
+      <path d="M16 5.2a3 3 0 010 5.6M17.5 14.3c2 .6 3.5 2.2 3.5 4.7" strokeLinecap="round" />
     </svg>
   );
 }

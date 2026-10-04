@@ -112,6 +112,17 @@ export const fetchBorrowerHistory = (borrowerId) =>
 export const monitorBorrower = (payload) =>
   client.post("/ews/monitor", payload).then((response) => response.data);
 
+export const summariseStatement = (csv) =>
+  client.post("/score/statement", { csv }).then((response) => response.data);
+
+export const fetchReminders = () =>
+  client.get("/portfolio/reminders").then((response) => response.data);
+
+export const fetchUsers = () => client.get("/auth/users").then((response) => response.data);
+
+export const createUser = (payload) =>
+  client.post("/auth/users", payload).then((response) => response.data);
+
 export const fetchPortfolioSummary = () =>
   client.get("/portfolio/summary").then((response) => response.data);
 

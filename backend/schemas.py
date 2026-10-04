@@ -6,7 +6,7 @@ rejected at the edge rather than silently skewing a credit decision.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -155,6 +155,23 @@ class SMEApplicant(BaseModel):
     business_sector: BusinessSector | None = Field(
         default=None,
         description="Line of business. Used for portfolio reporting, not by the model.",
+    )
+    contact_phone: str | None = Field(
+        default=None,
+        pattern=r"^\+?[0-9]{10,15}$",
+        description=(
+            "Borrower's mobile number, digits only with an optional leading +, "
+            "e.g. +923001234567. Used for payment reminders, not by the model."
+        ),
+    )
+    statement_csv: str | None = Field(
+        default=None,
+        max_length=2_000_000,
+        description=(
+            "The wallet or bank statement the turnover figures were taken from, as "
+            "CSV text. The API re-reads it and stores a summary as evidence; the "
+            "raw transactions are not kept."
+        ),
     )
 
     @computed_field  # type: ignore[prop-decorator]
@@ -312,6 +329,15 @@ class ApplicationSummary(BaseModel):
     decision: Decision
     created_at: datetime
     business_sector: str | None = None
+    contact_phone: str | None = None
+    turnover_evidence: dict | None = Field(
+        default=None,
+        description=(
+            "Summary of the statement the turnover was taken from, with "
+            "'matches_statement' saying whether the scored figures equal it. "
+            "Null when the officer typed the turnover."
+        ),
+    )
     scored_by: str | None = None
     review_decision: OfficerDecision | None = None
     review_note: str | None = None
@@ -327,6 +353,32 @@ class ApplicationSummary(BaseModel):
         if self.review_decision is None:
             return None
         return Decision(self.review_decision.value)
+
+
+class StatementRequest(BaseModel):
+    """A wallet or bank statement to summarise."""
+
+    csv: str = Field(..., min_length=1, max_length=2_000_000, description="CSV text.")
+
+
+class Reminder(BaseModel):
+    """A payment reminder an officer can send to a borrower."""
+
+    application_id: int
+    business_name: str
+    applicant_name: str
+    contact_phone: str | None
+    kind: str = Field(..., description="'overdue', 'due_soon' or 'arrears'.")
+    installment_number: int | None = Field(
+        ..., description="The next installment not yet recorded; null once all are."
+    )
+    installment_pkr: float
+    due_date: date | None
+    days_until_due: int | None = Field(..., description="Negative when past due.")
+    arrears_pkr: float = Field(..., description="Due but unpaid in recorded months.")
+    latest_status: InstallmentStatus | None
+    message_en: str
+    message_ur: str = Field(..., description="The same reminder in Roman Urdu.")
 
 
 class ScoreBucket(BaseModel):
@@ -587,11 +639,14 @@ class HealthResponse(BaseModel):
 
 
 class UserRole(StrEnum):
-    """On-premise officer roles. Both score, monitor and take alerts for review;
-    admin also decides Manual Review cases, resolves EWS alerts and manages
-    officer accounts."""
+    """On-premise officer roles, highest first.
+
+    Everyone scores, monitors and takes alerts for review. A manager also
+    decides Manual Review cases and resolves EWS alerts. An admin does all of
+    that and manages officer accounts."""
 
     ADMIN = "admin"
+    MANAGER = "manager"
     ANALYST = "analyst"
 
 

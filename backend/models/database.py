@@ -7,6 +7,7 @@ stored in PKR and all timestamps are timezone-aware UTC values.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Generator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -107,6 +108,12 @@ class Application(Base):
         String(40), nullable=True, index=True
     )
 
+    # Where the turnover figures came from: a parsed statement summary, or NULL
+    # when the officer typed them. Never the raw transactions.
+    turnover_evidence_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Borrower's mobile number for payment reminders. Optional.
+    contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     # Who ran the assessment. NULL only for rows scored before migration 0003.
     scored_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
@@ -129,6 +136,16 @@ class Application(Base):
     ews_records: Mapped[list["EWSTracking"]] = relationship(
         back_populates="borrower", cascade="all, delete-orphan"
     )
+
+    @property
+    def turnover_evidence(self) -> dict | None:
+        """The stored statement summary, or ``None`` if the turnover was typed."""
+        if not self.turnover_evidence_json:
+            return None
+        try:
+            return json.loads(self.turnover_evidence_json)
+        except ValueError:
+            return None
 
     def __repr__(self) -> str:  # pragma: no cover - debugging helper
         return (
@@ -220,11 +237,11 @@ class EWSTracking(Base):
 
 
 class User(Base):
-    """An on-premise officer account. Roles are ``admin`` or ``analyst``."""
+    """An on-premise officer account: ``admin``, ``manager`` or ``analyst``."""
 
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('admin', 'analyst')", name="ck_users_role"),
+        CheckConstraint("role IN ('admin', 'manager', 'analyst')", name="ck_users_role"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

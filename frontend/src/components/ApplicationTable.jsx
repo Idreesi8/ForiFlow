@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { getStoredRole } from "../api/auth.js";
+import { canDecideCredit } from "../api/auth.js";
 import { apiErrorMessage, fetchApplications } from "../api/client.js";
 import { bandForDecision, finalDecisionOf, isPendingReview } from "../lib/decisions.js";
 import { formatDateTime, formatPKRCompact, parseApiDate } from "../lib/format.js";
@@ -50,7 +50,7 @@ export default function ApplicationTable({
   refreshToken = 0,
 }) {
   const navigate = useNavigate();
-  const canDecide = getStoredRole() === "admin";
+  const canDecide = canDecideCredit();
   const [applications, setApplications] = useState(providedApplications ?? []);
   const [isLoading, setIsLoading] = useState(!providedApplications);
   const [error, setError] = useState(null);

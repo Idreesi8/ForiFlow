@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getStoredRole } from "../api/auth.js";
+import { canDecideCredit } from "../api/auth.js";
 import { apiErrorMessage, fetchApplication, reviewApplication } from "../api/client.js";
 import { DECISION_MANUAL_REVIEW, finalDecisionOf } from "../lib/decisions.js";
 import { formatDateTime } from "../lib/format.js";
@@ -23,7 +23,7 @@ export default function ReviewPanel({ applicationId, onDecided }) {
   const [submitting, setSubmitting] = useState(null);
   const [submitError, setSubmitError] = useState(null);
   // The API enforces this (403 for analysts); the role only decides what to show.
-  const canDecide = getStoredRole() === "admin";
+  const canDecide = canDecideCredit();
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -89,6 +89,7 @@ export default function ReviewPanel({ applicationId, onDecided }) {
             <Fact label="Scored by">{application.scored_by ?? "—"}</Fact>
             <Fact label="Assessed">{formatDateTime(application.created_at)}</Fact>
           </dl>
+          <TurnoverEvidence evidence={application.turnover_evidence} />
 
           {application.decision !== DECISION_MANUAL_REVIEW ? (
             <p className="text-slate-600">
@@ -108,7 +109,7 @@ export default function ReviewPanel({ applicationId, onDecided }) {
           ) : !canDecide ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
               Awaiting an officer decision. Approving or rejecting a Manual Review case
-              needs the admin role.
+              needs the manager or admin role.
             </p>
           ) : (
             <div className="space-y-3">
@@ -168,6 +169,32 @@ export default function ReviewPanel({ applicationId, onDecided }) {
         </div>
       )}
     </section>
+  );
+}
+
+/** Where the turnover behind the score came from: a statement, or typing. */
+function TurnoverEvidence({ evidence }) {
+  if (!evidence) {
+    return (
+      <p className="text-xs text-slate-500">
+        Turnover: typed by the officer. No statement was attached.
+      </p>
+    );
+  }
+  return (
+    <p
+      className={`rounded-lg border px-3 py-2 text-xs ${
+        evidence.matches_statement
+          ? "border-brand-200 bg-brand-50 text-slate-700"
+          : "border-amber-200 bg-amber-50 text-amber-900"
+      }`}
+    >
+      {evidence.matches_statement
+        ? "Turnover taken from a statement: "
+        : "A statement was attached, but the turnover figures were changed afterwards: "}
+      {evidence.full_months} full months, {evidence.transactions.toLocaleString("en-PK")}{" "}
+      transactions, {evidence.period_start} to {evidence.period_end}.
+    </p>
   );
 }
 
