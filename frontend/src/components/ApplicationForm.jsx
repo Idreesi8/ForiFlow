@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { apiErrorMessage, scoreApplication } from "../api/client.js";
-import { formatPKR, formatPKRCompact } from "../lib/format.js";
+import { formatPKR, formatPKRCompact, formatPercent } from "../lib/format.js";
 import ScoreDial from "./ScoreDial.jsx";
 import { Spinner } from "./common/States.jsx";
 
@@ -445,6 +445,13 @@ export default function ApplicationForm({ onScored }) {
                   label="Monthly installment"
                   value={formatPKR(result.monthly_installment_pkr)}
                 />
+                {result.probability_of_default !== null &&
+                result.probability_of_default !== undefined ? (
+                  <ResultRow
+                    label="Probability of default"
+                    value={formatPercent(result.probability_of_default)}
+                  />
+                ) : null}
               </dl>
 
               {result.explanation ? (

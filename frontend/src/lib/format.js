@@ -43,6 +43,13 @@ export function formatNumber(value, fractionDigits = 0) {
   return amount.toFixed(fractionDigits);
 }
 
+/** Format a 0-1 share as a percentage, e.g. 0.1687 becomes "16.9%". */
+export function formatPercent(value, fractionDigits = 1) {
+  const share = Number(value);
+  if (value === null || value === undefined || Number.isNaN(share)) return "—";
+  return `${(share * 100).toFixed(fractionDigits)}%`;
+}
+
 export function formatCount(value) {
   const amount = Number(value);
   if (value === null || value === undefined || Number.isNaN(amount)) return "—";

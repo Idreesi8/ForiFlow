@@ -102,6 +102,7 @@ async def score_application(
         risk_band=result.risk_band,
         confidence=result.confidence,
         model_version=scorer.model_version,
+        probability_of_default=result.calibrated_pd,
         explanation=explanation if include_explanation else None,
         created_at=application.created_at,
         scored_by=application.scored_by,

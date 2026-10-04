@@ -60,6 +60,7 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 |---------|-------------|
 | 🎯 **AI Credit Scoring** | XGBoost + Random Forest soft-voting ensemble. Score: 0-100 |
 | 📊 **SHAP Waterfall Charts** | Every decision explained with feature attribution |
+| 📈 **Calibrated PD & Model Performance** | Each score carries a probability of default calibrated on out-of-fold predictions; a Model Performance page shows the hold-out ROC curve, confusion matrix, threshold table, default rate per band and the six-model comparison |
 | ✅ **Officer decision on Manual Review** | An admin approves or rejects each 41–70 case with a written reason; the model band, the officer's call, name and time are all kept, and only approved facilities can be monitored |
 | 🚨 **Early Warning System** | Officer-submitted monthly observation; a rule-based score is derived from the origination baseline and an alert fires on a >15-point drop |
 | 🏦 **PKR Banking Context** | PKR amounts; designed for SBP-oriented explainability (not SBP-certified, no live ECIB feed) |
@@ -120,6 +121,7 @@ in `frontend/`. Vite proxies `/api` to the API.
 ## 📊 Performance
 
 - **AUC-ROC:** 5-fold CV 0.7752 ± 0.0073, hold-out 0.7731 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio). 0.85+ remains a bank-data target, not a measured result.
+- **Calibration (hold-out, 6,517 loans):** Brier 0.1852 raw → 0.1305 after isotonic calibration (0.1706 for always predicting the base rate). Observed default rate: Rejected 59.5%, Manual Review 14.6%, Approved 8.4%. Calibrated to the public file's 21.8% default rate, not to Pakistani SMEs.
 - **Response time:** median 150 ms, p90 207 ms per score including SHAP (30 runs in the Docker container on the development laptop, 26 September 2026)
 - **Concurrency:** not load-tested; the shipped Compose stack runs a single uvicorn process behind nginx, sized for a single-branch pilot
 

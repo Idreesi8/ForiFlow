@@ -181,8 +181,22 @@ export default function ShapWaterfall({
             Application #{explanation.application_id}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-5">
           <DecisionBadge decision={explanation.decision} />
+          {explanation.probability_of_default !== null &&
+          explanation.probability_of_default !== undefined ? (
+            <div
+              className="text-right"
+              title="Calibrated on the public training file's default rate, not on a Pakistani SME portfolio."
+            >
+              <p className="tabular text-2xl leading-none font-bold text-slate-900">
+                {(explanation.probability_of_default * 100).toFixed(1)}%
+              </p>
+              <p className="text-[11px] tracking-wide text-slate-500 uppercase">
+                Default probability
+              </p>
+            </div>
+          ) : null}
           <div className="text-right">
             <p className="tabular text-2xl leading-none font-bold text-slate-900">
               {summary.score.toFixed(1)}

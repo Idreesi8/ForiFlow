@@ -122,6 +122,7 @@ backend/
   ml/train_real_model.py      # training pipeline -> model, scaler, SHAP, metadata
   ml/predict_sample.py        # single-applicant smoke test
   ml/compare_models.py        # served ensemble vs LR, XGB, RF, LightGBM, MLP
+  ml/evaluate_model.py        # isotonic calibrator + hold-out ROC, confusion, bands
   ml/shap_utils.py            # SHAP output normalisation helpers
   ml/data/                    # raw CSV training data (not committed)
   tests/                      # pytest suite (in-memory SQLite, plus PostgreSQL parity tests)
@@ -272,6 +273,30 @@ calibrated to a 50% prior rather than the portfolio's true default rate. The
 score is therefore a **relative creditworthiness ranking** on a 0-100 scale, not
 an absolute default probability — which is also what keeps the SHAP base value
 near 50 and spreads applicants across the policy bands.
+
+### Calibrated probability of default and hold-out evaluation
+
+`python -m ml.evaluate_model` leaves the served model untouched. It rebuilds the
+training 80/20 split, fits an isotonic regression on 5-fold out-of-fold
+predictions of the 80% part, and measures the served model plus that calibrator
+on the 20% hold-out (6,517 loans). Results and the calibrator's breakpoints are
+in `ml/model_evaluation.json`; the API serves them at `GET /model/evaluation`.
+It needs the raw CSV in `ml/data/`, and must be re-run after every retrain: a
+calibrator from another training run is ignored at start-up.
+
+| Hold-out | AUC-ROC | Brier | ECE | Mean predicted PD |
+| -------- | ------: | ----: | --: | ----------------: |
+| Raw ensemble | 0.7731 | 0.1852 | 0.2261 | 44.4% |
+| After isotonic calibration | 0.7725 | 0.1305 | 0.0088 | 21.9% |
+| Always predict the base rate | 0.5 | 0.1706 | - | 21.8% |
+
+The raw probabilities score worse than predicting the base rate for everyone,
+which is why the 0-100 score is described as a ranking. The calibrated
+`probability_of_default` is returned beside the score; the score, the bands and
+the SHAP values stay on the raw model. Observed default rate by band: Rejected
+59.5%, Manual Review 14.6%, Approved 8.4%. Flagging every score of 50 or below
+catches 61.1% of defaulters and passes 82.5% of good payers. The calibration
+reflects the public file's 21.8% default rate, not a Pakistani SME portfolio.
 
 ### Why XGBoost + Random Forest: measured alternatives
 

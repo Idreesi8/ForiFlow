@@ -7,6 +7,7 @@ import AlertsPage from "./pages/AlertsPage.jsx";
 import ApplicationsPage from "./pages/ApplicationsPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import ModelPage from "./pages/ModelPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import ScoringPage from "./pages/ScoringPage.jsx";
 import ShapReportsPage from "./pages/ShapReportsPage.jsx";
@@ -17,11 +18,12 @@ const NAV_ITEMS = [
   { to: "/shap", label: "SHAP Reports", icon: ChartIcon },
   { to: "/alerts", label: "EWS Alerts", icon: BellIcon },
   { to: "/applications", label: "Applications", icon: ListIcon },
+  { to: "/model", label: "Model Performance", icon: CurveIcon },
 ];
 
 /**
  * Application shell: persistent sidebar navigation, a status header and the
- * five routed workspaces used by credit officers.
+ * six routed workspaces used by credit officers.
  */
 export default function App() {
   return (
@@ -40,6 +42,7 @@ export default function App() {
         <Route path="/shap/:applicationId" element={<ShapReportsPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/applications" element={<ApplicationsPage />} />
+        <Route path="/model" element={<ModelPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
@@ -181,7 +184,7 @@ function OfficerShell() {
         </main>
 
         <footer className="border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500">
-          ForiFlow v1.3 · API {API_BASE_LABEL} · All amounts in PKR
+          ForiFlow v1.4 · API {API_BASE_LABEL} · All amounts in PKR
         </footer>
       </div>
     </div>
@@ -243,6 +246,15 @@ function BellIcon({ className }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
       <path d="M6 9a6 6 0 1112 0c0 4 1.5 5.5 1.5 5.5h-15S6 13 6 9z" strokeLinejoin="round" />
       <path d="M10 18a2 2 0 004 0" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CurveIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M4 4v16h16" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 20c2-9 6-13 16-15" strokeLinecap="round" />
     </svg>
   );
 }

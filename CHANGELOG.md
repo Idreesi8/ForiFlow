@@ -6,6 +6,31 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-03
+
+### Added
+
+- **Calibrated probability of default.** `python -m ml.evaluate_model` fits an
+  isotonic regression on out-of-fold predictions of the training part and
+  stores its breakpoints in `ml/model_evaluation.json`. Every score now returns
+  `probability_of_default`, and it is saved inside the stored explanation. On
+  the hold-out the Brier score falls from 0.1852 (worse than the 0.1706 of
+  always predicting the base rate) to 0.1305, and the mean prediction from
+  44.4% to 21.9% against 21.8% observed. The calibrator is monotone, so the
+  score, the policy bands and the SHAP values are unchanged. It is calibrated
+  to the public training file, not to a Pakistani SME portfolio, and it is
+  ignored if it belongs to another training run.
+- **Hold-out evaluation.** The same script records the ROC curve, the
+  confusion matrix, a threshold table (score 30 to 70), reliability bins and
+  the default rate inside each policy band (Rejected 59.5%, Manual Review
+  14.6%, Approved 8.4%), all for the served model on the 6,517 hold-out loans.
+- `GET /model/evaluation` and `GET /model/comparison` serve those results and
+  the alternatives benchmark.
+- **Model Performance page** in the dashboard: ROC curve, calibration chart,
+  confusion matrix, threshold table, default rate by band, and the six-model
+  comparison with paired t-tests. The scoring result and the SHAP report show
+  the probability of default beside the score.
+
 ## [1.3.0] - 2026-09-29
 
 ### Added

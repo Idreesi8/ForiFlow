@@ -66,7 +66,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts"]
@@ -83,7 +83,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "database": "connected"
 }
 ```
@@ -128,6 +128,7 @@ Query: `include_explanation` (default `true`).
   "decision": "Manual Review",
   "risk_band": "Medium Risk",
   "confidence": 43.7,
+  "probability_of_default": 0.0913,
   "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26",
   "explanation": {
     "application_id": 1,
@@ -415,3 +416,22 @@ alert is already resolved or is being reviewed by another officer.
 Closes an Active or In Review alert, recording `resolved_at`, `resolved_by`
 and `resolution_note` (5–1000 characters). `404` unknown id, `409` if already
 resolved, `403` for analysts, `422` without a note.
+
+## GET `/model/evaluation`
+
+Hold-out evaluation of the served model, recorded by `python -m
+ml.evaluate_model`. Any signed-in officer. `404` if the script has not run.
+
+Returns `rows`, `default_rate`, `protocol`, the isotonic `calibrator`
+breakpoints, and under `holdout`: `raw` and `calibrated` (AUC-ROC, Brier,
+expected calibration error, mean prediction), `brier_no_skill`, `roc_curve`,
+`confusion_at_half`, `thresholds` (score 30 to 70), `bands` (observed default
+rate and calibrated PD per policy band), `reliability_raw` and
+`reliability_calibrated`. These describe the public training file, not the
+live portfolio.
+
+## GET `/model/comparison`
+
+The alternatives benchmark recorded by `python -m ml.compare_models`: per model
+the cross-validated AUC-ROC, PR-AUC, F1, Brier, single-row latency, and a
+paired t-test against the served ensemble. Any signed-in officer.

@@ -137,6 +137,8 @@ class ScoreResult:
     normalised_features: dict[str, float] = field(default_factory=dict)
     raw_features: dict[str, float] = field(default_factory=dict)
     probability_of_default: float | None = None
+    # Probability of default after isotonic calibration (ml.evaluate_model).
+    calibrated_pd: float | None = None
     confidence: float | None = None
     contributions: dict[str, float] | None = None
 
@@ -348,6 +350,7 @@ class ScoringService:
             narrative=self.narrative(result, contributions),
             compliance_note=self.compliance_note,
             model_version=self.model_version,
+            probability_of_default=result.calibrated_pd,
         )
 
 
@@ -409,6 +412,11 @@ class MLScoringService(ScoringService):
     creditworthiness ranking on a 0-100 scale, not an absolute default
     probability. That is also what keeps the base value near 50 and the policy
     bands meaningful.
+
+    The absolute probability is reported separately: an isotonic calibrator
+    fitted by :mod:`ml.evaluate_model` maps the raw probability onto the default
+    rate observed in the training file. It is monotone, so it never reorders
+    applicants, and the score, the bands and the SHAP values stay on the raw model.
     """
 
     def __init__(
@@ -417,8 +425,9 @@ class MLScoringService(ScoringService):
         scaler: Any,
         shap_bundle: dict[str, Any],
         metadata: dict[str, Any],
+        evaluation: dict[str, Any] | None = None,
     ) -> None:
-        """Wire up a loaded model, scaler and SHAP bundle."""
+        """Wire up a loaded model, scaler, SHAP bundle and optional calibrator."""
         super().__init__()
         self.model = model
         self.scaler = scaler
@@ -428,6 +437,7 @@ class MLScoringService(ScoringService):
         from ml.features import payment_history_levels
 
         self.history_levels = payment_history_levels(metadata)
+        self.calibration = self._calibration_breakpoints(evaluation)
         self.explainers: dict[str, Any] = _rebind_shap_links(shap_bundle["explainers"])
         self.shap_weights: dict[str, float] = shap_bundle["weights"]
         self.output_space: str = shap_bundle.get("output_space", "probability")
@@ -456,6 +466,7 @@ class MLScoringService(ScoringService):
             SCALER_PATH,
             SHAP_EXPLAINER_PATH,
             load_feature_metadata,
+            load_model_evaluation,
         )
 
         return cls(
@@ -463,7 +474,45 @@ class MLScoringService(ScoringService):
             scaler=joblib.load(SCALER_PATH),
             shap_bundle=joblib.load(SHAP_EXPLAINER_PATH),
             metadata=load_feature_metadata(),
+            evaluation=load_model_evaluation(),
         )
+
+    def _calibration_breakpoints(
+        self, evaluation: dict[str, Any] | None
+    ) -> tuple[list[float], list[float]] | None:
+        """Isotonic breakpoints, or ``None`` when they do not belong to this model.
+
+        A calibrator fitted for an earlier training run would put wrong
+        probabilities on the file, so it is ignored unless its timestamp matches
+        the served artefact. Re-run ``python -m ml.evaluate_model`` after retraining.
+        """
+        if not evaluation:
+            return None
+        if evaluation.get("model_trained_at") != self.metadata.get("trained_at"):
+            logger.warning(
+                "model_evaluation.json belongs to another training run; "
+                "calibrated PD is disabled until ml.evaluate_model is re-run."
+            )
+            return None
+        calibrator = evaluation.get("calibrator", {})
+        raw = calibrator.get("raw_probability") or []
+        calibrated = calibrator.get("calibrated_probability") or []
+        if len(raw) < 2 or len(raw) != len(calibrated):
+            return None
+        return list(raw), list(calibrated)
+
+    def calibrated_pd(self, probability_of_default: float) -> float | None:
+        """Map the raw ensemble probability to a calibrated probability of default.
+
+        Linear interpolation between the isotonic breakpoints, clipped at both
+        ends, which is exactly what ``IsotonicRegression.predict`` does.
+        """
+        if self.calibration is None:
+            return None
+        import numpy as np
+
+        raw, calibrated = self.calibration
+        return round(float(np.interp(probability_of_default, raw, calibrated)), 4)
 
     def _tune_for_single_row_inference(self) -> None:
         """Force serial prediction on the loaded members.
@@ -522,6 +571,12 @@ class MLScoringService(ScoringService):
                 f" Payment history is read as a clean (above {midpoint:g}) or "
                 f"adverse ({midpoint:g} and below) record, not as a fine scale."
             )
+        if self.calibration is not None:
+            note += (
+                " The probability of default is calibrated to the "
+                f"{float(self.metadata.get('default_rate', 0.0)):.1%} default rate of "
+                "that public file, not to a Pakistani SME portfolio."
+            )
         if unused:
             note += (
                 " Collected but not used by this model version: "
@@ -568,6 +623,7 @@ class MLScoringService(ScoringService):
             normalised_features=clipped,
             raw_features={name: round(value, 4) for name, value in raw.items()},
             probability_of_default=round(probability_of_default, 6),
+            calibrated_pd=self.calibrated_pd(probability_of_default),
             confidence=self._confidence(member_pds, risk_score),
             contributions=contributions,
         )

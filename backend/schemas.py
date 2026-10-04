@@ -172,6 +172,18 @@ class ExplanationResponse(BaseModel):
     model_version: str | None = Field(
         default=None, description="Engine that produced this explanation, for audit trails."
     )
+    probability_of_default: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Calibrated probability of default (0-1): isotonic regression on "
+            "out-of-fold predictions, calibrated to the default rate of the public "
+            "training file, not of a Pakistani SME portfolio. The score and bands "
+            "stay on the raw model. Absent for the surrogate engine and for "
+            "explanations stored before 1.4.0."
+        ),
+    )
 
 
 class ScoreResponse(BaseModel):
@@ -198,6 +210,12 @@ class ScoreResponse(BaseModel):
     )
     model_version: str | None = Field(
         default=None, description="Scoring engine that produced this decision."
+    )
+    probability_of_default: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Calibrated probability of default (0-1). See ExplanationResponse.",
     )
     explanation: ExplanationResponse | None = None
     created_at: datetime
