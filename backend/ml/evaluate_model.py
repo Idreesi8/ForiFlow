@@ -54,6 +54,32 @@ ROC_POINTS = 120
 # Score cut-offs shown in the threshold table: "flag everything at or below".
 THRESHOLD_SCORES = (30.0, 40.0, 50.0, 60.0, 70.0)
 
+# Bins for the drift monitor (services.drift_service). A value falls in the bin
+# whose lower edge it reaches; the last bin has no upper limit. The score bins
+# are the dashboard's, with edges on the policy boundaries.
+DRIFT_BINS: dict[str, tuple[list[float], list[str]]] = {
+    "risk_score": (
+        [0, 20.01, 40.01, 55.01, 70.01, 85.01],
+        ["0-20", "20-40", "40-55", "55-70", "70-85", "85-100"],
+    ),
+    "loan_to_income": (
+        [0, 0.1, 0.2, 0.3, 0.4],
+        ["under 10%", "10-20%", "20-30%", "30-40%", "40% or more"],
+    ),
+    "payment_history_score": ([0, 52.5], ["adverse", "clean"]),
+    "years_in_operation": (
+        [0, 2, 4, 7, 11],
+        ["under 2", "2-3", "4-6", "7-10", "11 or more"],
+    ),
+}
+
+
+def bin_shares(values: np.ndarray, edges: list[float]) -> list[float]:
+    """Share of ``values`` in each bin defined by its lower ``edges``."""
+    index = np.searchsorted(np.asarray(edges, dtype=float), values, side="right") - 1
+    counts = np.bincount(np.clip(index, 0, len(edges) - 1), minlength=len(edges))
+    return [float(count / len(values)) for count in counts]
+
 
 def expected_calibration_error(probabilities: np.ndarray, y: np.ndarray) -> float:
     """Mean gap between predicted and observed default rate over equal-size bins."""
@@ -207,6 +233,21 @@ def main() -> int:
             f"{a} ~ {b}": float(X_train[a].corr(X_train[b], method="spearman"))
             for i, a in enumerate(features)
             for b in features[i + 1 :]
+        },
+        # What the model saw and produced, for the drift monitor to compare the
+        # live applications against. Inputs from every training row; scores from
+        # the hold-out, which the model had not seen.
+        "reference_distributions": {
+            name: {
+                "edges": edges,
+                "labels": labels,
+                "shares": bin_shares(
+                    scores if name == "risk_score" else X[name].to_numpy(dtype=float), edges
+                ),
+                "rows": int(len(scores) if name == "risk_score" else len(X)),
+            }
+            for name, (edges, labels) in DRIFT_BINS.items()
+            if name == "risk_score" or name in features
         },
         "calibrator": {
             "method": f"isotonic over bins of {CALIBRATION_BIN_ROWS} loans",

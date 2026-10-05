@@ -751,6 +751,8 @@ class MLScoringService(ScoringService):
 
     def _scores_for(self, applicants: list[SMEApplicantLike]) -> list[float]:
         """Score many what-if applicants in one model pass, without SHAP."""
+        if not applicants:
+            return []  # every search has already ended; nothing left to score
         import numpy as np
 
         from ml.features import apply_clips, build_raw_features, snap_payment_history

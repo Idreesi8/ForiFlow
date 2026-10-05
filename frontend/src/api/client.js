@@ -129,6 +129,8 @@ export const fetchPortfolioSummary = () =>
 export const fetchModelEvaluation = () =>
   client.get("/model/evaluation").then((response) => response.data);
 
+export const fetchDrift = () => client.get("/model/drift").then((response) => response.data);
+
 export const fetchEarlyWarningModel = () =>
   client.get("/model/early-warning").then((response) => response.data);
 

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from models.database import Application, get_db
 from services.auth_service import get_current_user
+from services.drift_service import drift_report
 
 router = APIRouter(
     prefix="/model",
@@ -48,6 +52,52 @@ async def early_warning_model() -> dict[str, Any]:
     from ml.features import load_ews_transition
 
     return _require(load_ews_transition(), "ews_markov")
+
+
+@router.get("/drift", summary="Live applications against the training population")
+async def population_drift(db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
+    """Population Stability Index of the score and of each model input.
+
+    Compares every stored application with the distributions recorded by
+    ``ml.evaluate_model``. Inputs are rebuilt exactly as scoring builds them
+    (same turnover estimate, clip bounds and repayment-history reading). The
+    reference is the public training file, so a shift here is expected for a
+    real Pakistani portfolio; it says the model needs re-validating, not that
+    the applicants are worse.
+    """
+    from ml.features import (
+        apply_clips,
+        build_raw_features,
+        load_feature_metadata,
+        load_model_evaluation,
+        payment_history_levels,
+        snap_payment_history,
+    )
+
+    evaluation = _require(load_model_evaluation(), "evaluate_model")
+    reference = evaluation.get("reference_distributions")
+    if not reference:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No reference distributions. Re-run `python -m ml.evaluate_model`.",
+        )
+    metadata = load_feature_metadata()
+    clips = metadata.get("feature_clips", {})
+    levels = payment_history_levels(metadata)
+
+    live: dict[str, list[float]] = {name: [] for name in reference}
+    for application in db.scalars(select(Application)):
+        raw = build_raw_features(application)
+        clipped = apply_clips(raw, clips)
+        if levels is not None:
+            clipped["payment_history_score"] = snap_payment_history(
+                raw["payment_history_score"], levels
+            )
+        for name in reference:
+            live[name].append(
+                float(application.risk_score) if name == "risk_score" else clipped[name]
+            )
+    return drift_report(reference, live)
 
 
 @router.get("/comparison", summary="Served model against the alternatives")

@@ -15,6 +15,7 @@ import {
 
 import {
   apiErrorMessage,
+  fetchDrift,
   fetchEarlyWarningModel,
   fetchModelComparison,
   fetchModelEvaluation,
@@ -48,6 +49,7 @@ export default function ModelPage() {
   const [evaluation, setEvaluation] = useState(null);
   const [comparison, setComparison] = useState(null);
   const [earlyWarning, setEarlyWarning] = useState(null);
+  const [drift, setDrift] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -55,12 +57,14 @@ export default function ModelPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [evaluationData, comparisonData, earlyWarningData] = await Promise.all([
+      const [evaluationData, comparisonData, earlyWarningData, driftData] = await Promise.all([
         fetchModelEvaluation(),
-        // These two are optional: the page still works without them.
+        // The rest are optional: the page still works without them.
         fetchModelComparison().catch(() => null),
         fetchEarlyWarningModel().catch(() => null),
+        fetchDrift().catch(() => null),
       ]);
+      setDrift(driftData);
       setEvaluation(evaluationData);
       setComparison(comparisonData);
       setEarlyWarning(earlyWarningData);
@@ -399,7 +403,103 @@ export default function ModelPage() {
 
       <p className="text-xs text-slate-500">{evaluation.protocol}</p>
 
+      {drift ? <DriftSection drift={drift} /> : null}
+
       {earlyWarning ? <EarlyWarningSection chain={earlyWarning} /> : null}
+    </div>
+  );
+}
+
+const DRIFT_VERDICT = {
+  stable: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+  watch: "bg-amber-100 text-amber-800 ring-1 ring-amber-200",
+  shifted: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+};
+
+/**
+ * Population drift: live applications against what the model was trained on.
+ * Each quantity gets a PSI, the PSI chance alone would give at this sample
+ * size, and a row of paired bars (training above, live below) per bin.
+ */
+function DriftSection({ drift }) {
+  return (
+    <div className="space-y-4 border-t border-slate-200 pt-6">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">Population drift</h2>
+        <p className="mt-1 max-w-3xl text-sm text-slate-600">
+          Are the {formatCount(drift.live_applications)} applications scored here still like
+          the loans the model learned from? PSI below {drift.thresholds.watch.toFixed(2)} is
+          stable, above {drift.thresholds.shift.toFixed(2)} a material shift. A shift means
+          the model needs re-validating, not that the applicants are worse. With fewer than{" "}
+          {drift.min_rows_for_verdict} applications no verdict is given, because chance alone
+          moves PSI that much.
+        </p>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {drift.quantities.map((row) => (
+          <div key={row.name} className="card min-w-0 px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-slate-900">{row.label}</p>
+              <span className="flex items-center gap-2 text-xs text-slate-500">
+                {row.psi !== null ? (
+                  <span className="tabular">
+                    PSI <span className="font-semibold text-slate-900">{row.psi.toFixed(3)}</span>
+                    {" · "}chance alone ≈ {row.noise_floor.toFixed(3)}
+                  </span>
+                ) : null}
+                <span
+                  className={`badge ${
+                    DRIFT_VERDICT[row.verdict] ?? "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
+                  }`}
+                >
+                  {row.verdict}
+                </span>
+              </span>
+            </div>
+            <table className="mt-3 w-full text-xs">
+              <tbody>
+                {row.bins.map((bin, index) => (
+                  <tr key={bin}>
+                    <td className="w-24 py-1 pr-2 whitespace-nowrap text-slate-600">{bin}</td>
+                    <td className="py-1">
+                      <ShareBar share={row.reference_shares[index]} color={MODEL_COLOR} />
+                      <ShareBar share={row.live_shares[index]} color={RAW_COLOR} />
+                    </td>
+                    <td className="tabular w-28 py-1 pl-2 text-right whitespace-nowrap text-slate-600">
+                      {formatPercent(row.reference_shares[index], 0)} →{" "}
+                      <span className="font-semibold text-slate-900">
+                        {row.psi !== null ? formatPercent(row.live_shares[index], 0) : "—"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-4 rounded-sm" style={{ background: MODEL_COLOR }} /> Training data
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-4 rounded-sm" style={{ background: RAW_COLOR }} /> Applications
+          scored here
+        </span>
+        <span>Share of each group in every bin; the figures read training → live.</span>
+      </p>
+    </div>
+  );
+}
+
+function ShareBar({ share, color }) {
+  return (
+    <div className="my-0.5 h-2 w-full rounded-sm bg-slate-100">
+      <div
+        className="h-2 rounded-sm"
+        style={{ width: `${Math.min(100, share * 100)}%`, background: color }}
+      />
     </div>
   );
 }

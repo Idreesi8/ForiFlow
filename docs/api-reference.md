@@ -68,7 +68,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts"]
@@ -85,7 +85,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "database": "connected"
 }
 ```
@@ -522,6 +522,16 @@ The early-warning Markov chain recorded by `python -m ml.ews_markov`: `states`,
 `markov_assumption`, and `alternatives` (AUC and Brier of the served chain, a
 second-order chain, a logistic hazard model and gradient boosting, with a
 bootstrap interval of each AUC gap). Any signed-in officer.
+
+## GET `/model/drift`
+
+Population drift of the stored applications against the training reference
+recorded by `ml.evaluate_model`. Per quantity (`risk_score` and each model
+input): `bins`, `reference_shares`, `live_shares`, `psi`, `noise_floor` (the
+PSI chance alone gives, about (bins - 1) / rows) and `verdict`: `stable`,
+`watch` (above 0.10), `shifted` (above 0.25), or `too few applications` below
+100 rows. The thresholds are an industry rule of thumb, not a statistical test.
+Any signed-in officer.
 
 ## GET `/model/comparison`
 

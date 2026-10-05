@@ -6,6 +6,35 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-05
+
+### Added
+
+- **Population drift monitor.** `GET /model/drift` compares every stored
+  application with the population the model was trained on, using the
+  Population Stability Index for the score and for each model input (facility
+  size against turnover, repayment history, years in operation). Inputs are
+  rebuilt exactly as scoring builds them. Each figure comes with the PSI that
+  chance alone would give at that sample size, about (bins - 1) / rows, and no
+  verdict is given below 100 applications. `ml.evaluate_model` records the
+  reference distributions. The Model Performance page shows training against
+  live shares bin by bin.
+- **Credit memo.** A printable page per application (`/memo/{id}` in the
+  dashboard, linked from the decision panel): the request, score, probability
+  of default, each factor's points, path to approval, where the turnover came
+  from, and who decided and why. Read from the stored record only.
+
+### Fixed
+
+- **Scoring failed with a 500 for some applicants (1.5.0 to 1.7.1).** When
+  neither a smaller facility nor a higher turnover could move an applicant
+  into a better band, for example a Manual Review case with an adverse
+  repayment record and under a year of trading, the path-to-approval search
+  had nothing left to score on its second pass and raised. The assessment
+  was not saved. It now returns the empty path and names what blocks it. A
+  regression test pins that applicant, and a seeded test scores 300 applicants
+  across the extremes of every input and checks each reported threshold.
+
 ## [1.7.1] - 2026-10-04
 
 ### Fixed

@@ -34,7 +34,7 @@ services:
   backend:
     build:
       context: ./backend
-    image: foriflow-backend:1.7.1
+    image: foriflow-backend:1.8.0
     container_name: foriflow-backend
     restart: unless-stopped
     env_file:
@@ -74,7 +74,7 @@ services:
   frontend:
     build:
       context: ./frontend
-    image: foriflow-frontend:1.7.1
+    image: foriflow-frontend:1.8.0
     container_name: foriflow-frontend
     restart: unless-stopped
     ports:

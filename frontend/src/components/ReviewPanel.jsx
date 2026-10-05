@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { canDecideCredit } from "../api/auth.js";
 import { apiErrorMessage, fetchApplication, reviewApplication } from "../api/client.js";
@@ -70,7 +71,17 @@ export default function ReviewPanel({ applicationId, onDecided }) {
         <h3 id="review-panel-title" className="card-title">
           Decision on file
         </h3>
-        {application ? <FinalDecisionBadge application={application} /> : null}
+        <span className="flex items-center gap-3">
+          {application ? (
+            <Link
+              to={`/memo/${application.id}`}
+              className="text-xs font-semibold text-brand-700 hover:underline"
+            >
+              Credit memo
+            </Link>
+          ) : null}
+          {application ? <FinalDecisionBadge application={application} /> : null}
+        </span>
       </div>
 
       {isLoading ? (

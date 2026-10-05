@@ -2,10 +2,12 @@
 
 Captured at 1920 px wide with the trained model on PostgreSQL 16, from a
 twelve-application demo portfolio across eight sectors with monthly records on
-seven approved facilities. Files 02, 09 and 10 show release 1.7.0, files 05
-and 08 release 1.6.0, files 01, 03 and 04 release 1.5.0, and files 06 and 07
-release 1.3.0. To recapture against your own running stack, see
-[`scripts/README.md`](../../scripts/README.md).
+seven approved facilities. Files 08 and 11 show release 1.8.0 (08 with 160
+further generated applications, deliberately younger and smaller than the
+training data, so the drift panel has something to report), files 02, 09 and
+10 release 1.7.0, file 05 release 1.6.0, files 01, 03 and 04 release 1.5.0,
+and files 06 and 07 release 1.3.0. To recapture against your own running
+stack, see [`scripts/README.md`](../../scripts/README.md).
 
 | File | Page |
 |------|------|
@@ -16,8 +18,9 @@ release 1.3.0. To recapture against your own running stack, see
 | `05-ews-alerts.png` | EWS Alerts: a Late 60-89 month with the chain's probability and days to default |
 | `06-applications.png` | Applications register |
 | `07-swagger.png` | FastAPI Swagger UI |
-| `08-model-performance.png` | Model Performance: ROC, calibration, confusion matrix, thresholds, alternatives, and the early-warning chain |
+| `08-model-performance.png` | Model Performance: ROC, calibration, confusion matrix, thresholds, alternatives, population drift and the early-warning chain |
 | `09-reminders.png` | Payment reminders in Roman Urdu |
 | `10-team-roles.png` | Team & Roles: the three roles and officer accounts |
+| `11-credit-memo.png` | Printable credit memo for one application |
 | `architecture-delivered.png` | Proposal architecture figure |
 | `gantt-delivered.png` | Proposal 14-week Gantt |

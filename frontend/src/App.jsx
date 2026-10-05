@@ -7,6 +7,7 @@ import AlertsPage from "./pages/AlertsPage.jsx";
 import ApplicationsPage from "./pages/ApplicationsPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import MemoPage from "./pages/MemoPage.jsx";
 import ModelPage from "./pages/ModelPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import RemindersPage from "./pages/RemindersPage.jsx";
@@ -27,7 +28,7 @@ const NAV_ITEMS = [
 
 /**
  * Application shell: persistent sidebar navigation, a status header and the
- * eight routed workspaces used by credit officers.
+ * nine routed workspaces used by credit officers.
  */
 export default function App() {
   return (
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="/shap/:applicationId" element={<ShapReportsPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/applications" element={<ApplicationsPage />} />
+        <Route path="/memo/:applicationId" element={<MemoPage />} />
         <Route path="/model" element={<ModelPage />} />
         <Route path="/reminders" element={<RemindersPage />} />
         <Route path="/team" element={<TeamPage />} />
@@ -97,7 +99,7 @@ function OfficerShell() {
       ) : null}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-brand-900 text-brand-50 transition-transform lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-brand-900 text-brand-50 transition-transform lg:static lg:translate-x-0 print:hidden ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -142,7 +144,7 @@ function OfficerShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur print:hidden">
           <div className="flex items-center justify-between gap-4 px-5 py-3.5">
             <div className="flex items-center gap-3">
               <button
@@ -189,8 +191,8 @@ function OfficerShell() {
           <Outlet />
         </main>
 
-        <footer className="border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500">
-          ForiFlow v1.7 · API {API_BASE_LABEL} · All amounts in PKR
+        <footer className="border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500 print:hidden">
+          ForiFlow v1.8 · API {API_BASE_LABEL} · All amounts in PKR
         </footer>
       </div>
     </div>
