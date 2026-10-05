@@ -65,13 +65,14 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 | 🧾 **Turnover from a statement** | Upload a wallet or bank statement CSV; ForiFlow computes monthly turnover from the transactions, flags what to check, and records on the credit file whether the scored figures match the statement |
 | 📨 **Payment reminders** | Installments overdue, due within a week or in arrears, each with a drafted message in English and Roman Urdu to copy or open in WhatsApp |
 | 📉 **Population drift monitor** | Population Stability Index of the score and each model input against the training data, with the value chance alone would give at that sample size, so a small portfolio is not misread as drift |
+| ⚖️ **Group audit** | Approval rate and pricing accuracy per age band, income quarter, housing status and loan purpose on the hold-out: attributes the model never reads. Shows where the model is too harsh or too lenient, and states what cannot be audited (no gender in the data) |
 | 🖨️ **Credit memo** | A printable one-page record per application: request, score, factor points, turnover evidence, decision and reason |
 | 💼 **Loan book analytics** | Disbursed, collected, overdue and outstanding amounts, portfolio at risk (30+ days), defaults, a decision matrix and a per-sector table, from the months officers record |
 | ✅ **Officer decision on Manual Review** | An admin approves or rejects each 41–70 case with a written reason; the model band, the officer's call, name and time are all kept, and only approved facilities can be monitored |
 | 🚨 **Early Warning System** | Officer-submitted monthly observation. A Markov chain fitted on 24,000 real repayment histories gives the probability of default within three months and the expected days to default; an alert fires at 10% or more, or on a >15-point score drop |
 | 🏦 **PKR Banking Context** | PKR amounts; designed for SBP-oriented explainability (not SBP-certified, no live ECIB feed) |
 | 🐳 **Docker Ready** | One-command deployment for bank demos |
-| 🔐 **JWT Authentication** | On-premise login (bcrypt, HS256, 8-hour tokens); three roles (analyst, manager, admin): managers decide Manual Review cases and resolve alerts, admins also manage officer accounts; every assessment records who scored it |
+| 🔐 **JWT Authentication** | On-premise login (bcrypt, HS256, 8-hour tokens); three roles (analyst, manager, admin): managers decide Manual Review cases (approving up to a configurable facility limit) and resolve alerts, admins also manage officer accounts; every assessment records who scored it |
 
 ## 🛠️ Tech Stack
 

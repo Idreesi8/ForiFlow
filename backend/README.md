@@ -125,6 +125,7 @@ backend/
   ml/compare_models.py        # served ensemble vs LR, XGB, RF, LightGBM, MLP
   ml/evaluate_model.py        # isotonic calibrator + hold-out ROC, confusion, bands
   ml/ews_markov.py            # early-warning Markov chain fitted on UCI monthly histories
+  ml/fairness_audit.py        # approval and pricing per group the model cannot see
   ml/shap_utils.py            # SHAP output normalisation helpers
   ml/data/                    # raw CSV training data (not committed)
   tests/                      # pytest suite (in-memory SQLite, plus PostgreSQL parity tests)

@@ -23,7 +23,8 @@ so changing a user's role takes effect immediately.
 | Score, explain, list applications | yes | yes | yes |
 | Record EWS observations, read alerts, reminders and history | yes | yes | yes |
 | Take an EWS alert for review | yes | yes | yes |
-| Approve or reject a Manual Review application | no (`403`) | yes | yes |
+| Reject a Manual Review application | no (`403`) | yes | yes |
+| Approve a Manual Review application | no (`403`) | up to `MANAGER_APPROVAL_LIMIT_PKR` | yes |
 | Resolve an EWS alert | no (`403`) | yes | yes |
 | List or create officer accounts | no (`403`) | no (`403`) | yes |
 
@@ -68,7 +69,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts"]
@@ -85,7 +86,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "database": "connected"
 }
 ```
@@ -272,6 +273,11 @@ Record the final decision on a Manual Review application, with the reason.
 `decision` is `Approved` or `Rejected`; `note` is 10–1000 characters.
 **Response `200`**: the application, as in `GET /score/applications/{id}`,
 with `review_decision`, `review_note`, `reviewed_by` and `reviewed_at` set.
+
+A manager approving a facility above `MANAGER_APPROVAL_LIMIT_PKR` (default
+2,000,000) gets `403`; an admin must approve it. A manager may reject at any
+size. Each application reports `approval_authority` (`manager` or `admin`) and
+`manager_approval_limit_pkr`.
 
 **Errors:** `404` unknown id; `409` if the model's band is Approved or
 Rejected (only Manual Review needs an officer decision) or if a decision is
@@ -532,6 +538,17 @@ PSI chance alone gives, about (bins - 1) / rows) and `verdict`: `stable`,
 `watch` (above 0.10), `shifted` (above 0.25), or `too few applications` below
 100 rows. The thresholds are an industry rule of thumb, not a statistical test.
 Any signed-in officer.
+
+## GET `/model/fairness`
+
+The group audit recorded by `python -m ml.fairness_audit` on the evaluation
+hold-out. Per attribute (`Age`, `Income`, `Housing`, `Loan purpose`) and group:
+`rows`, `approval_rate`, `approval_ratio` to the `reference_group`,
+`below_four_fifths`, `predicted_default_rate` (calibrated) against
+`observed_default_rate`, `gap_beyond_noise`, `good_payers_rejected` and
+`defaulters_approved`. Groups under 100 loans carry `small_group` and take no
+part in a verdict. `not_audited` lists what the file cannot show, including
+gender. Any signed-in officer.
 
 ## GET `/model/comparison`
 

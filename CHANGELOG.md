@@ -6,6 +6,39 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-05
+
+### Added
+
+- **Group audit of the model.** `python -m ml.fairness_audit` takes the same
+  20% hold-out as the evaluation, joins each loan to four attributes of the
+  public file that the model never reads (age, income, housing, loan purpose)
+  and records, per group: the approval rate and its ratio to the best group
+  (the four-fifths screen), the model's probability of default against the
+  default rate the group really had, good payers rejected and defaulters
+  approved. Served at `GET /model/fairness` and shown on the Model Performance
+  page. Findings on the 6,517 hold-out loans:
+  - Age: every age band is priced in line with its outcome (largest gap 1.7
+    points). Under-25s are approved at 0.66 of the rate of the 45-and-over
+    band, and they do default more (23.4% against 20.5%).
+  - Housing: the largest mispricing. Outright owners are given 24.5% and
+    defaulted 8.1%; renters are given 24.3% and defaulted 31.2%. The model has
+    no input for assets or collateral.
+  - Income: the lowest quarter is approved at 0.22 of the top quarter's rate,
+    yet the model is lenient to it (30.8% given, 39.6% defaulted) and harsh to
+    the top quarter (14.5% given, 9.1% defaulted).
+  - Loan purpose: business-venture loans are given 21.6% and defaulted 14.6%.
+  The file has no gender, region, religion or ethnicity, so none of those is
+  audited, and these are consumer loans, not Pakistani SMEs. Nothing in the
+  audit changes the model.
+- **Approval authority by facility size.** A manager may approve a Manual
+  Review facility up to `MANAGER_APPROVAL_LIMIT_PKR` (default 2,000,000, a
+  policy figure the lender sets); above it only an admin may approve, and the
+  API answers `403` naming both amounts. A manager can still reject at any
+  size. Every application now reports `approval_authority` and
+  `manager_approval_limit_pkr`, and the decision panel disables Approve and
+  says why.
+
 ## [1.8.0] - 2026-10-05
 
 ### Added

@@ -58,6 +58,8 @@ EVALUATION_PATH = ML_DIR / "model_evaluation.json"
 EWS_TRANSITION_PATH = ML_DIR / "ews_transition.json"
 # Written by ml.compare_models.
 COMPARISON_PATH = ML_DIR / "model_comparison.json"
+# Written by ml.fairness_audit.
+FAIRNESS_PATH = ML_DIR / "fairness_audit.json"
 
 # Full set of features this module knows how to build. The subset actually used
 # by the trained model is recorded in ``feature_names.json``, because the winning
@@ -205,6 +207,14 @@ def load_model_evaluation() -> dict | None:
     if not EVALUATION_PATH.exists():
         return None
     with EVALUATION_PATH.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def load_fairness_audit() -> dict | None:
+    """Read the group audit, if ``ml.fairness_audit`` has run."""
+    if not FAIRNESS_PATH.exists():
+        return None
+    with FAIRNESS_PATH.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 

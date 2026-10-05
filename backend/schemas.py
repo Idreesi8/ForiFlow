@@ -354,6 +354,22 @@ class ApplicationSummary(BaseModel):
             return None
         return Decision(self.review_decision.value)
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def manager_approval_limit_pkr(self) -> float:
+        """Largest facility a manager may approve alone."""
+        from config import manager_approval_limit_pkr
+
+        return manager_approval_limit_pkr()
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def approval_authority(self) -> UserRole:
+        """The lowest role that may approve this facility: manager, or admin above the limit."""
+        if self.loan_amount_pkr > self.manager_approval_limit_pkr:
+            return UserRole.ADMIN
+        return UserRole.MANAGER
+
 
 class StatementRequest(BaseModel):
     """A wallet or bank statement to summarise."""

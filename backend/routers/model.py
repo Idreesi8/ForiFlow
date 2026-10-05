@@ -100,6 +100,19 @@ async def population_drift(db: Annotated[Session, Depends(get_db)]) -> dict[str,
     return drift_report(reference, live)
 
 
+@router.get("/fairness", summary="How the model treats groups it cannot see")
+async def fairness_audit() -> dict[str, Any]:
+    """Approval rate, pricing gap and wrong decisions per group on the hold-out.
+
+    Recorded by ``ml.fairness_audit`` for age, income, housing and loan purpose:
+    attributes of the public file that the model never reads. The file has no
+    gender, so gender is not audited.
+    """
+    from ml.features import load_fairness_audit
+
+    return _require(load_fairness_audit(), "fairness_audit")
+
+
 @router.get("/comparison", summary="Served model against the alternatives")
 async def model_comparison() -> dict[str, Any]:
     """Cross-validated metrics of every model the ensemble was chosen over.

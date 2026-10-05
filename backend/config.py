@@ -69,3 +69,22 @@ JWT_EXPIRE_HOURS = 8
 def jwt_secret_key() -> str:
     """Return the signing secret. Empty values are rejected at token time."""
     return os.getenv("JWT_SECRET_KEY", "").strip()
+
+
+# Largest facility a manager may approve alone; above it an admin must approve.
+# A policy figure the lender sets, not something measured from data.
+DEFAULT_MANAGER_APPROVAL_LIMIT_PKR = 2_000_000.0
+
+
+def manager_approval_limit_pkr() -> float:
+    """Return the manager's approval limit from ``MANAGER_APPROVAL_LIMIT_PKR``."""
+    text = os.getenv("MANAGER_APPROVAL_LIMIT_PKR", "").strip()
+    if not text:
+        return DEFAULT_MANAGER_APPROVAL_LIMIT_PKR
+    try:
+        limit = float(text)
+    except ValueError:
+        raise RuntimeError("MANAGER_APPROVAL_LIMIT_PKR must be a number.") from None
+    if limit < 0:
+        raise RuntimeError("MANAGER_APPROVAL_LIMIT_PKR cannot be negative.")
+    return limit

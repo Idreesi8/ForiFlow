@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { canDecideCredit } from "../api/auth.js";
+import { canDecideCredit, getStoredRole } from "../api/auth.js";
 import { apiErrorMessage, fetchApplication, reviewApplication } from "../api/client.js";
 import { DECISION_MANUAL_REVIEW, finalDecisionOf } from "../lib/decisions.js";
-import { formatDateTime } from "../lib/format.js";
+import { formatDateTime, formatPKR } from "../lib/format.js";
 import { DecisionBadge, FinalDecisionBadge } from "./common/Badges.jsx";
 import { ErrorState, LoadingState, Spinner } from "./common/States.jsx";
 
@@ -64,6 +64,9 @@ export default function ReviewPanel({ applicationId, onDecided }) {
 
   const noteLength = note.trim().length;
   const noteReady = noteLength >= NOTE_MIN && noteLength <= NOTE_MAX;
+  // Above the manager limit only an admin may approve. The API enforces it (403).
+  const needsAdmin =
+    application?.approval_authority === "admin" && getStoredRole() !== "admin";
 
   return (
     <section className="card" aria-labelledby="review-panel-title">
@@ -149,6 +152,14 @@ export default function ReviewPanel({ applicationId, onDecided }) {
                 </p>
               </div>
 
+              {needsAdmin ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                  This facility of {formatPKR(application.loan_amount_pkr)} is above the manager
+                  approval limit of {formatPKR(application.manager_approval_limit_pkr)}. An
+                  admin must approve it. You can still reject it.
+                </p>
+              ) : null}
+
               {submitError ? (
                 <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800" role="alert">
                   {submitError}
@@ -158,7 +169,7 @@ export default function ReviewPanel({ applicationId, onDecided }) {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={!noteReady || submitting !== null}
+                  disabled={!noteReady || submitting !== null || needsAdmin}
                   onClick={() => decide("Approved")}
                   className="btn bg-emerald-600 text-white hover:bg-emerald-700"
                 >

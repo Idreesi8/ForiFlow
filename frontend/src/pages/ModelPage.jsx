@@ -17,6 +17,7 @@ import {
   apiErrorMessage,
   fetchDrift,
   fetchEarlyWarningModel,
+  fetchFairness,
   fetchModelComparison,
   fetchModelEvaluation,
 } from "../api/client.js";
@@ -50,6 +51,7 @@ export default function ModelPage() {
   const [comparison, setComparison] = useState(null);
   const [earlyWarning, setEarlyWarning] = useState(null);
   const [drift, setDrift] = useState(null);
+  const [fairness, setFairness] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -57,13 +59,21 @@ export default function ModelPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [evaluationData, comparisonData, earlyWarningData, driftData] = await Promise.all([
+      const [
+        evaluationData,
+        comparisonData,
+        earlyWarningData,
+        driftData,
+        fairnessData,
+      ] = await Promise.all([
         fetchModelEvaluation(),
         // The rest are optional: the page still works without them.
         fetchModelComparison().catch(() => null),
         fetchEarlyWarningModel().catch(() => null),
         fetchDrift().catch(() => null),
+        fetchFairness().catch(() => null),
       ]);
+      setFairness(fairnessData);
       setDrift(driftData);
       setEvaluation(evaluationData);
       setComparison(comparisonData);
@@ -403,9 +413,129 @@ export default function ModelPage() {
 
       <p className="text-xs text-slate-500">{evaluation.protocol}</p>
 
+      {fairness ? <FairnessSection audit={fairness} /> : null}
+
       {drift ? <DriftSection drift={drift} /> : null}
 
       {earlyWarning ? <EarlyWarningSection chain={earlyWarning} /> : null}
+    </div>
+  );
+}
+
+/** How the model's default probability for a group compares with what happened. */
+function pricingOf(row) {
+  if (row.small_group) return { label: "too few loans", tone: "bg-slate-100 text-slate-600 ring-1 ring-slate-200" };
+  if (!row.gap_beyond_noise) return { label: "in line", tone: "bg-slate-100 text-slate-700 ring-1 ring-slate-200" };
+  return row.calibration_gap > 0
+    ? { label: "too harsh", tone: "bg-amber-50 text-amber-900 ring-1 ring-amber-200" }
+    : { label: "too lenient", tone: "bg-violet-50 text-violet-900 ring-1 ring-violet-200" };
+}
+
+function FairnessSection({ audit }) {
+  const worst = audit.attributes.reduce((a, b) => (b.largest_gap > a.largest_gap ? b : a));
+  return (
+    <div className="space-y-4 border-t border-slate-200 pt-6">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">Group audit</h2>
+        <p className="mt-1 max-w-3xl text-sm text-slate-600">
+          The model never reads age, income, housing or loan purpose. This checks whether
+          it still treats those groups differently, on the same{" "}
+          {formatCount(audit.rows)} hold-out loans. Two tests: is a group approved at under{" "}
+          {formatPercent(audit.four_fifths, 0)} of the best group's rate, and does the
+          default probability the model gives a group match the default rate the group
+          really had? The second is the one that shows unfair treatment. "Too harsh"
+          means the model overstates the group's risk; "too lenient" means it understates
+          it.
+        </p>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {audit.attributes.map((block) => (
+          <div key={block.attribute} className="card min-w-0">
+            <div className="card-header">
+              <h3 className="card-title">{block.attribute}</h3>
+              <span className="text-xs text-slate-500">
+                approval compared with: {block.reference_group}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-[11px] tracking-wide text-slate-500 uppercase">
+                    <th className="px-4 py-2 font-medium">Group</th>
+                    <th className="px-2 py-2 text-right font-medium">Loans</th>
+                    <th className="px-2 py-2 text-right font-medium">Approved</th>
+                    <th className="px-2 py-2 text-right font-medium">Model PD</th>
+                    <th className="px-2 py-2 text-right font-medium">Defaulted</th>
+                    <th className="px-4 py-2 font-medium">Pricing</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.groups.map((row) => {
+                    const pricing = pricingOf(row);
+                    return (
+                      <tr key={row.group} className="border-b border-slate-100 last:border-0">
+                        <td className="px-4 py-2 font-medium text-slate-900">{row.group}</td>
+                        <td className="tabular px-2 py-2 text-right text-slate-600">
+                          {formatCount(row.rows)}
+                        </td>
+                        <td className="tabular px-2 py-2 text-right whitespace-nowrap">
+                          {formatPercent(row.approval_rate)}
+                          <span
+                            className={`ml-1 ${
+                              row.below_four_fifths ? "font-semibold text-rose-700" : "text-slate-500"
+                            }`}
+                          >
+                            ({row.approval_ratio.toFixed(2)})
+                          </span>
+                        </td>
+                        <td className="tabular px-2 py-2 text-right">
+                          {formatPercent(row.predicted_default_rate)}
+                        </td>
+                        <td className="tabular px-2 py-2 text-right font-semibold text-slate-900">
+                          {formatPercent(row.observed_default_rate)}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className={`badge ${pricing.tone}`}>{pricing.label}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+              {block.note}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="card px-5 py-4 text-sm text-slate-700">
+        <p className="font-semibold text-slate-900">How to read this</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>
+            The figure in brackets is the group's approval rate divided by the best group's.
+            Below {audit.four_fifths.toFixed(2)} it is shown in red. A low ratio is a reason
+            to look, not proof of unfairness: a group that defaults more should be approved
+            less.
+          </li>
+          <li>
+            Where "Model PD" and "Defaulted" differ by more than the group's size explains,
+            the model is missing something that matters for that group. {worst.attribute}{" "}
+            shows it most, with a gap of up to {formatPercent(worst.largest_gap)}.
+          </li>
+          <li>
+            A group under {audit.min_group_rows} loans gets no verdict.
+          </li>
+        </ul>
+        <p className="mt-3 font-semibold text-slate-900">Not audited</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          {audit.not_audited.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

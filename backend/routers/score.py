@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
+from config import manager_approval_limit_pkr
 from models.database import Alert, Application, User, get_db, utcnow
 from schemas import (
     AlertStatus,
@@ -21,6 +22,7 @@ from schemas import (
     ScoreResponse,
     SMEApplicant,
     StatementRequest,
+    UserRole,
 )
 from services.auth_service import get_current_user, require_manager
 from services.scoring_service import ScoringService, get_scoring_service
@@ -328,6 +330,22 @@ async def review_application(
             detail=(
                 f"Application {application.id} was already {application.review_decision} "
                 f"by {application.reviewed_by}. A recorded decision is not changed."
+            ),
+        )
+
+    # Approval authority by size. Declining needs no higher authority.
+    limit = manager_approval_limit_pkr()
+    if (
+        body.decision is OfficerDecision.APPROVED
+        and officer.role != UserRole.ADMIN.value
+        and application.loan_amount_pkr > limit
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"A facility of PKR {application.loan_amount_pkr:,.0f} is above the manager "
+                f"approval limit of PKR {limit:,.0f}. An admin must approve it. "
+                "A manager can still reject it."
             ),
         )
 

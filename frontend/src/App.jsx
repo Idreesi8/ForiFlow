@@ -192,7 +192,7 @@ function OfficerShell() {
         </main>
 
         <footer className="border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500 print:hidden">
-          ForiFlow v1.8 · API {API_BASE_LABEL} · All amounts in PKR
+          ForiFlow v1.9 · API {API_BASE_LABEL} · All amounts in PKR
         </footer>
       </div>
     </div>

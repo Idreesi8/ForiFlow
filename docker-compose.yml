@@ -34,7 +34,7 @@ services:
   backend:
     build:
       context: ./backend
-    image: foriflow-backend:1.8.0
+    image: foriflow-backend:1.9.0
     container_name: foriflow-backend
     restart: unless-stopped
     env_file:
@@ -49,6 +49,7 @@ services:
       FORIFLOW_LOG_LEVEL: ${FORIFLOW_LOG_LEVEL:-INFO}
       FORIFLOW_ENABLE_DOCS: ${FORIFLOW_ENABLE_DOCS:-true}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
+      MANAGER_APPROVAL_LIMIT_PKR: ${MANAGER_APPROVAL_LIMIT_PKR:-2000000}
     volumes:
       # Legacy SQLite file (if any) stays readable for the one-time copy script.
       - foriflow-data:/data
@@ -74,7 +75,7 @@ services:
   frontend:
     build:
       context: ./frontend
-    image: foriflow-frontend:1.8.0
+    image: foriflow-frontend:1.9.0
     container_name: foriflow-frontend
     restart: unless-stopped
     ports:
