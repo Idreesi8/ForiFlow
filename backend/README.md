@@ -117,6 +117,11 @@ backend/
   services/auth_service.py    # bcrypt hashing, JWT, role checks
   services/scoring_service.py # scoring + explainability logic (ML + surrogate)
   services/ews_service.py     # monitoring, alert and runway logic
+  services/audit_service.py   # append-only audit trail (who, what, when)
+  services/borrower_service.py# borrowers, repeat-application linkage, history
+  services/model_registry.py  # which model scored what (model_versions)
+  routers/borrowers.py        # borrowers and their history
+  routers/audit.py            # read-only audit trail (admin)
   scripts/seed_admin.py       # create or reset an officer account
   scripts/migrate_sqlite_to_postgres.py  # copy a 1.0 SQLite file into PostgreSQL
   ml/features.py              # canonical feature schema shared by train + serve

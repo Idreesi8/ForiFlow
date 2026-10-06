@@ -13,15 +13,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import (
+    DDL,
+    JSON,
     CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     create_engine,
+    event,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -66,6 +71,213 @@ class Base(DeclarativeBase):
     """Declarative base class shared by every ForiFlow ORM model."""
 
 
+# Structured state: JSONB on PostgreSQL (indexable, validated), JSON on SQLite.
+JsonColumn = JSON().with_variant(JSONB(), "postgresql")
+
+
+class Borrower(Base):
+    """The business that borrows. One borrower has many applications.
+
+    Only what the intake form already collects is kept here. ``identifier`` is
+    the owner's CNIC or the business's NTN, digits only; it is optional, and it
+    is the one thing that reliably says two applications are the same business.
+    A name is not an identity, so nothing is ever linked on a name alone.
+    """
+
+    __tablename__ = "borrowers"
+    __table_args__ = (
+        CheckConstraint(
+            "(identifier IS NULL AND identifier_type IS NULL) OR "
+            "(identifier IS NOT NULL AND identifier_type IS NOT NULL "
+            "AND identifier_type IN ('CNIC', 'NTN'))",
+            name="ck_borrowers_identifier",
+        ),
+        CheckConstraint("status IN ('active', 'inactive')", name="ck_borrowers_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # Stable reference shown to officers, "BRW-000012". Set from ``id`` in the
+    # same transaction that inserts the row, so it is never seen empty.
+    public_id: Mapped[str | None] = mapped_column(String(16), nullable=True, unique=True)
+    business_name: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    owner_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    identifier_type: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # Unique when present. NULLs never collide, so many borrowers may have none.
+    identifier: Mapped[str | None] = mapped_column(String(20), nullable=True, unique=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    business_sector: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # As stated on the most recent application.
+    years_in_operation: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    applications: Mapped[list["Application"]] = relationship(
+        back_populates="borrower", order_by="Application.id"
+    )
+
+    @property
+    def identifier_masked(self) -> str | None:
+        """The identifier with all but its last four digits hidden."""
+        return mask_identifier(self.identifier)
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging helper
+        return f"<Borrower id={self.id} public_id={self.public_id!r}>"
+
+
+def mask_identifier(identifier: str | None) -> str | None:
+    """Hide all but the last four characters of a CNIC or NTN."""
+    if not identifier:
+        return None
+    return "*" * max(len(identifier) - 4, 0) + identifier[-4:]
+
+
+def borrower_public_id(borrower_id: int) -> str:
+    """The officer-facing reference for a borrower row."""
+    return f"BRW-{borrower_id:06d}"
+
+
+class ModelVersion(Base):
+    """One scoring model that has served decisions from this database.
+
+    A row is added the first time a model scores here. ``artifact_sha256`` is
+    the fingerprint of the files (or, for the fallback formula, of its weights)
+    that actually produced the numbers, so a swapped file under an unchanged
+    version string still shows up as a different model.
+    """
+
+    __tablename__ = "model_versions"
+    __table_args__ = (
+        Index(
+            "uq_model_versions_version_artifact", "version", "artifact_sha256", unique=True
+        ),
+        CheckConstraint("engine IN ('ml', 'surrogate')", name="ck_model_versions_engine"),
+        CheckConstraint("status IN ('active', 'retired')", name="ck_model_versions_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    version: Mapped[str] = mapped_column(String(120), nullable=False)
+    # 'ml': the trained ensemble. 'surrogate': the hand-weighted fallback formula.
+    engine: Mapped[str] = mapped_column(String(16), nullable=False)
+    artifact_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    training_dataset: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    feature_set: Mapped[list | None] = mapped_column(JsonColumn, nullable=True)
+    feature_set_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    trained_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    metrics: Mapped[dict | None] = mapped_column(JsonColumn, nullable=True)
+    # 'active': the model this service is scoring with now. One row at a time.
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    # Why the fallback formula is serving, when it is: 'pinned',
+    # 'artifacts_missing' or 'load_failed'. NULL for the trained ensemble.
+    fallback_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    @property
+    def is_active(self) -> bool:
+        """True for the model the service is scoring with now."""
+        return self.status == "active"
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging helper
+        return f"<ModelVersion id={self.id} version={self.version!r} status={self.status!r}>"
+
+
+class AuditLog(Base):
+    """One thing someone did, written once and never changed.
+
+    Rows are only ever inserted. The ORM refuses to update or delete them
+    (listeners below) and so does the database itself (triggers created with
+    the table), so a bulk statement or a hand-typed ``DELETE`` fails as well.
+    A wrong entry is corrected by writing another entry.
+
+    ``user_id`` is deliberately not a foreign key: the record must outlive the
+    account, and it carries the username and role as they were at the time.
+    """
+
+    __tablename__ = "audit_logs"
+    __table_args__ = (Index("ix_audit_logs_entity", "entity_type", "entity_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    # 'system' for startup and migration events; the typed name on a failed login.
+    username: Mapped[str] = mapped_column(String(64), nullable=False)
+    role: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    previous_state: Mapped[dict | None] = mapped_column(JsonColumn, nullable=True)
+    new_state: Mapped[dict | None] = mapped_column(JsonColumn, nullable=True)
+    details: Mapped[dict | None] = mapped_column(JsonColumn, nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging helper
+        return f"<AuditLog id={self.id} action={self.action!r} by={self.username!r}>"
+
+
+class AuditLogImmutable(RuntimeError):
+    """Raised when code tries to change or remove an audit record."""
+
+
+def _refuse_audit_change(mapper, connection, target) -> None:
+    raise AuditLogImmutable(
+        "audit_logs is append-only: write a new entry instead of changing one."
+    )
+
+
+event.listen(AuditLog, "before_update", _refuse_audit_change)
+event.listen(AuditLog, "before_delete", _refuse_audit_change)
+
+# The same rule inside the database, for statements that bypass the ORM.
+# Migration 0006 runs AUDIT_APPEND_ONLY_POSTGRES; ``create_all`` (SQLite, used
+# by the tests and the laptop fallback) runs the SQLite pair through the hooks.
+AUDIT_APPEND_ONLY_POSTGRES: tuple[str, ...] = (
+    """
+    CREATE OR REPLACE FUNCTION audit_logs_append_only() RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'audit_logs is append-only';
+    END;
+    $$ LANGUAGE plpgsql
+    """,
+    """
+    CREATE TRIGGER audit_logs_no_change BEFORE UPDATE OR DELETE ON audit_logs
+    FOR EACH ROW EXECUTE FUNCTION audit_logs_append_only()
+    """,
+    """
+    CREATE TRIGGER audit_logs_no_truncate BEFORE TRUNCATE ON audit_logs
+    FOR EACH STATEMENT EXECUTE FUNCTION audit_logs_append_only()
+    """,
+)
+AUDIT_APPEND_ONLY_SQLITE: tuple[str, ...] = (
+    """
+    CREATE TRIGGER IF NOT EXISTS audit_logs_no_update BEFORE UPDATE ON audit_logs
+    BEGIN SELECT RAISE(ABORT, 'audit_logs is append-only'); END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS audit_logs_no_delete BEFORE DELETE ON audit_logs
+    BEGIN SELECT RAISE(ABORT, 'audit_logs is append-only'); END
+    """,
+)
+for _statement in AUDIT_APPEND_ONLY_SQLITE:
+    event.listen(
+        AuditLog.__table__, "after_create", DDL(_statement).execute_if(dialect="sqlite")
+    )
+for _statement in AUDIT_APPEND_ONLY_POSTGRES:
+    event.listen(
+        AuditLog.__table__,
+        "after_create",
+        DDL(_statement).execute_if(dialect="postgresql"),
+    )
+
+
 class Application(Base):
     """A scored SME credit application.
 
@@ -84,6 +296,11 @@ class Application(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # The business this application belongs to. RESTRICT: a borrower with
+    # applications cannot be removed, only marked inactive.
+    borrower_id: Mapped[int] = mapped_column(
+        ForeignKey("borrowers.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
     applicant_name: Mapped[str] = mapped_column(String(120), nullable=False)
     business_name: Mapped[str] = mapped_column(String(160), nullable=False)
 
@@ -102,6 +319,15 @@ class Application(Base):
     risk_score: Mapped[float] = mapped_column(Float, nullable=False, index=True)
     decision: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     shap_explanation_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # What produced ``risk_score``, fixed at scoring time. ``scoring_engine`` is
+    # 'ml' (trained ensemble) or 'surrogate' (hand-weighted fallback formula).
+    # NULL only where a row scored before migration 0006 did not record it.
+    model_version: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    scoring_engine: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    model_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_versions.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
 
     # Line of business, for portfolio concentration. NULL before migration 0004.
     business_sector: Mapped[str | None] = mapped_column(
@@ -130,12 +356,24 @@ class Application(Base):
         DateTime(timezone=True), default=utcnow, nullable=False, index=True
     )
 
+    # ``borrower`` here is the business; on Alert and EWSTracking the attribute
+    # of the same name is the application (kept from before borrowers existed).
+    # selectin, not joined: a JOIN would end up inside ``SELECT … FOR UPDATE``
+    # when a review or an alert locks its row, which PostgreSQL refuses.
+    borrower: Mapped["Borrower"] = relationship(
+        back_populates="applications", lazy="selectin"
+    )
     alerts: Mapped[list["Alert"]] = relationship(
         back_populates="borrower", cascade="all, delete-orphan"
     )
     ews_records: Mapped[list["EWSTracking"]] = relationship(
         back_populates="borrower", cascade="all, delete-orphan"
     )
+
+    @property
+    def borrower_public_id(self) -> str | None:
+        """The owning borrower's reference, e.g. ``BRW-000012``."""
+        return self.borrower.public_id if self.borrower is not None else None
 
     @property
     def turnover_evidence(self) -> dict | None:

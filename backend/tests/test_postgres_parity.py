@@ -62,6 +62,9 @@ def postgres_session_factory_fixture() -> Generator[sessionmaker[Session], None,
         connection.execute(text("DROP TABLE IF EXISTS ews_tracking CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS alerts CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS applications CASCADE"))
+        connection.execute(text("DROP TABLE IF EXISTS borrowers CASCADE"))
+        connection.execute(text("DROP TABLE IF EXISTS model_versions CASCADE"))
+        connection.execute(text("DROP TABLE IF EXISTS audit_logs CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS users CASCADE"))
 
     ini = Path(__file__).resolve().parents[1] / "alembic.ini"

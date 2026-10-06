@@ -102,7 +102,16 @@ export default function ReviewPanel({ applicationId, onDecided }) {
             </Fact>
             <Fact label="Scored by">{application.scored_by ?? "—"}</Fact>
             <Fact label="Assessed">{formatDateTime(application.created_at)}</Fact>
+            <Fact label="Borrower">{application.borrower_public_id ?? "—"}</Fact>
+            <Fact label="Model version">
+              <span className="break-all">{application.model_version ?? "not recorded"}</span>
+            </Fact>
           </dl>
+          {application.scoring_engine === "surrogate" ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Scored by the fallback formula, not the trained model.
+            </p>
+          ) : null}
           <TurnoverEvidence evidence={application.turnover_evidence} />
 
           {application.decision !== DECISION_MANUAL_REVIEW ? (

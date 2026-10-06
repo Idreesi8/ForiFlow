@@ -8,8 +8,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from models.database import Application, get_db
+from models.database import Application, User, get_db
 from schemas import ExplanationResponse
+from services import audit_service
+from services.audit_service import Action, Audit
 from services.auth_service import get_current_user
 from services.scoring_service import ScoringService, get_scoring_service
 
@@ -21,6 +23,7 @@ router = APIRouter(
 
 DbSession = Annotated[Session, Depends(get_db)]
 Scorer = Annotated[ScoringService, Depends(get_scoring_service)]
+Officer = Annotated[User, Depends(get_current_user)]
 
 
 def _load_application(application_id: int, db: Session) -> Application:
@@ -56,6 +59,8 @@ async def explain_application(
     application_id: int,
     db: DbSession,
     scorer: Scorer,
+    officer: Officer,
+    audit: Audit,
     refresh: Annotated[
         bool,
         Query(description="Recompute the explanation instead of returning the stored one."),
@@ -91,7 +96,24 @@ async def explain_application(
         application.shap_explanation_json = json.dumps(
             explanation.model_dump(mode="json")
         )
-        db.commit()
+    # Recomputing uses the model serving now, which may not be the one that
+    # scored the application; the entry records both.
+    audit_service.record(
+        db,
+        action=Action.EXPLANATION_GENERATED if stored is None else Action.EXPLANATION_RECOMPUTED,
+        entity_type="application",
+        entity_id=application.id,
+        actor=officer,
+        details={
+            "scored_with": application.model_version,
+            "explained_with": explanation.model_version,
+            "stored": stored is None,
+            "risk_score_on_file": application.risk_score,
+            "risk_score_recomputed": explanation.risk_score,
+        },
+        context=audit,
+    )
+    db.commit()
     return explanation
 
 
@@ -102,7 +124,7 @@ async def explain_application(
 )
 async def get_explanation(
     application_id: int, db: DbSession, scorer: Scorer
-) -> ExplanationResponse:
+) -> ExplanationResponse:  # a read: nothing is stored, so nothing is audited
     """Read-only variant used by the React dashboard's waterfall chart."""
     application = _load_application(application_id, db)
 

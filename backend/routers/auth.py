@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from config import JWT_EXPIRE_HOURS
 from models.database import User, get_db
 from schemas import LoginRequest, TokenResponse, UserCreate, UserResponse
+from services import audit_service
+from services.audit_service import Action, Audit
 from services.auth_service import (
     authenticate_user,
     create_access_token,
@@ -32,15 +34,38 @@ Admin = Annotated[User, Depends(require_admin)]
     response_model=TokenResponse,
     summary="Exchange username and password for a JWT",
 )
-async def login(body: LoginRequest, db: DbSession) -> TokenResponse:
-    """Return an 8-hour Bearer token when the credentials match a seeded user."""
+async def login(body: LoginRequest, db: DbSession, audit: Audit) -> TokenResponse:
+    """Return an 8-hour Bearer token when the credentials match a seeded user.
+
+    Both outcomes are written to the audit trail. The password is never
+    recorded, and neither is the token.
+    """
     user = authenticate_user(db, body.username, body.password)
     if user is None:
+        audit_service.record(
+            db,
+            action=Action.LOGIN_FAILED,
+            entity_type="user",
+            username=body.username,
+            details={"reason": "incorrect username or password"},
+            context=audit,
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
         )
     token = create_access_token(username=user.username, role=user.role)
+    audit_service.record(
+        db,
+        action=Action.LOGIN,
+        entity_type="user",
+        entity_id=user.id,
+        actor=user,
+        details={"token_lifetime_hours": JWT_EXPIRE_HOURS},
+        context=audit,
+    )
+    db.commit()
     return TokenResponse(
         access_token=token,
         token_type="bearer",
@@ -73,7 +98,9 @@ async def list_users(_: Admin, db: DbSession) -> list[UserResponse]:
     status_code=status.HTTP_201_CREATED,
     summary="Create an officer account (admin only)",
 )
-async def create_user(body: UserCreate, _: Admin, db: DbSession) -> UserResponse:
+async def create_user(
+    body: UserCreate, admin: Admin, db: DbSession, audit: Audit
+) -> UserResponse:
     """Create an ``analyst`` (default), ``manager`` or ``admin`` account."""
     try:
         validate_new_password(body.password)
@@ -92,6 +119,16 @@ async def create_user(body: UserCreate, _: Admin, db: DbSession) -> UserResponse
         role=body.role.value,
     )
     db.add(user)
+    db.flush()
+    audit_service.record(
+        db,
+        action=Action.USER_CREATED,
+        entity_type="user",
+        entity_id=user.id,
+        actor=admin,
+        new={"username": user.username, "role": user.role},
+        context=audit,
+    )
     db.commit()
     db.refresh(user)
     return UserResponse.model_validate(user)

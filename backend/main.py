@@ -23,13 +23,15 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from config import env_flag, jwt_secret_key
-from models.database import DATABASE_URL, engine, init_db
-from routers import auth, ews, explain, model, portfolio, score
+from models.database import DATABASE_URL, SessionLocal, engine, init_db
+from routers import audit, auth, borrowers, ews, explain, model, portfolio, score
 from schemas import HealthResponse
+from services import model_registry
+from services.audit_service import new_request_id
 from services.auth_service import jwt_secret_problem
 from services.scoring_service import get_scoring_service
 
-API_VERSION = "1.9.0"
+API_VERSION = "1.10.0"
 
 logging.basicConfig(
     level=os.getenv("FORIFLOW_LOG_LEVEL", "INFO"),
@@ -63,7 +65,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if secret_problem:
         logger.error("%s POST /auth/login will fail until it is fixed.", secret_problem)
     init_db()
-    logger.info("Scoring engine ready: %s", get_scoring_service().model_version)
+    scorer = get_scoring_service()
+    logger.info("Scoring engine ready: %s", scorer.model_version)
+    if scorer.fallback_reason in ("artifacts_missing", "load_failed"):
+        logger.error(
+            "The trained model is NOT serving (%s). Scores come from the fallback "
+            "formula and are recorded as scoring_engine='surrogate'.",
+            scorer.fallback_reason,
+        )
+    # Record which model is serving before the first officer scores anything.
+    # Scoring registers it too, so a failure here costs the early record only.
+    try:
+        with SessionLocal() as session:
+            model_registry.ensure_registered(session, scorer)
+            session.commit()
+    except SQLAlchemyError:
+        logger.exception("Could not record the serving model at startup.")
     yield
     engine.dispose()
     logger.info("ForiFlow API stopped.")
@@ -93,28 +110,59 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Give every request an id, for the audit trail and the response header.
+
+    An ``X-Request-ID`` sent by a proxy is kept if it is a plain token;
+    anything else is replaced, so the header cannot be used to write
+    arbitrary text into the audit trail.
+    """
+    request.state.request_id = new_request_id(request.headers.get("x-request-id"))
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request.state.request_id
+    return response
+
+
 app.include_router(auth.router)
 app.include_router(score.router)
 app.include_router(explain.router)
 app.include_router(ews.router)
 app.include_router(model.router)
 app.include_router(portfolio.router)
+app.include_router(borrowers.router)
+app.include_router(audit.router)
+
+
+_PRIVATE_FIELDS = frozenset({"password", "borrower_identifier"})
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    """FastAPI's default 422 body, minus the submitted value of password fields.
+    """FastAPI's default 422 body, minus passwords and national identifiers.
 
     The default handler echoes every rejected input back, which would put a
-    typed password into the response body (and any proxy or client log of it).
+    typed password, CNIC or NTN into the response body (and any proxy or
+    client log of it). A whole-body error echoes the body, so those keys are
+    removed from it as well.
     """
     errors = []
     for error in exc.errors():
         error = dict(error)
-        if any(str(part).lower() == "password" for part in error.get("loc", ())):
+        if any(str(part).lower() in _PRIVATE_FIELDS for part in error.get("loc", ())):
             error["input"] = "[redacted]"
+        elif isinstance(error.get("input"), dict):
+            error["input"] = {
+                key: "[redacted]" if str(key).lower() in _PRIVATE_FIELDS else value
+                for key, value in error["input"].items()
+            }
+        if isinstance(error.get("ctx"), dict) and "error" in error["ctx"]:
+            # A validator's own exception object; only its message is JSON.
+            error["ctx"] = {**error["ctx"], "error": str(error["ctx"]["error"])}
         errors.append(error)
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT
@@ -151,12 +199,17 @@ async def root() -> dict[str, str | list[str]]:
             "/explain/{application_id}",
             "/ews/monitor",
             "/ews/alerts",
+            "/borrowers",
+            "/borrowers/{borrower_ref}/history",
             "/portfolio/summary",
             "/portfolio/reminders",
             "/model/evaluation",
             "/model/comparison",
             "/model/early-warning",
             "/model/drift",
+            "/model/fairness",
+            "/model/versions",
+            "/audit/logs",
         ],
     }
 
@@ -171,10 +224,14 @@ async def health() -> HealthResponse:
     except SQLAlchemyError:
         logger.exception("Health check could not reach the database.")
         database_status = "unavailable"
+    scorer = get_scoring_service()
 
     return HealthResponse(
         status="ok" if database_status == "connected" else "degraded",
         service="ForiFlow API",
         version=API_VERSION,
         database=database_status,
+        scoring_engine=scorer.engine,
+        model_version=scorer.model_version,
+        scoring_fallback_reason=scorer.fallback_reason,
     )

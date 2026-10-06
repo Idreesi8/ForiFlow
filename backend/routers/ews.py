@@ -19,6 +19,8 @@ from schemas import (
     EWSMonitorResponse,
     EWSTrackingResponse,
 )
+from services import audit_service
+from services.audit_service import Action, Audit
 from services.auth_service import get_current_user, require_manager
 from services.ews_service import EWSService, get_ews_service
 
@@ -32,6 +34,32 @@ DbSession = Annotated[Session, Depends(get_db)]
 Monitor = Annotated[EWSService, Depends(get_ews_service)]
 Officer = Annotated[User, Depends(get_current_user)]
 Manager = Annotated[User, Depends(require_manager)]
+
+_TRACKING_FIELDS = (
+    "month_number",
+    "installment_status",
+    "bureau_balance",
+    "pos_cash_balance",
+    "monthly_score",
+    "data_source_primary",
+    "amount_paid_pkr",
+)
+_ALERT_FIELDS = (
+    "alert_status",
+    "baseline_score",
+    "current_score",
+    "score_drop",
+    "estimated_days_to_default",
+    "assigned_to",
+    "resolved_by",
+    "resolved_at",
+    "resolution_note",
+)
+
+
+def _state(row: object, fields: tuple[str, ...]) -> dict:
+    """The audited fields of a monitoring row or an alert."""
+    return {name: getattr(row, name) for name in fields}
 
 
 def _require_approved_facility(borrower: Application) -> None:
@@ -83,6 +111,7 @@ async def monitor_borrower(
     db: DbSession,
     monitor: Monitor,
     officer: Officer,
+    audit: Audit,
 ) -> EWSMonitorResponse:
     """Evaluate one borrower-month of surveillance data.
 
@@ -124,6 +153,9 @@ async def monitor_borrower(
         tracking is not None
         and borrower.risk_score - tracking.monthly_score > monitor.alert_threshold
     )
+    # Kept for the audit entry: a re-submitted month overwrites the row, so
+    # the trail is where the earlier figures survive.
+    tracking_before = _state(tracking, _TRACKING_FIELDS) if tracking is not None else None
     if tracking is None:
         tracking = EWSTracking(
             borrower_id=payload.borrower_id, month_number=payload.month_number
@@ -137,6 +169,30 @@ async def monitor_borrower(
     tracking.data_source_primary = payload.data_source_primary.value
     tracking.amount_paid_pkr = payload.amount_paid_pkr
     db.flush()
+    audit_service.record(
+        db,
+        action=(
+            Action.EWS_OBSERVATION_CREATED
+            if tracking_before is None
+            else Action.EWS_OBSERVATION_UPDATED
+        ),
+        entity_type="ews_observation",
+        entity_id=tracking.id,
+        actor=officer,
+        previous=tracking_before,
+        new=_state(tracking, _TRACKING_FIELDS),
+        details={
+            "application_id": borrower.id,
+            "borrower_id": borrower.borrower_id,
+            "baseline_score": outcome.baseline_score,
+            # True when the caller supplied the month's score instead of
+            # letting it be derived from the observations.
+            "score_supplied_by_caller": payload.current_score is not None,
+            "default_probability_3m": outcome.default_probability_3m,
+            "runway_basis": outcome.runway_basis,
+        },
+        context=audit,
+    )
 
     latest_month = db.scalar(
         select(func.max(EWSTracking.month_number)).where(
@@ -156,8 +212,11 @@ async def monitor_borrower(
 
     raised = is_latest and outcome.alert_triggered
     touched = False
+    alert_before = _state(alert, _ALERT_FIELDS) if alert is not None else None
+    alert_action: str | None = None
     if raised:
         touched = True
+        alert_action = Action.EWS_ALERT_CREATED if alert is None else Action.EWS_ALERT_UPDATED
         if alert is None:
             alert = Alert(
                 borrower_id=payload.borrower_id,
@@ -172,6 +231,7 @@ async def monitor_borrower(
     elif is_latest and corrected_breach and alert is not None:
         # The month that raised the alert was corrected and no longer breaches.
         touched = True
+        alert_action = Action.EWS_ALERT_AUTO_RESOLVED
         alert.current_score = outcome.current_score
         alert.score_drop = outcome.score_drop
         alert.alert_status = AlertStatus.RESOLVED.value
@@ -181,6 +241,28 @@ async def monitor_borrower(
             f"Closed automatically: month {payload.month_number} was corrected and is "
             f"now within the {monitor.alert_threshold:g}-point threshold."
         )
+
+    if alert_action is not None and alert is not None:
+        db.flush()
+        after = _state(alert, _ALERT_FIELDS)
+        # A refreshed alert whose figures did not move is not an event.
+        if alert_action != Action.EWS_ALERT_UPDATED or after != alert_before:
+            audit_service.record(
+                db,
+                action=alert_action,
+                entity_type="ews_alert",
+                entity_id=alert.id,
+                actor=officer,
+                previous=alert_before,
+                new=after,
+                details={
+                    "application_id": borrower.id,
+                    "borrower_id": borrower.borrower_id,
+                    "month_number": payload.month_number,
+                    "observation_id": tracking.id,
+                },
+                context=audit,
+            )
 
     db.commit()
     db.refresh(tracking)
@@ -274,7 +356,9 @@ def _load_open_alert(alert_id: int, db: Session) -> Alert:
     response_model=AlertResponse,
     summary="Take an EWS alert for review",
 )
-async def review_alert(alert_id: int, db: DbSession, officer: Officer) -> AlertResponse:
+async def review_alert(
+    alert_id: int, db: DbSession, officer: Officer, audit: Audit
+) -> AlertResponse:
     """Mark an open alert In Review and record which officer is handling it.
 
     Taking an alert someone else is already reviewing returns ``409``, so a
@@ -289,8 +373,22 @@ async def review_alert(alert_id: int, db: DbSession, officer: Officer) -> AlertR
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Alert {alert_id} is already being reviewed by {alert.assigned_to}.",
         )
+    before = _state(alert, _ALERT_FIELDS)
     alert.alert_status = AlertStatus.IN_REVIEW.value
     alert.assigned_to = officer.username
+    after = _state(alert, _ALERT_FIELDS)
+    if after != before:  # opening an alert you already hold changes nothing
+        audit_service.record(
+            db,
+            action=Action.EWS_ALERT_TAKEN,
+            entity_type="ews_alert",
+            entity_id=alert.id,
+            actor=officer,
+            previous={"alert_status": before["alert_status"], "assigned_to": before["assigned_to"]},
+            new={"alert_status": after["alert_status"], "assigned_to": after["assigned_to"]},
+            details={"application_id": alert.borrower_id},
+            context=audit,
+        )
     db.commit()
     db.refresh(alert)
     return AlertResponse.model_validate(alert)
@@ -302,14 +400,26 @@ async def review_alert(alert_id: int, db: DbSession, officer: Officer) -> AlertR
     summary="Resolve an EWS alert with a note (manager or admin)",
 )
 async def resolve_alert(
-    alert_id: int, body: AlertResolveRequest, db: DbSession, officer: Manager
+    alert_id: int, body: AlertResolveRequest, db: DbSession, officer: Manager, audit: Audit
 ) -> AlertResponse:
     """Close an alert, recording who closed it, when, and what was done."""
     alert = _load_open_alert(alert_id, db)
+    before = _state(alert, _ALERT_FIELDS)
     alert.alert_status = AlertStatus.RESOLVED.value
     alert.resolved_at = utcnow()
     alert.resolved_by = officer.username
     alert.resolution_note = body.note
+    audit_service.record(
+        db,
+        action=Action.EWS_ALERT_RESOLVED,
+        entity_type="ews_alert",
+        entity_id=alert.id,
+        actor=officer,
+        previous=before,
+        new=_state(alert, _ALERT_FIELDS),
+        details={"application_id": alert.borrower_id},
+        context=audit,
+    )
     db.commit()
     db.refresh(alert)
     return AlertResponse.model_validate(alert)

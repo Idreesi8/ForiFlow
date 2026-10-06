@@ -10,11 +10,17 @@ Docker (legacy volume still mounted at /data)::
 
 Aborts if the SQLite schema does not match the expected column set, if a
 type cannot be copied without coercion, or if Postgres already has rows.
+
+A file from before borrowers existed (migration 0006) has no borrower for its
+applications. Each one is given its own borrower as it is copied, by the same
+rule the migration uses: created in application-id order from the application's
+own details, never merged on a name.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -107,14 +113,39 @@ EXPECTED_0005: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# After migration 0006 (borrower link and the model that scored each application).
+_APP5 = EXPECTED_0005["applications"]
+EXPECTED_0006: dict[str, tuple[str, ...]] = {
+    **EXPECTED_0005,
+    "applications": (
+        "id",
+        "borrower_id",
+        *_APP5[1 : _APP5.index("business_sector")],
+        "model_version",
+        "scoring_engine",
+        "model_version_id",
+        *_APP5[_APP5.index("business_sector") :],
+    ),
+}
+
 # SQLite declared types we will copy without rewriting values.
 _INT = {"INT", "INTEGER", "BIGINT"}
 _FLOAT = {"REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "NUMERIC", "DECIMAL"}
 _TEXT = {"TEXT", "VARCHAR", "NVARCHAR", "CHAR", "CLOB", "STRING"}
 _TIME = {"DATETIME", "TIMESTAMP", "DATE"}
-_COMPATIBLE = _INT | _FLOAT | _TEXT | _TIME
+_JSON = {"JSON"}
+_COMPATIBLE = _INT | _FLOAT | _TEXT | _TIME | _JSON
 
-TABLE_ORDER = ("applications", "alerts", "ews_tracking")
+# Parents before children, so every foreign key finds its row.
+TABLE_ORDER = (
+    "users",
+    "borrowers",
+    "model_versions",
+    "applications",
+    "alerts",
+    "ews_tracking",
+    "audit_logs",
+)
 
 # Present on SQLite after Step 2 create_all; absent on a pre-auth file.
 OPTIONAL: dict[str, tuple[str, ...]] = {
@@ -124,6 +155,50 @@ OPTIONAL: dict[str, tuple[str, ...]] = {
         "hashed_password",
         "role",
         "created_at",
+    ),
+    # Present from migration 0006.
+    "borrowers": (
+        "id",
+        "public_id",
+        "business_name",
+        "owner_name",
+        "identifier_type",
+        "identifier",
+        "contact_phone",
+        "business_sector",
+        "years_in_operation",
+        "status",
+        "created_at",
+        "updated_at",
+    ),
+    "model_versions": (
+        "id",
+        "version",
+        "engine",
+        "artifact_sha256",
+        "training_dataset",
+        "feature_set",
+        "feature_set_version",
+        "trained_at",
+        "metrics",
+        "status",
+        "fallback_reason",
+        "registered_at",
+    ),
+    "audit_logs": (
+        "id",
+        "occurred_at",
+        "user_id",
+        "username",
+        "role",
+        "action",
+        "entity_type",
+        "entity_id",
+        "previous_state",
+        "new_state",
+        "details",
+        "ip_address",
+        "request_id",
     ),
 }
 
@@ -183,6 +258,7 @@ def assert_schema(connection: sqlite3.Connection) -> dict[str, tuple[str, ...]]:
             EXPECTED_0003.get(table),
             EXPECTED_0004.get(table),
             EXPECTED_0005.get(table),
+            EXPECTED_0006.get(table),
         ):
             raise MigrationError(
                 f"Table {table!r} columns {names} do not match expected {expected}."
@@ -197,6 +273,68 @@ def assert_schema(connection: sqlite3.Connection) -> dict[str, tuple[str, ...]]:
     return matched
 
 
+def _stored_model_version(explanation_json: str | None) -> str | None:
+    """The version string inside a stored explanation, if it can be read."""
+    if not explanation_json:
+        return None
+    try:
+        value = json.loads(explanation_json).get("model_version")
+    except (ValueError, AttributeError):
+        return None
+    return value[:120] if isinstance(value, str) and value else None
+
+
+def _engine_of(model_version: str | None) -> str | None:
+    """Read the scoring engine off a version string, or None if unclear."""
+    if not model_version:
+        return None
+    if model_version.startswith("ensemble-"):
+        return "ml"
+    if model_version.startswith("surrogate-"):
+        return "surrogate"
+    return None
+
+
+def _with_new_borrowers(connection, applications: list[dict]) -> list[dict]:
+    """Open one borrower per legacy application and return the linked rows.
+
+    Mirrors the backfill in migration 0006: in application-id order, from the
+    application's own details, never merged on a name.
+    """
+    linked: list[dict] = []
+    for row in applications:
+        borrower_id = connection.execute(
+            text(
+                "INSERT INTO borrowers (business_name, owner_name, contact_phone, "
+                "business_sector, years_in_operation, status, created_at, updated_at) "
+                "VALUES (:business_name, :owner_name, :contact_phone, :business_sector, "
+                ":years_in_operation, 'active', :created_at, :created_at) RETURNING id"
+            ),
+            {
+                "business_name": row["business_name"],
+                "owner_name": row["applicant_name"],
+                "contact_phone": row.get("contact_phone"),
+                "business_sector": row.get("business_sector"),
+                "years_in_operation": row["years_in_operation"],
+                "created_at": row["created_at"],
+            },
+        ).scalar_one()
+        connection.execute(
+            text("UPDATE borrowers SET public_id = :public_id WHERE id = :id"),
+            {"public_id": f"BRW-{borrower_id:06d}", "id": borrower_id},
+        )
+        version = _stored_model_version(row.get("shap_explanation_json"))
+        linked.append(
+            {
+                **row,
+                "borrower_id": borrower_id,
+                "model_version": version,
+                "scoring_engine": _engine_of(version),
+            }
+        )
+    return linked
+
+
 def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
     if not sqlite_path.is_file():
         raise MigrationError(f"SQLite file not found: {sqlite_path}")
@@ -209,12 +347,22 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
     sqlite_conn.row_factory = sqlite3.Row
     try:
         copy_tables = assert_schema(sqlite_conn)
-        table_order = tuple(copy_tables)
+        table_order = tuple(table for table in TABLE_ORDER if table in copy_tables)
+        # A file from before migration 0006: its applications have no borrower.
+        needs_borrowers = "borrower_id" not in copy_tables["applications"]
+        if needs_borrowers and "borrowers" in copy_tables:
+            raise MigrationError(
+                "SQLite has a borrowers table but applications without borrower_id."
+            )
 
         pg = create_engine(postgres_url, future=True)
         with pg.connect() as probe:
-            for table in table_order:
-                count = probe.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar_one()
+            must_be_empty = (*table_order, "borrowers") if needs_borrowers else table_order
+            for table in dict.fromkeys(must_be_empty):
+                # Applying migration 0006 to an empty database writes one audit
+                # entry; that one is expected and is kept.
+                clause = " WHERE action <> 'migration.applied'" if table == "audit_logs" else ""
+                count = probe.execute(text(f"SELECT COUNT(*) FROM {table}{clause}")).scalar_one()
                 if count:
                     raise MigrationError(
                         f"Postgres table {table!r} already has {count} row(s). "
@@ -226,17 +374,32 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
             for table in table_order:
                 columns = copy_tables[table]
                 col_sql = ", ".join(columns)
-                placeholders = ", ".join(f":{name}" for name in columns)
-                rows = sqlite_conn.execute(f"SELECT {col_sql} FROM {table}").fetchall()
+                rows = [
+                    dict(zip(columns, row, strict=True))
+                    for row in sqlite_conn.execute(
+                        f"SELECT {col_sql} FROM {table} ORDER BY id"
+                    ).fetchall()
+                ]
+                if table == "audit_logs":
+                    # Its ids would collide with the migration's own entry, and
+                    # an audit id means nothing outside its own database.
+                    columns = tuple(name for name in columns if name != "id")
+                    rows = [{name: row[name] for name in columns} for row in rows]
+                if table == "applications" and needs_borrowers:
+                    columns = (*columns, "borrower_id", "model_version", "scoring_engine")
+                    rows = _with_new_borrowers(connection, rows)
+                    copied["borrowers"] = len(rows)
                 if rows:
-                    insert = text(
-                        f"INSERT INTO {table} ({col_sql}) VALUES ({placeholders})"
-                    )
+                    placeholders = ", ".join(f":{name}" for name in columns)
                     connection.execute(
-                        insert, [dict(zip(columns, row, strict=True)) for row in rows]
+                        text(
+                            f"INSERT INTO {table} ({', '.join(columns)}) "
+                            f"VALUES ({placeholders})"
+                        ),
+                        rows,
                     )
                 copied[table] = len(rows)
-            for table in table_order:
+            for table in dict.fromkeys((*table_order, *(("borrowers",) if needs_borrowers else ()))):
                 connection.execute(
                     text(
                         f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "

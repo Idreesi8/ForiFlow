@@ -6,10 +6,12 @@ rejected at the edge rather than silently skewing a credit decision.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 class Decision(StrEnum):
@@ -88,7 +90,70 @@ class DataSource(StrEnum):
     SELF_REPORTED = "Self Reported"
 
 
-class SMEApplicant(BaseModel):
+class IdentifierType(StrEnum):
+    """What a borrower's national identifier is."""
+
+    CNIC = "CNIC"
+    NTN = "NTN"
+
+
+class BorrowerStatus(StrEnum):
+    """Whether new applications may be opened for a borrower."""
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+# Digits a valid identifier has once dashes and spaces are removed: a CNIC is
+# 13; an NTN is 7, or 8 with its check digit.
+IDENTIFIER_DIGITS: dict[IdentifierType, tuple[int, ...]] = {
+    IdentifierType.CNIC: (13,),
+    IdentifierType.NTN: (7, 8),
+}
+
+
+def normalise_identifier(kind: IdentifierType, value: str) -> str:
+    """Return a CNIC or NTN as digits only, or raise ``ValueError``."""
+    digits = re.sub(r"[\s-]", "", value)
+    allowed = IDENTIFIER_DIGITS[kind]
+    if not digits.isdigit() or len(digits) not in allowed:
+        raise ValueError(
+            f"A {kind.value} has {' or '.join(str(n) for n in allowed)} digits "
+            "(dashes and spaces are ignored)."
+        )
+    return digits
+
+
+class _IdentifierPair(BaseModel):
+    """Shared rule: an identifier and its type come together, normalised."""
+
+    borrower_identifier_type: IdentifierType | None = Field(
+        default=None, description="'CNIC' (owner) or 'NTN' (business)."
+    )
+    borrower_identifier: str | None = Field(
+        default=None,
+        max_length=24,
+        description=(
+            "The CNIC (13 digits) or NTN (7 or 8 digits). Dashes and spaces are "
+            "ignored. Optional. Stored once per borrower; never read by the model."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _identifier_comes_with_its_type(self) -> Any:
+        kind, value = self.borrower_identifier_type, self.borrower_identifier
+        if (kind is None) != (value is None or value.strip() == ""):
+            raise ValueError(
+                "borrower_identifier and borrower_identifier_type must be given together."
+            )
+        if kind is not None and value is not None:
+            self.borrower_identifier = normalise_identifier(kind, value)
+        else:
+            self.borrower_identifier = None
+        return self
+
+
+class SMEApplicant(_IdentifierPair):
     """Alternative-data feature set submitted for an SME credit assessment."""
 
     model_config = ConfigDict(
@@ -162,6 +227,15 @@ class SMEApplicant(BaseModel):
         description=(
             "Borrower's mobile number, digits only with an optional leading +, "
             "e.g. +923001234567. Used for payment reminders, not by the model."
+        ),
+    )
+    borrower_public_id: str | None = Field(
+        default=None,
+        pattern=r"^BRW-[0-9]{6,}$",
+        description=(
+            "Reference of an existing borrower, e.g. BRW-000012, to file this "
+            "application under. Omit it for a business not yet on file: a "
+            "borrower record is then created (or found by identifier)."
         ),
     )
     statement_csv: str | None = Field(
@@ -297,7 +371,20 @@ class ScoreResponse(BaseModel):
         ),
     )
     model_version: str | None = Field(
-        default=None, description="Scoring engine that produced this decision."
+        default=None, description="Model version that produced this score. Stored with it."
+    )
+    scoring_engine: str | None = Field(
+        default=None,
+        description=(
+            "'ml': the trained ensemble. 'surrogate': the hand-weighted fallback "
+            "formula, which serves only when pinned or when the trained model "
+            "could not be loaded."
+        ),
+    )
+    borrower_id: int | None = Field(default=None, description="The borrower this is filed under.")
+    borrower_public_id: str | None = Field(default=None, description="e.g. BRW-000012.")
+    borrower_created: bool = Field(
+        default=False, description="True when this application opened a new borrower record."
     )
     probability_of_default: float | None = Field(
         default=None,
@@ -321,12 +408,23 @@ class ApplicationSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    borrower_id: int | None = Field(
+        default=None, description="The business this application belongs to."
+    )
+    borrower_public_id: str | None = Field(default=None, description="e.g. BRW-000012.")
     applicant_name: str
     business_name: str
     loan_amount_pkr: float
     tenure_months: int
     risk_score: float
     decision: Decision
+    model_version: str | None = Field(
+        default=None,
+        description="Model version that produced the score. Null if scored before it was recorded.",
+    )
+    scoring_engine: str | None = Field(
+        default=None, description="'ml' (trained ensemble) or 'surrogate' (fallback formula)."
+    )
     created_at: datetime
     business_sector: str | None = None
     contact_phone: str | None = None
@@ -652,6 +750,17 @@ class HealthResponse(BaseModel):
     service: str
     version: str
     database: str
+    scoring_engine: str | None = Field(
+        default=None, description="'ml' or 'surrogate': the engine scoring right now."
+    )
+    model_version: str | None = None
+    scoring_fallback_reason: str | None = Field(
+        default=None,
+        description=(
+            "Set when the fallback formula is serving: 'pinned', "
+            "'artifacts_missing' or 'load_failed'."
+        ),
+    )
 
 
 class UserRole(StrEnum):
@@ -701,3 +810,133 @@ class TokenResponse(BaseModel):
     expires_in: int
     username: str
     role: UserRole
+
+
+class BorrowerCreate(_IdentifierPair):
+    """A new borrower record for ``POST /borrowers``."""
+
+    business_name: str = Field(..., min_length=2, max_length=160)
+    owner_name: str = Field(..., min_length=2, max_length=120)
+    contact_phone: str | None = Field(default=None, pattern=r"^\+?[0-9]{10,15}$")
+    business_sector: BusinessSector | None = None
+    years_in_operation: float | None = Field(default=None, ge=0, le=100)
+
+
+class BorrowerUpdate(_IdentifierPair):
+    """Fields a manager may correct on a borrower. Omitted fields are kept."""
+
+    business_name: str | None = Field(default=None, min_length=2, max_length=160)
+    owner_name: str | None = Field(default=None, min_length=2, max_length=120)
+    contact_phone: str | None = Field(default=None, pattern=r"^\+?[0-9]{10,15}$")
+    business_sector: BusinessSector | None = None
+    years_in_operation: float | None = Field(default=None, ge=0, le=100)
+    status: BorrowerStatus | None = None
+
+
+class BorrowerResponse(BaseModel):
+    """A borrower. The identifier is returned masked."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    public_id: str
+    business_name: str
+    owner_name: str
+    identifier_type: IdentifierType | None = None
+    identifier_masked: str | None = Field(
+        default=None, description="CNIC or NTN with all but the last four digits hidden."
+    )
+    contact_phone: str | None = None
+    business_sector: str | None = None
+    years_in_operation: float | None = None
+    status: BorrowerStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class BorrowerApplicationHistory(BaseModel):
+    """One application in a borrower's history, with its monitoring and alerts."""
+
+    application_id: int
+    created_at: datetime
+    loan_amount_pkr: float
+    tenure_months: int
+    risk_score: float
+    decision: Decision = Field(..., description="The model's band at scoring time.")
+    final_decision: Decision | None = Field(
+        ..., description="The decision that stands; null while a review is pending."
+    )
+    review_decision: OfficerDecision | None = None
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    scored_by: str | None = None
+    model_version: str | None = None
+    scoring_engine: str | None = None
+    monitoring: list[EWSTrackingResponse]
+    alerts: list[AlertResponse]
+
+
+class BorrowerHistorySummary(BaseModel):
+    """The borrower's record at a glance."""
+
+    applications: int
+    first_application_at: datetime | None
+    latest_application_at: datetime | None
+    latest_score: float | None
+    lowest_score: float | None
+    highest_score: float | None
+    approved_facilities: int
+    monitored_months: int
+    open_alerts: int
+    total_alerts: int
+    model_versions_used: list[str]
+    scoring_engines_used: list[str]
+
+
+class BorrowerHistory(BaseModel):
+    """Everything on file for one borrower, oldest application first."""
+
+    borrower: BorrowerResponse
+    summary: BorrowerHistorySummary
+    applications: list[BorrowerApplicationHistory]
+
+
+class ModelVersionResponse(BaseModel):
+    """A scoring model that has served decisions from this database."""
+
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
+
+    id: int
+    version: str
+    engine: str
+    artifact_sha256: str
+    training_dataset: str | None = None
+    feature_set: list[str] | None = None
+    feature_set_version: str | None = None
+    trained_at: str | None = None
+    metrics: dict | None = None
+    status: str
+    is_active: bool
+    fallback_reason: str | None = None
+    registered_at: datetime
+    applications_scored: int = Field(default=0, description="Applications this model scored.")
+
+
+class AuditLogResponse(BaseModel):
+    """One entry of the append-only audit trail."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    occurred_at: datetime
+    user_id: int | None = None
+    username: str
+    role: str | None = None
+    action: str
+    entity_type: str
+    entity_id: str | None = None
+    previous_state: dict | None = None
+    new_state: dict | None = None
+    details: dict | None = None
+    ip_address: str | None = None
+    request_id: str | None = None

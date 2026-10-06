@@ -27,6 +27,11 @@ export default function ScoringPage() {
             <h2 className="card-title">Why this decision</h2>
             <span className="text-xs text-slate-500">
               Application #{lastScored.application_id}
+              {lastScored.borrower_public_id
+                ? ` · borrower ${lastScored.borrower_public_id}${
+                    lastScored.borrower_created ? " (new)" : ""
+                  }`
+                : ""}
             </span>
           </div>
           <div className="px-5 py-5">

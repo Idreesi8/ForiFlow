@@ -61,6 +61,35 @@ const FIELD_GROUPS = [
         patternHint: "Digits only, 10 to 15, with an optional + in front.",
         hint: "For payment reminders. Optional.",
       },
+      {
+        name: "borrower_public_id",
+        label: "Existing borrower",
+        type: "text",
+        optional: true,
+        placeholder: "e.g. BRW-000012",
+        pattern: /^BRW-[0-9]{6,}$/i,
+        patternHint: "A borrower reference looks like BRW-000012.",
+        uppercase: true,
+        hint: "Fill in for a repeat borrower. Leave empty for a new business.",
+      },
+      {
+        name: "borrower_identifier_type",
+        label: "Identifier type",
+        type: "select",
+        options: ["CNIC", "NTN"],
+        optional: true,
+        hint: "Optional. The model does not read it.",
+      },
+      {
+        name: "borrower_identifier",
+        label: "CNIC or NTN",
+        type: "text",
+        optional: true,
+        placeholder: "e.g. 35202-1234567-1",
+        pattern: /^[0-9][0-9 -]{5,22}[0-9]$/,
+        patternHint: "Digits, with optional dashes.",
+        hint: "Links repeat applications to the same borrower.",
+      },
     ],
   },
   {
@@ -299,6 +328,12 @@ function validate(values) {
     }
   }
 
+  // The API needs an identifier and its type together.
+  const hasType = Boolean(String(values.borrower_identifier_type ?? "").trim());
+  const hasNumber = Boolean(String(values.borrower_identifier ?? "").trim());
+  if (hasType && !hasNumber) errors.borrower_identifier = "Enter the number, or clear the type.";
+  if (hasNumber && !hasType) errors.borrower_identifier_type = "Choose CNIC or NTN.";
+
   return errors;
 }
 
@@ -314,7 +349,8 @@ function toPayload(values) {
   for (const field of ALL_FIELDS) {
     const raw = String(values[field.name] ?? "").trim();
     if (!raw && field.optional) continue;
-    payload[field.name] = field.type === "number" ? Number(raw) : raw;
+    payload[field.name] =
+      field.type === "number" ? Number(raw) : field.uppercase ? raw.toUpperCase() : raw;
   }
   return payload;
 }

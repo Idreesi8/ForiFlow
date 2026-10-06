@@ -5,10 +5,11 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from models.database import Application, get_db
+from models.database import Application, ModelVersion, get_db
+from schemas import ModelVersionResponse
 from services.auth_service import get_current_user
 from services.drift_service import drift_report
 
@@ -27,6 +28,58 @@ def _require(payload: dict[str, Any] | None, command: str) -> dict[str, Any]:
             detail=f"Not recorded yet. Run `python -m ml.{command}` in the backend.",
         )
     return payload
+
+
+@router.get(
+    "/versions",
+    response_model=list[ModelVersionResponse],
+    summary="Every model that has scored here, and which is active",
+)
+async def model_versions(db: Annotated[Session, Depends(get_db)]) -> list[ModelVersionResponse]:
+    """Model records, newest first, with how many applications each scored.
+
+    A model is recorded the first time it scores against this database, with a
+    SHA-256 of its artefact files. ``engine`` is ``ml`` for the trained
+    ensemble and ``surrogate`` for the hand-weighted fallback formula; a
+    surrogate row carries the reason it was serving. Applications scored before
+    this record existed keep the version string they stored and are not counted
+    against a row.
+    """
+    counts = dict(
+        db.execute(
+            select(Application.model_version_id, func.count())
+            .where(Application.model_version_id.is_not(None))
+            .group_by(Application.model_version_id)
+        ).all()
+    )
+    rows = db.scalars(select(ModelVersion).order_by(ModelVersion.id.desc())).all()
+    return [
+        ModelVersionResponse.model_validate(row).model_copy(
+            update={"applications_scored": int(counts.get(row.id, 0))}
+        )
+        for row in rows
+    ]
+
+
+@router.get(
+    "/versions/active",
+    response_model=ModelVersionResponse,
+    summary="The model scoring right now",
+)
+async def active_model_version(db: Annotated[Session, Depends(get_db)]) -> ModelVersionResponse:
+    """The active model record; ``404`` before anything has been scored or registered."""
+    row = db.scalar(select(ModelVersion).where(ModelVersion.status == "active"))
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No model has been registered yet. It is recorded at startup or first score.",
+        )
+    count = db.scalar(
+        select(func.count()).select_from(Application).where(Application.model_version_id == row.id)
+    )
+    return ModelVersionResponse.model_validate(row).model_copy(
+        update={"applications_scored": int(count or 0)}
+    )
 
 
 @router.get("/evaluation", summary="Hold-out evaluation of the served model")

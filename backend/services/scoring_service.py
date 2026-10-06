@@ -22,6 +22,8 @@ override the choice; ``ml`` fails loudly if the artefacts cannot be loaded.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import math
 import os
@@ -162,6 +164,31 @@ class ScoringService:
     """
 
     model_version: str = "surrogate-linear-v1"
+    # 'surrogate': this hand-weighted formula. The subclass says 'ml'.
+    engine: str = "surrogate"
+    # Why this engine is serving instead of the trained ensemble, set by
+    # get_scoring_service: 'pinned', 'artifacts_missing' or 'load_failed'.
+    fallback_reason: str | None = None
+
+    @property
+    def artifact_sha256(self) -> str:
+        """Fingerprint of what produces this engine's numbers.
+
+        The surrogate has no files, so its identity is its weights and bounds.
+        """
+        payload = {
+            "weights": self.weights,
+            "base_value": self.base_value,
+            "bounds": [
+                DIGITAL_PAYMENTS_FLOOR_PKR,
+                DIGITAL_PAYMENTS_CAP_PKR,
+                INVENTORY_TURNOVER_CAP,
+                YEARS_IN_OPERATION_CAP,
+                EMPLOYEES_CAP,
+            ],
+            "policy": [REJECT_UPPER_BOUND, MANUAL_REVIEW_UPPER_BOUND],
+        }
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
     def __init__(
         self,
@@ -456,9 +483,11 @@ class MLScoringService(ScoringService):
         shap_bundle: dict[str, Any],
         metadata: dict[str, Any],
         evaluation: dict[str, Any] | None = None,
+        artifact_sha256: str | None = None,
     ) -> None:
         """Wire up a loaded model, scaler, SHAP bundle and optional calibrator."""
         super().__init__()
+        self._artifact_sha256 = artifact_sha256
         self.model = model
         self.scaler = scaler
         self.metadata = metadata
@@ -481,6 +510,21 @@ class MLScoringService(ScoringService):
         )
         self.compliance_note = self._compliance_note()
 
+    engine: str = "ml"
+
+    @property
+    def artifact_sha256(self) -> str:
+        """SHA-256 over the artefact files this service was loaded from.
+
+        When the service was built from objects in memory rather than from the
+        files, the fingerprint is of the metadata alone and says so.
+        """
+        if self._artifact_sha256 is not None:
+            return self._artifact_sha256
+        digest = hashlib.sha256(b"in-memory:")
+        digest.update(json.dumps(self.metadata, sort_keys=True, default=str).encode("utf-8"))
+        return digest.hexdigest()
+
     # -- loading ----------------------------------------------------------
 
     @classmethod
@@ -493,6 +537,7 @@ class MLScoringService(ScoringService):
         import joblib
 
         from ml.features import (
+            FEATURE_NAMES_PATH,
             MODEL_PATH,
             SCALER_PATH,
             SHAP_EXPLAINER_PATH,
@@ -500,12 +545,19 @@ class MLScoringService(ScoringService):
             load_model_evaluation,
         )
 
+        # Fingerprint the bytes that are about to be loaded, in a fixed order.
+        digest = hashlib.sha256()
+        for path in (MODEL_PATH, SCALER_PATH, SHAP_EXPLAINER_PATH, FEATURE_NAMES_PATH):
+            digest.update(path.name.encode("utf-8"))
+            digest.update(path.read_bytes())
+
         return cls(
             model=joblib.load(MODEL_PATH),
             scaler=joblib.load(SCALER_PATH),
             shap_bundle=joblib.load(SHAP_EXPLAINER_PATH),
             metadata=load_feature_metadata(),
             evaluation=load_model_evaluation(),
+            artifact_sha256=digest.hexdigest(),
         )
 
     def _calibration_breakpoints(
@@ -978,6 +1030,18 @@ def _requested_engine() -> str:
     return os.getenv("FORIFLOW_SCORING_ENGINE", "auto").strip().lower()
 
 
+def _fallback(reason: str) -> ScoringService:
+    """The surrogate engine, carrying the reason it is serving.
+
+    The reason is stored with the model record, written to the audit trail and
+    reported by ``/health``, so fallback scores are never mistaken for the
+    trained ensemble's.
+    """
+    service = ScoringService()
+    service.fallback_reason = reason
+    return service
+
+
 @lru_cache(maxsize=1)
 def get_scoring_service() -> ScoringService:
     """FastAPI dependency returning the shared, stateless scoring engine.
@@ -990,14 +1054,14 @@ def get_scoring_service() -> ScoringService:
     engine = _requested_engine()
     if engine == "surrogate":
         logger.info("Scoring engine pinned to the linear surrogate.")
-        return ScoringService()
+        return _fallback("pinned")
 
     if engine != "ml" and not artifacts_available():
         logger.warning(
             "No trained model artefacts found in backend/ml; falling back to the "
             "linear surrogate. Run 'python -m ml.train_real_model' to train one."
         )
-        return ScoringService()
+        return _fallback("artifacts_missing")
 
     try:
         service = MLScoringService.from_artifacts()
@@ -1005,7 +1069,7 @@ def get_scoring_service() -> ScoringService:
         if engine == "ml":
             raise
         logger.exception("Failed to load model artefacts; using the linear surrogate.")
-        return ScoringService()
+        return _fallback("load_failed")
 
     logger.info("Scoring engine: %s", service.model_version)
     return service

@@ -69,10 +69,11 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
-                "/explain/{application_id}", "/ews/monitor", "/ews/alerts"]
+                "/explain/{application_id}", "/ews/monitor", "/ews/alerts",
+                "/borrowers", "/borrowers/{borrower_ref}/history", "…"]
 }
 ```
 
@@ -86,10 +87,20 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "1.9.0",
-  "database": "connected"
+  "version": "1.10.0",
+  "database": "connected",
+  "scoring_engine": "ml",
+  "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26",
+  "scoring_fallback_reason": null
 }
 ```
+
+`scoring_engine` is `ml` (trained ensemble) or `surrogate` (fallback formula).
+When it is `surrogate`, `scoring_fallback_reason` says why: `pinned`,
+`artifacts_missing` or `load_failed`.
+
+Every response carries an `X-Request-ID` header. The same id is stored on the
+audit entries that request wrote.
 
 ## POST `/score`
 
@@ -183,6 +194,25 @@ Query: `include_explanation` (default `true`).
 
 **Errors:** `422` on field-range violations (see `SMEApplicant` in
 `backend/schemas.py`).
+
+### Borrower and model fields (1.10.0)
+
+Optional request fields on `POST /score`:
+
+| Field | Meaning |
+|---|---|
+| `borrower_public_id` | File under an existing borrower, e.g. `BRW-000012`. Unknown: `404`. Inactive: `409`. |
+| `borrower_identifier_type`, `borrower_identifier` | `CNIC` (13 digits) or `NTN` (7 or 8). Given together; dashes ignored. Finds the borrower holding it, or is stored on the new one. |
+
+With neither, a new borrower is opened from the application's own details. A
+matching name never links two applications.
+
+Added to the response, and to every application in `GET /score/applications`:
+`borrower_id`, `borrower_public_id`, `model_version`, `scoring_engine`
+(`ml` or `surrogate`). `POST /score` also returns `borrower_created`.
+`model_version` and `scoring_engine` are stored with the application and do
+not change when the served model changes. They are `null` only for an
+application scored before 1.10 whose stored explanation named no model.
 
 ## GET `/score/applications`
 
@@ -555,3 +585,70 @@ gender. Any signed-in officer.
 The alternatives benchmark recorded by `python -m ml.compare_models`: per model
 the cross-validated AUC-ROC, PR-AUC, F1, Brier, single-row latency, and a
 paired t-test against the served ensemble. Any signed-in officer.
+
+## Borrowers (1.10.0)
+
+A borrower is the business; it has many applications. `{ref}` is a `BRW-…`
+reference or the numeric id. Any signed-in officer unless noted.
+
+| Route | Purpose |
+|---|---|
+| `GET /borrowers?q=&limit=&offset=` | List, newest first. `q` matches business name, owner name or reference. An identifier is never searched by URL. |
+| `POST /borrowers` | Open a borrower ahead of its first application. Identifier already on file: `409` naming the existing borrower. |
+| `GET /borrowers/{ref}` | One borrower. The identifier is returned masked. |
+| `PATCH /borrowers/{ref}` (manager or admin) | Correct name, owner, phone, sector, years, identifier or `status` (`active` / `inactive`). Only sent fields change. Applications keep what they were scored with. |
+| `GET /borrowers/{ref}/history` | Every application with score, band, officer decision, `model_version`, `scoring_engine`, monitored months and alerts, plus a summary. |
+
+```json
+{
+  "borrower": { "id": 4, "public_id": "BRW-000004", "business_name": "Khan Traders",
+                "identifier_type": null, "identifier_masked": null, "status": "active" },
+  "summary": { "applications": 2, "latest_score": 67.36, "lowest_score": 56.68,
+               "highest_score": 67.36, "approved_facilities": 1, "monitored_months": 3,
+               "open_alerts": 1, "total_alerts": 1,
+               "model_versions_used": ["ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26"],
+               "scoring_engines_used": ["ml"] },
+  "applications": [
+    { "application_id": 4, "risk_score": 56.68, "decision": "Manual Review",
+      "final_decision": "Approved", "model_version": "ensemble-xgb-rf-…",
+      "scoring_engine": "ml", "monitoring": [ "…3 months…" ], "alerts": [ "…1 alert…" ] }
+  ]
+}
+```
+
+`GET /ews/borrowers/{id}/history` is unchanged and different: its id is an
+**application** id and it returns that one facility's months. In every `/ews`
+route `borrower_id` still means the application.
+
+## GET `/model/versions`, `/model/versions/active` (1.10.0)
+
+Every model that has scored against this database, newest first, and the one
+scoring now. Per row: `version`, `engine`, `artifact_sha256`,
+`training_dataset`, `feature_set`, `feature_set_version`, `trained_at`,
+`metrics`, `status`, `is_active`, `fallback_reason`, `registered_at`,
+`applications_scored`. `/active` is `404` until a model has been registered.
+
+## GET `/audit/logs` (admin, 1.10.0)
+
+The append-only audit trail, newest first. Filters: `action`, `entity_type`,
+`entity_id`, `username`, `request_id`, `since`, `until`, `limit` (max 500),
+`offset`. There is no route that creates, changes or deletes an entry.
+
+```json
+{ "id": 7, "occurred_at": "2026-10-07T01:35:10Z", "user_id": 1, "username": "idreesi",
+  "role": "admin", "action": "application.scored", "entity_type": "application",
+  "entity_id": "14", "previous_state": null,
+  "new_state": { "risk_score": 67.36, "decision": "Manual Review" },
+  "details": { "model_version": "ensemble-xgb-rf-…", "scoring_engine": "ml",
+               "artifact_sha256": "…", "fallback_reason": null },
+  "ip_address": "127.0.0.1", "request_id": "b1dfe204…" }
+```
+
+Actions: `auth.login`, `auth.login_failed`, `user.created`, `borrower.created`,
+`borrower.updated`, `application.created`, `application.scored`,
+`explanation.generated`, `explanation.recomputed`,
+`application.officer_decision`, `application.approval_denied`,
+`ews.observation_created`, `ews.observation_updated`, `ews.alert_created`,
+`ews.alert_updated`, `ews.alert_auto_resolved`, `ews.alert_taken`,
+`ews.alert_resolved`, `model.registered`, `model.activated`,
+`migration.applied`.

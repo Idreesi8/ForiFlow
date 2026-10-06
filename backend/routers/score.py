@@ -24,6 +24,8 @@ from schemas import (
     StatementRequest,
     UserRole,
 )
+from services import audit_service, borrower_service, model_registry
+from services.audit_service import Action, Audit
 from services.auth_service import get_current_user, require_manager
 from services.scoring_service import ScoringService, get_scoring_service
 from services.statement_service import StatementError, parse_statement
@@ -51,6 +53,7 @@ async def score_application(
     db: DbSession,
     scorer: Scorer,
     officer: Officer,
+    audit: Audit,
     include_explanation: Annotated[
         bool, Query(description="Embed the SHAP explanation in the response.")
     ] = True,
@@ -60,11 +63,26 @@ async def score_application(
     The score runs from 0 (worst) to 100 (best) and maps onto the ForiFlow
     policy bands: 0-40 ``Rejected``, 41-70 ``Manual Review``, 71-100
     ``Approved``.
+
+    The application is filed under a borrower: the one named by
+    ``borrower_public_id``, else the one holding the given CNIC or NTN, else a
+    new one opened from the application's own details. The model version and
+    engine that produced the score are stored with it, and the borrower, the
+    application, the score and the explanation each get an audit entry in the
+    same transaction.
     """
     evidence = _turnover_evidence(applicant)
+    borrower, borrower_created = borrower_service.resolve_for_application(
+        db, applicant, actor=officer, context=audit
+    )
+    served_model = model_registry.ensure_registered(db, scorer, audit)
     result = scorer.score(applicant)
 
     application = Application(
+        borrower_id=borrower.id,
+        model_version=served_model.version,
+        scoring_engine=served_model.engine,
+        model_version_id=served_model.id,
         applicant_name=applicant.applicant_name,
         business_name=applicant.business_name,
         loan_amount_pkr=applicant.loan_amount_pkr,
@@ -98,6 +116,68 @@ async def score_application(
     # is retrained. Not an SBP certification.
     application.shap_explanation_json = json.dumps(explanation.model_dump(mode="json"))
 
+    audit_service.record(
+        db,
+        action=Action.APPLICATION_CREATED,
+        entity_type="application",
+        entity_id=application.id,
+        actor=officer,
+        new={
+            "borrower_id": borrower.id,
+            "borrower_public_id": borrower.public_id,
+            "business_name": application.business_name,
+            "loan_amount_pkr": application.loan_amount_pkr,
+            "tenure_months": application.tenure_months,
+            "monthly_digital_payments": application.monthly_digital_payments,
+            "cash_flow_proxy": application.cash_flow_proxy,
+            "payment_history_score": application.payment_history_score,
+            "years_in_operation": application.years_in_operation,
+            "existing_debt_pkr": application.existing_debt_pkr,
+            "business_sector": application.business_sector,
+        },
+        details={
+            "borrower_created": borrower_created,
+            "turnover_from_statement": bool(evidence and evidence.get("matches_statement")),
+        },
+        context=audit,
+    )
+    audit_service.record(
+        db,
+        action=Action.APPLICATION_SCORED,
+        entity_type="application",
+        entity_id=application.id,
+        actor=officer,
+        new={
+            "risk_score": result.risk_score,
+            "decision": result.decision.value,
+            "risk_band": result.risk_band.value,
+            "probability_of_default": result.calibrated_pd,
+        },
+        details={
+            "model_version": served_model.version,
+            "scoring_engine": served_model.engine,
+            "model_version_id": served_model.id,
+            "artifact_sha256": served_model.artifact_sha256,
+            "fallback_reason": served_model.fallback_reason,
+        },
+        context=audit,
+    )
+    audit_service.record(
+        db,
+        action=Action.EXPLANATION_GENERATED,
+        entity_type="application",
+        entity_id=application.id,
+        actor=officer,
+        details={
+            "model_version": explanation.model_version,
+            "base_value": explanation.base_value,
+            "contributions": {
+                item.feature: item.contribution for item in explanation.feature_contributions
+            },
+        },
+        context=audit,
+    )
+
     db.commit()
     db.refresh(application)
 
@@ -112,7 +192,11 @@ async def score_application(
         decision=result.decision,
         risk_band=result.risk_band,
         confidence=result.confidence,
-        model_version=scorer.model_version,
+        model_version=application.model_version,
+        scoring_engine=application.scoring_engine,
+        borrower_id=borrower.id,
+        borrower_public_id=borrower.public_id,
+        borrower_created=borrower_created,
         probability_of_default=result.calibrated_pd,
         explanation=explanation if include_explanation else None,
         created_at=application.created_at,
@@ -306,7 +390,7 @@ async def get_application(application_id: int, db: DbSession) -> ApplicationSumm
     summary="Record the officer decision on a Manual Review application (manager or admin)",
 )
 async def review_application(
-    application_id: int, body: ReviewRequest, db: DbSession, officer: Manager
+    application_id: int, body: ReviewRequest, db: DbSession, officer: Manager, audit: Audit
 ) -> ApplicationSummary:
     """Approve or reject a Manual Review case, with the reason, once.
 
@@ -340,6 +424,21 @@ async def review_application(
         and officer.role != UserRole.ADMIN.value
         and application.loan_amount_pkr > limit
     ):
+        # The refusal is itself recorded, and committed before the error leaves.
+        audit_service.record(
+            db,
+            action=Action.APPROVAL_DENIED,
+            entity_type="application",
+            entity_id=application.id,
+            actor=officer,
+            details={
+                "reason": "above_manager_limit",
+                "loan_amount_pkr": application.loan_amount_pkr,
+                "manager_approval_limit_pkr": limit,
+            },
+            context=audit,
+        )
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
@@ -353,6 +452,26 @@ async def review_application(
     application.review_note = body.note
     application.reviewed_by = officer.username
     application.reviewed_at = utcnow()
+    audit_service.record(
+        db,
+        action=Action.OFFICER_DECISION,
+        entity_type="application",
+        entity_id=application.id,
+        actor=officer,
+        previous={"decision": application.decision, "review_decision": None},
+        new={
+            "review_decision": application.review_decision,
+            "review_note": application.review_note,
+            "reviewed_by": application.reviewed_by,
+            "reviewed_at": application.reviewed_at,
+        },
+        details={
+            "risk_score": application.risk_score,
+            "loan_amount_pkr": application.loan_amount_pkr,
+            "model_version": application.model_version,
+        },
+        context=audit,
+    )
     db.commit()
     db.refresh(application)
     return ApplicationSummary.model_validate(application)

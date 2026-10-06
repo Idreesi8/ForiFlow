@@ -80,3 +80,6 @@ Claude outputs/
 
 # --- Local archive of old scratch launchers, logs and the previous model ---
 foriflow-scratch-archive/
+
+# --- Database dumps taken before an update (real data; never commit) ---
+backups/

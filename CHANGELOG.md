@@ -6,6 +6,64 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-07
+
+Phase 1 of the bank-facing foundation: traceability. No change to the model,
+the SHAP values, the score, the policy bands or the EWS rules.
+
+### Added
+
+- **Borrowers.** A `borrowers` table for the business itself; an application
+  now belongs to one (`applications.borrower_id`, NOT NULL). `POST /score`
+  files the application under the borrower named by `borrower_public_id`, else
+  the one holding the given CNIC or NTN, else a new one. A matching name never
+  links two applications. New routes: `GET/POST /borrowers`,
+  `GET/PATCH /borrowers/{ref}` and `GET /borrowers/{ref}/history` (every
+  application with its score, band, officer decision, model version,
+  monitored months and alerts). The identifier is optional, unique when
+  present, returned masked and never accepted in a URL.
+- **Append-only audit trail.** `audit_logs` records logins (both outcomes),
+  officer accounts, borrowers, applications, scores, explanations, officer
+  decisions and refused approvals, monthly observations and alerts, with the
+  actor, role, before and after state, caller address and request id. Entries
+  are written in the same transaction as the change. Updates and deletes are
+  refused by the ORM and by database triggers (UPDATE, DELETE, TRUNCATE).
+  `GET /audit/logs` (admin) reads it; nothing writes to it over the API.
+  Every response carries `X-Request-ID`.
+- **Model version tracking.** Each application stores `model_version`,
+  `scoring_engine` (`ml` or `surrogate`) and a link to a new `model_versions`
+  table, which records each model's SHA-256 artefact fingerprint, dataset,
+  feature set, trained date, metrics and whether it is active.
+  `GET /model/versions` and `/model/versions/active` read it.
+- A re-submitted monitoring month still overwrites its row, but the figures it
+  replaced are now kept in the audit entry.
+
+### Changed
+
+- **A fallback to the surrogate formula is no longer silent.** When the trained
+  model's files are missing or fail to load, the reason is logged as an error,
+  reported by `GET /health` (`scoring_engine`, `scoring_fallback_reason`),
+  stored on the model record and on every application scored in that state,
+  and written to the audit trail. Scoring behaviour itself is unchanged.
+- Validation errors no longer echo a rejected CNIC or NTN.
+- `scripts.migrate_sqlite_to_postgres` copies the new tables and gives each
+  application of a pre-1.10 SQLite file its own borrower.
+
+### Migration
+
+- `0006_borrowers_audit_models`. Each existing application gets its own
+  borrower, in application-id order, from its own details; none are merged.
+  The model version is copied from each stored explanation. No row is deleted.
+  See "Migration notes" in `docs/architecture.md`.
+
+### Known limits
+
+- `/ews` routes and the `alerts` / `ews_tracking` tables still call the
+  application id `borrower_id`. Renaming it would break existing clients.
+- Applications scored before 1.10 are not linked to a `model_versions` row.
+- Two pre-1.10 applications from the same business are separate borrowers;
+  there is no merge tool yet.
+
 ## [1.9.0] - 2026-10-05
 
 ### Added
