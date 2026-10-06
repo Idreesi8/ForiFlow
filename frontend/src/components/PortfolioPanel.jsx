@@ -173,7 +173,7 @@ export default function PortfolioPanel() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
-                  <th className="px-5 py-3 font-medium">Model said</th>
+                  <th className="px-5 py-3 font-medium">Recommended</th>
                   <th className="px-3 py-3 text-right font-medium">Approved</th>
                   <th className="px-3 py-3 text-right font-medium">Rejected</th>
                   <th className="px-5 py-3 text-right font-medium">Pending</th>
@@ -183,8 +183,12 @@ export default function PortfolioPanel() {
                 {summary.decision_matrix.map((row) => (
                   <tr key={row.model_decision}>
                     <td className="px-5 py-3">
-                      <span className={`badge ${bandForDecision(row.model_decision).badgeClass}`}>
-                        {row.model_decision}
+                      <span
+                        className={`badge bg-white ring-1 ring-slate-300 ${
+                          bandForDecision(row.model_decision).textClass
+                        }`}
+                      >
+                        {row.recommendation ?? row.model_decision}
                       </span>
                     </td>
                     <td className="tabular px-3 py-3 text-right">{formatCount(row.approved)}</td>
@@ -196,8 +200,8 @@ export default function PortfolioPanel() {
             </table>
           </div>
           <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
-            The Manual Review row shows what officers decided. The other two bands are
-            final as the model set them.
+            Rows are what the policy recommended; columns are what officers decided.
+            A recommendation is never final by itself.
           </p>
         </div>
       </div>

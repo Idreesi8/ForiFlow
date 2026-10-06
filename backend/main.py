@@ -14,7 +14,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,14 +24,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from config import env_flag, jwt_secret_key
 from models.database import DATABASE_URL, SessionLocal, engine, init_db
-from routers import audit, auth, borrowers, ews, explain, model, portfolio, score
+from routers import audit, auth, borrowers, ews, explain, model, policy, portfolio, score
 from schemas import HealthResponse
-from services import model_registry
+from services import model_registry, policy_service
 from services.audit_service import new_request_id
 from services.auth_service import jwt_secret_problem
 from services.scoring_service import get_scoring_service
 
-API_VERSION = "1.10.0"
+API_VERSION = "2.0.0"
 
 logging.basicConfig(
     level=os.getenv("FORIFLOW_LOG_LEVEL", "INFO"),
@@ -78,9 +78,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         with SessionLocal() as session:
             model_registry.ensure_registered(session, scorer)
+            active = policy_service.active_policy(session)
             session.commit()
-    except SQLAlchemyError:
-        logger.exception("Could not record the serving model at startup.")
+            logger.info(
+                "Credit policy in force: %s v%s (configurable demo policy; the model "
+                "recommends, an officer decides).",
+                active.name,
+                active.version,
+            )
+    except (SQLAlchemyError, HTTPException):
+        logger.exception("Could not record the serving model and policy at startup.")
     yield
     engine.dispose()
     logger.info("ForiFlow API stopped.")
@@ -134,6 +141,7 @@ app.include_router(model.router)
 app.include_router(portfolio.router)
 app.include_router(borrowers.router)
 app.include_router(audit.router)
+app.include_router(policy.router)
 
 
 _PRIVATE_FIELDS = frozenset({"password", "borrower_identifier"})
@@ -210,6 +218,10 @@ async def root() -> dict[str, str | list[str]]:
             "/model/fairness",
             "/model/versions",
             "/audit/logs",
+            "/policy/active",
+            "/policy/versions",
+            "/score/applications/{id}/decision",
+            "/score/applications/{id}/decision-history",
         ],
     }
 

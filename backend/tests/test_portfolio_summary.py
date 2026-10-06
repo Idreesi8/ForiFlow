@@ -7,16 +7,25 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import MID_APPLICANT, STRONG_APPLICANT, WEAK_APPLICANT
+from tests.conftest import MID_APPLICANT, STRONG_APPLICANT, WEAK_APPLICANT, decide
 
 NOTE = "Clean POS receipts for five years; facility is 28% of turnover."
 INSTALLMENT = STRONG_APPLICANT["loan_amount_pkr"] / STRONG_APPLICANT["tenure_months"]
 
 
 def _score(client: TestClient, payload: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    """Score an application, then record the officer decision its band used to imply.
+
+    Before 2.0 an Approved or Rejected band was final by itself. These tests are
+    about the loan book that follows, so the officer now decides explicitly:
+    approve an Approve recommendation, reject a Decline one, leave the rest open.
+    """
     response = client.post("/score", json={**payload, **extra})
     assert response.status_code == 201, response.text
-    return response.json()
+    body = response.json()
+    if body["decision"] in ("Approved", "Rejected"):
+        decide(client, body["application_id"], body["decision"])
+    return body
 
 
 def _month(client: TestClient, borrower: dict[str, Any], month: int, **fields: Any) -> None:
@@ -126,7 +135,8 @@ def test_decision_matrix_separates_model_band_from_final_outcome(client: TestCli
 
     rows = {row["model_decision"]: row for row in _summary(client)["decision_matrix"]}
     assert rows["Approved"] | {"model_decision": ""} == {
-        "model_decision": "", "approved": 1, "rejected": 0, "pending": 0
+        "model_decision": "", "recommendation": "Approve",
+        "approved": 1, "rejected": 0, "pending": 0,
     }
     assert (rows["Manual Review"]["approved"], rows["Manual Review"]["pending"]) == (1, 1)
     assert rows["Rejected"]["rejected"] == 1

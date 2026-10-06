@@ -13,9 +13,9 @@ export default function ScoringPage() {
       <header>
         <h2 className="text-xl font-bold text-slate-900">Credit Scoring</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Score a thin-file SME on alternative data. The decision follows the policy
-          matrix: 0-40 Rejected, 41-70 Manual Review, 71-100 Approved. A Manual
-          Review case is approved or rejected by a manager or admin, with a written reason.
+          Assess a thin-file SME on alternative data. The model gives a risk score; the
+          credit policy turns it into a recommendation (Approve, Manual Review or
+          Decline); a manager or admin makes the decision, with a written reason.
         </p>
       </header>
 
@@ -24,7 +24,7 @@ export default function ScoringPage() {
       {lastScored?.explanation ? (
         <section className="card">
           <div className="card-header">
-            <h2 className="card-title">Why this decision</h2>
+            <h2 className="card-title">Why this score</h2>
             <span className="text-xs text-slate-500">
               Application #{lastScored.application_id}
               {lastScored.borrower_public_id
@@ -40,7 +40,7 @@ export default function ScoringPage() {
         </section>
       ) : null}
 
-      {lastScored?.decision === "Manual Review" ? (
+      {lastScored ? (
         <ReviewPanel key={lastScored.application_id} applicationId={lastScored.application_id} />
       ) : null}
     </div>

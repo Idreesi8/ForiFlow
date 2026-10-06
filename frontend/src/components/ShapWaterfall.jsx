@@ -15,7 +15,7 @@ import {
 import { apiErrorMessage, explainApplication } from "../api/client.js";
 import { formatPKRCompact } from "../lib/format.js";
 import PathToApproval from "./PathToApproval.jsx";
-import { DecisionBadge } from "./common/Badges.jsx";
+import { RecommendationBadge } from "./common/Badges.jsx";
 import { EmptyState, ErrorState, LoadingState } from "./common/States.jsx";
 
 const POSITIVE_COLOR = "#059669";
@@ -182,8 +182,8 @@ export default function ShapWaterfall({
             Application #{explanation.application_id}
           </p>
         </div>
-        <div className="flex items-center gap-5">
-          <DecisionBadge decision={explanation.decision} />
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <RecommendationBadge decision={explanation.decision} prefix />
           {explanation.probability_of_default !== null &&
           explanation.probability_of_default !== undefined ? (
             <div

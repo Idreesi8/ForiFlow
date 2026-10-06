@@ -128,19 +128,48 @@ EXPECTED_0006: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# After migration 0007 (model assessment, policy recommendation, human decision).
+_APP6 = EXPECTED_0006["applications"]
+_NEW_0007 = (
+    "raw_pd",
+    "calibrated_pd",
+    "risk_band",
+    "policy_id",
+    "policy_version",
+    "policy_evaluation",
+    "reason_codes",
+    "decision_status",
+    "decision_source",
+    "escalated_by",
+    "escalated_at",
+    "escalation_note",
+    "supersedes_application_id",
+    "superseded_by_application_id",
+)
+EXPECTED_0007: dict[str, tuple[str, ...]] = {
+    **EXPECTED_0006,
+    "applications": (
+        *_APP6[: _APP6.index("business_sector")],
+        *_NEW_0007,
+        *_APP6[_APP6.index("business_sector") :],
+    ),
+}
+
 # SQLite declared types we will copy without rewriting values.
 _INT = {"INT", "INTEGER", "BIGINT"}
 _FLOAT = {"REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "NUMERIC", "DECIMAL"}
 _TEXT = {"TEXT", "VARCHAR", "NVARCHAR", "CHAR", "CLOB", "STRING"}
 _TIME = {"DATETIME", "TIMESTAMP", "DATE"}
 _JSON = {"JSON"}
-_COMPATIBLE = _INT | _FLOAT | _TEXT | _TIME | _JSON
+_BOOL = {"BOOLEAN"}
+_COMPATIBLE = _INT | _FLOAT | _TEXT | _TIME | _JSON | _BOOL
 
 # Parents before children, so every foreign key finds its row.
 TABLE_ORDER = (
     "users",
     "borrowers",
     "model_versions",
+    "credit_policies",
     "applications",
     "alerts",
     "ews_tracking",
@@ -184,6 +213,23 @@ OPTIONAL: dict[str, tuple[str, ...]] = {
         "status",
         "fallback_reason",
         "registered_at",
+    ),
+    # Present from migration 0007.
+    "credit_policies": (
+        "id",
+        "version",
+        "name",
+        "description",
+        "status",
+        "decline_max_score",
+        "manual_review_max_score",
+        "manager_approval_limit_pkr",
+        "decline_override_admin_only",
+        "created_at",
+        "created_by",
+        "activated_at",
+        "activated_by",
+        "retired_at",
     ),
     "audit_logs": (
         "id",
@@ -259,6 +305,7 @@ def assert_schema(connection: sqlite3.Connection) -> dict[str, tuple[str, ...]]:
             EXPECTED_0004.get(table),
             EXPECTED_0005.get(table),
             EXPECTED_0006.get(table),
+            EXPECTED_0007.get(table),
         ):
             raise MigrationError(
                 f"Table {table!r} columns {names} do not match expected {expected}."
@@ -293,6 +340,30 @@ def _engine_of(model_version: str | None) -> str | None:
     if model_version.startswith("surrogate-"):
         return "surrogate"
     return None
+
+
+_BAND_OF = {"Rejected": "High Risk", "Manual Review": "Medium Risk", "Approved": "Low Risk"}
+
+
+def _with_legacy_decision(row: dict) -> dict:
+    """Give a pre-2.0 application the decision status its record already implied.
+
+    Mirrors migration 0007. Before 2.0 an Approved or Rejected band was final
+    by itself, so those rows are marked decided with source ``legacy_auto``: no
+    officer is invented for them. A Manual Review row keeps the officer's
+    decision if one was recorded and is Pending otherwise.
+    """
+    band, review = row["decision"], row.get("review_decision")
+    if band == "Manual Review":
+        status, source = (review, "officer") if review else ("Pending", None)
+    else:
+        status, source = band, "legacy_auto"
+    return {
+        **row,
+        "decision_status": status,
+        "decision_source": source,
+        "risk_band": _BAND_OF.get(band),
+    }
 
 
 def _with_new_borrowers(connection, applications: list[dict]) -> list[dict]:
@@ -350,6 +421,8 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
         table_order = tuple(table for table in TABLE_ORDER if table in copy_tables)
         # A file from before migration 0006: its applications have no borrower.
         needs_borrowers = "borrower_id" not in copy_tables["applications"]
+        # A file from before migration 0007: no recorded decision status.
+        needs_decision_status = "decision_status" not in copy_tables["applications"]
         if needs_borrowers and "borrowers" in copy_tables:
             raise MigrationError(
                 "SQLite has a borrowers table but applications without borrower_id."
@@ -359,9 +432,13 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
         with pg.connect() as probe:
             must_be_empty = (*table_order, "borrowers") if needs_borrowers else table_order
             for table in dict.fromkeys(must_be_empty):
-                # Applying migration 0006 to an empty database writes one audit
-                # entry; that one is expected and is kept.
-                clause = " WHERE action <> 'migration.applied'" if table == "audit_logs" else ""
+                # Applying the migrations to an empty database writes their own
+                # audit entries and the demo policy; those are expected.
+                clause = ""
+                if table == "audit_logs":
+                    clause = " WHERE username <> 'system'"
+                elif table == "credit_policies":
+                    clause = " WHERE created_by <> 'system'"
                 count = probe.execute(text(f"SELECT COUNT(*) FROM {table}{clause}")).scalar_one()
                 if count:
                     raise MigrationError(
@@ -389,6 +466,31 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
                     columns = (*columns, "borrower_id", "model_version", "scoring_engine")
                     rows = _with_new_borrowers(connection, rows)
                     copied["borrowers"] = len(rows)
+                if table == "applications" and needs_decision_status:
+                    columns = (*columns, "decision_status", "decision_source", "risk_band")
+                    rows = [_with_legacy_decision(row) for row in rows]
+                if table == "applications":
+                    # A row can point at a later one (superseded_by), so the
+                    # links are filled in after every row exists.
+                    links = [
+                        (row["id"], row.get("superseded_by_application_id"))
+                        for row in rows
+                        if row.get("superseded_by_application_id") is not None
+                    ]
+                    rows = [
+                        {**row, "superseded_by_application_id": None}
+                        if "superseded_by_application_id" in row
+                        else row
+                        for row in rows
+                    ]
+                if table == "credit_policies":
+                    # The source's policies replace the demo one seeded by the
+                    # migration; no application in this empty database uses it.
+                    connection.execute(text("DELETE FROM credit_policies"))
+                    rows = [
+                        {**row, "decline_override_admin_only": bool(row["decline_override_admin_only"])}
+                        for row in rows
+                    ]
                 if rows:
                     placeholders = ", ".join(f":{name}" for name in columns)
                     connection.execute(
@@ -399,6 +501,15 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
                         rows,
                     )
                 copied[table] = len(rows)
+                if table == "applications":
+                    for application_id, later_id in links:
+                        connection.execute(
+                            text(
+                                "UPDATE applications SET superseded_by_application_id = :later "
+                                "WHERE id = :id"
+                            ),
+                            {"later": later_id, "id": application_id},
+                        )
             for table in dict.fromkeys((*table_order, *(("borrowers",) if needs_borrowers else ()))):
                 connection.execute(
                     text(

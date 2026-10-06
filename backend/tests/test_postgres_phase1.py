@@ -33,6 +33,7 @@ TABLES = (
     "applications",
     "borrowers",
     "model_versions",
+    "credit_policies",
     "audit_logs",
     "users",
 )
@@ -183,7 +184,10 @@ def test_monitoring_and_alerts_survive_the_upgrade(migrated) -> None:
 def test_the_migration_writes_one_audit_entry(migrated) -> None:
     with migrated.connect() as connection:
         entries = connection.execute(
-            text("SELECT username, action, entity_type, entity_id, details FROM audit_logs")
+            text(
+                "SELECT username, action, entity_type, entity_id, details FROM audit_logs "
+                "WHERE entity_id = '0006_borrowers_audit_models'"
+            )
         ).all()
     assert len(entries) == 1
     entry = entries[0]
@@ -225,6 +229,10 @@ def test_constraints_indexes_and_foreign_keys(migrated) -> None:
     assert foreign == {
         ("borrower_id", "borrowers", "RESTRICT"),
         ("model_version_id", "model_versions", "RESTRICT"),
+        # Added by migration 0007.
+        ("policy_id", "credit_policies", "RESTRICT"),
+        ("supersedes_application_id", "applications", "RESTRICT"),
+        ("superseded_by_application_id", "applications", "RESTRICT"),
     }
 
     audit_indexes = {
@@ -271,11 +279,16 @@ def test_identifier_is_unique_but_many_may_be_empty(migrated) -> None:
     ],
 )
 def test_postgres_refuses_to_change_the_audit_trail(migrated, statement: str) -> None:
+    snapshot = text("SELECT id, username, action FROM audit_logs ORDER BY id")
+    with migrated.connect() as connection:
+        before = connection.execute(snapshot).all()
+    assert before and all(row.username == "system" for row in before)
+
     with pytest.raises(DBAPIError, match="append-only"):
         with migrated.begin() as connection:
             connection.execute(text(statement))
     with migrated.connect() as connection:
-        assert connection.execute(text("SELECT username FROM audit_logs")).scalar_one() == "system"
+        assert connection.execute(snapshot).all() == before
 
 
 def test_downgrade_and_upgrade_again_keep_the_applications(migrated) -> None:
@@ -403,6 +416,7 @@ def test_the_main_workflow_on_postgres(pg_client: TestClient) -> None:
     assert [row["action"] for row in reversed(trail)] == [
         "application.created",
         "application.scored",
+        "recommendation.generated",
         "explanation.generated",
         "application.officer_decision",
     ]

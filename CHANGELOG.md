@@ -6,6 +6,74 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-07
+
+Phase 2: a human-in-the-loop decision workflow and a versioned credit policy.
+The model, its probability, the 0-100 score, the SHAP values and the EWS rules
+are unchanged. The version is 2.0.0 because one behaviour is deliberately
+reversed (see "Changed").
+
+### Changed (breaking)
+
+- **No score decides a loan any more.** Until 1.10 an Approved or Rejected band
+  was final and only Manual Review went to an officer. Now the model produces
+  an assessment, the policy produces a **recommendation**, and every
+  application stays `Pending` until a manager or admin records the decision.
+  Only an approved application can be monitored by the EWS. API field names
+  and types are unchanged; `decision` now means "what the policy recommends".
+
+### Added
+
+- **Versioned credit policy** (`credit_policies`, `GET /policy/active`,
+  `GET/POST /policy/versions`, `POST /policy/versions/{id}/activate`). The
+  score cut-offs and the manager approval limit are policy configuration, no
+  longer constants in the scoring code. One version is active; a version is
+  never edited or deleted; each application stores the version and a snapshot
+  of the rule that applied. Only an admin creates or activates a version. The
+  shipped version 1.0 is a **demo policy** with the values ForiFlow has always
+  used (40 / 70 / PKR 2,000,000). They are not validated for Pakistani SME
+  lending and were not tuned on any data.
+- **Human decision workflow.** `POST /score/applications/{id}/decision`
+  (`/review` still works) takes `Approved`, `Rejected` or `Escalated`.
+  Enforced on the server: a manager approves up to the policy limit, rejects,
+  or escalates; approving above the limit, approving against a Decline
+  recommendation and deciding an escalated application need an admin. A
+  refused action returns `403` and is audited.
+- **Three separate objects on every application**: `assessment` (model),
+  `policy` (recommendation, rule, authority), `officer_decision` (human), plus
+  `recommendation`, `decision_status`, `risk_band` and both probabilities.
+- **Re-scoring without overwriting.** `rescore_of_application_id` stores a new
+  application and marks the earlier one Superseded, unchanged. The audit entry
+  records who re-scored and which inputs changed.
+  `GET /score/applications/{id}/decision-history` returns the chain and events.
+- **Reason codes** (R01 to R10): the top risk factors of an explanation as
+  stable codes, derived deterministically from the SHAP contributions. Only for
+  features an explanation can contain; the served model yields R01 to R03.
+- Audit actions: `recommendation.generated`, `application.escalated`,
+  `application.rescored`, `application.superseded`, `policy.created`,
+  `policy.activated`, `policy.retired`.
+- Dashboard: the decision panel shows Risk assessment, ForiFlow recommendation
+  and Credit officer decision as three parts, with Approve / Reject / Escalate;
+  a Credit Policy page (read for all, create and activate for admins).
+
+### Migration
+
+- `0007_policy_human_decision`. Existing applications keep their outcome:
+  an officer's decision stays as recorded; an Approved or Rejected band from
+  before 2.0 is kept as that outcome with `decision_source = legacy_auto` and
+  no officer invented; undecided Manual Review cases are Pending. Their
+  `policy_version` stays NULL, because none was recorded.
+- `MANAGER_APPROVAL_LIMIT_PKR` is read once, to set the first policy's limit.
+
+### Known limits
+
+- The score dial and the dashboard histogram are drawn with the demo cut-offs
+  (40 / 70); a policy with other cut-offs labels scores correctly but the
+  drawings do not move.
+- Re-scoring is an API field; the dashboard has no re-score button yet.
+- `ml.evaluate_model` and `ml.fairness_audit` report hold-out results for the
+  demo cut-offs only.
+
 ## [1.10.0] - 2026-10-07
 
 Phase 1 of the bank-facing foundation: traceability. No change to the model,

@@ -9,17 +9,18 @@ from fastapi.testclient import TestClient
 
 from schemas import InstallmentStatus
 from services.ews_service import ALERT_SCORE_DROP_THRESHOLD, EWSService
-from tests.conftest import STRONG_APPLICANT, WEAK_APPLICANT
+from tests.conftest import STRONG_APPLICANT, WEAK_APPLICANT, decide
 
 pytestmark = pytest.mark.ews
 
 
 @pytest.fixture(name="borrower")
 def borrower_fixture(client: TestClient) -> dict[str, Any]:
-    """Score a healthy applicant and return its id plus baseline score."""
+    """Score a healthy applicant, approve it, and return its id plus baseline score."""
     response = client.post("/score", json=STRONG_APPLICANT)
     assert response.status_code == 201, response.text
     body = response.json()
+    decide(client, body["application_id"])
     return {"id": body["application_id"], "baseline": body["risk_score"]}
 
 
@@ -256,8 +257,13 @@ def test_runway_shortens_as_the_drop_deepens() -> None:
 def test_rejected_applications_cannot_be_monitored(client: TestClient) -> None:
     """A Rejected application was never disbursed, so it has nothing to monitor."""
     scored = client.post("/score", json=WEAK_APPLICANT).json()
-    assert scored["decision"] == "Rejected"
+    assert scored["decision"] == "Rejected"  # the recommendation; nobody has decided yet
 
+    undecided = client.post("/ews/monitor", json=_healthy_month(scored["application_id"]))
+    assert undecided.status_code == 409
+    assert "awaiting an officer decision" in undecided.json()["detail"]
+
+    decide(client, scored["application_id"], "Rejected")
     response = client.post("/ews/monitor", json=_healthy_month(scored["application_id"]))
     assert response.status_code == 409
     assert "Rejected" in response.json()["detail"]

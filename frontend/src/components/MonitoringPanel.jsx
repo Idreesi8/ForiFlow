@@ -127,16 +127,16 @@ export default function MonitoringPanel({ onMonitored }) {
             {borrowers.map((borrower) => (
               <option key={borrower.id} value={borrower.id}>
                 #{borrower.id} · {borrower.business_name} ·{" "}
-                {borrower.decision === DECISION_APPROVED
-                  ? "Approved"
-                  : `Approved by ${borrower.reviewed_by}`}
+                {borrower.reviewed_by
+                  ? `Approved by ${borrower.reviewed_by}`
+                  : "Approved before 2.0"}
               </option>
             ))}
           </select>
           {borrowers.length === 0 ? (
             <p className="mt-1 text-xs text-slate-500">
-              No approved facility yet. Score an application that is Approved, or approve
-              a Manual Review case from its SHAP report.
+              No approved facility yet. An application becomes a facility when a manager
+              or admin approves it from its SHAP report.
             </p>
           ) : null}
         </div>

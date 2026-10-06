@@ -14,7 +14,13 @@ from fastapi.testclient import TestClient
 
 from models.database import Application, User
 from services.auth_service import hash_password
-from tests.conftest import MID_APPLICANT, STRONG_APPLICANT, WEAK_APPLICANT, bearer_header
+from tests.conftest import (
+    MID_APPLICANT,
+    STRONG_APPLICANT,
+    WEAK_APPLICANT,
+    bearer_header,
+    decide,
+)
 
 NOTE = "Five years of clean POS receipts; facility is 28% of turnover."
 
@@ -79,12 +85,16 @@ def test_scoring_records_the_officer(client: TestClient) -> None:
     assert stored["scored_by"] == "admin"
 
 
-def test_model_bands_are_final_except_manual_review(client: TestClient) -> None:
-    approved = _score(client, STRONG_APPLICANT)["application_id"]
-    rejected = _score(client, WEAK_APPLICANT)["application_id"]
+def test_no_band_is_final_until_an_officer_decides(client: TestClient) -> None:
+    """Reversed in 2.0. Before, an Approved or Rejected band was the final decision."""
+    approve_recommended = _score(client, STRONG_APPLICANT)["application_id"]
+    decline_recommended = _score(client, WEAK_APPLICANT)["application_id"]
 
-    assert client.get(f"/score/applications/{approved}").json()["final_decision"] == "Approved"
-    assert client.get(f"/score/applications/{rejected}").json()["final_decision"] == "Rejected"
+    for application_id, band in ((approve_recommended, "Approved"), (decline_recommended, "Rejected")):
+        stored = client.get(f"/score/applications/{application_id}").json()
+        assert stored["decision"] == band
+        assert stored["final_decision"] is None
+        assert stored["decision_status"] == "Pending"
 
 
 # --- Manual Review decision ------------------------------------------------------
@@ -139,14 +149,19 @@ def test_a_recorded_decision_cannot_be_changed(
 @pytest.mark.parametrize(
     ("payload", "band"), [(STRONG_APPLICANT, "Approved"), (WEAK_APPLICANT, "Rejected")]
 )
-def test_only_manual_review_cases_take_an_officer_decision(
+def test_every_recommendation_takes_an_officer_decision(
     client: TestClient, payload: dict[str, Any], band: str
 ) -> None:
-    application_id = _score(client, payload)["application_id"]
-    response = _review(client, application_id, "Approved")
+    """Reversed in 2.0: no band is final by itself. The officer decides each one."""
+    scored = _score(client, payload)
+    assert scored["decision"] == band and scored["decision_status"] == "Pending"
 
-    assert response.status_code == 409
-    assert f"was {band} by the model" in response.json()["detail"]
+    response = _review(client, scored["application_id"], band)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"] == band  # the recommendation is left as it was
+    assert body["final_decision"] == band and body["reviewed_by"] == "admin"
 
 
 @pytest.mark.parametrize(
@@ -213,7 +228,7 @@ def test_officer_rejected_application_cannot_be_monitored(
 
     response = client.post("/ews/monitor", json=_month(application_id))
     assert response.status_code == 409
-    assert "rejected by admin after manual review" in response.json()["detail"]
+    assert "Rejected by admin" in response.json()["detail"]
 
 
 # --- alert handling ----------------------------------------------------------------
@@ -222,6 +237,7 @@ def test_officer_rejected_application_cannot_be_monitored(
 @pytest.fixture(name="alert")
 def alert_fixture(client: TestClient) -> dict[str, Any]:
     scored = _score(client, STRONG_APPLICANT)
+    decide(client, scored["application_id"])
     body = client.post(
         "/ews/monitor",
         json=_month(

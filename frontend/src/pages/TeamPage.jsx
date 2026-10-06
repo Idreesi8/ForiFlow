@@ -9,12 +9,12 @@ const ROLES = [
   {
     value: "admin",
     label: "Admin",
-    can: "Everything a manager can, plus creating officer accounts.",
+    can: "Everything a manager can, plus approving above the manager limit or against a Decline recommendation, deciding escalated cases, setting the credit policy and creating officer accounts.",
   },
   {
     value: "manager",
     label: "Manager",
-    can: "Everything an analyst can, plus approving or rejecting Manual Review cases and resolving alerts.",
+    can: "Everything an analyst can, plus approving (up to the policy's manager limit), rejecting or escalating applications, and resolving alerts.",
   },
   {
     value: "analyst",

@@ -11,6 +11,7 @@ import MemoPage from "./pages/MemoPage.jsx";
 import ModelPage from "./pages/ModelPage.jsx";
 import NotFoundPage from "./pages/NotFoundPage.jsx";
 import RemindersPage from "./pages/RemindersPage.jsx";
+import PolicyPage from "./pages/PolicyPage.jsx";
 import TeamPage from "./pages/TeamPage.jsx";
 import ScoringPage from "./pages/ScoringPage.jsx";
 import ShapReportsPage from "./pages/ShapReportsPage.jsx";
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { to: "/reminders", label: "Reminders", icon: MessageIcon },
   { to: "/applications", label: "Applications", icon: ListIcon },
   { to: "/model", label: "Model Performance", icon: CurveIcon },
+  { to: "/policy", label: "Credit Policy", icon: ListIcon },
   { to: "/team", label: "Team & Roles", icon: UsersIcon },
 ];
 
@@ -50,6 +52,7 @@ export default function App() {
         <Route path="/memo/:applicationId" element={<MemoPage />} />
         <Route path="/model" element={<ModelPage />} />
         <Route path="/reminders" element={<RemindersPage />} />
+        <Route path="/policy" element={<PolicyPage />} />
         <Route path="/team" element={<TeamPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
@@ -192,7 +195,7 @@ function OfficerShell() {
         </main>
 
         <footer className="border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500 print:hidden">
-          ForiFlow v1.10 · API {API_BASE_LABEL} · All amounts in PKR
+          ForiFlow v2.0 · API {API_BASE_LABEL} · All amounts in PKR
         </footer>
       </div>
     </div>

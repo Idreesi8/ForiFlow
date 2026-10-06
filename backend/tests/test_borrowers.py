@@ -10,7 +10,13 @@ from sqlalchemy.exc import IntegrityError
 from models.database import Application, AuditLog, Borrower, User
 from services.audit_service import Action
 from services.auth_service import hash_password
-from tests.conftest import MID_APPLICANT, STRONG_APPLICANT, WEAK_APPLICANT, bearer_header
+from tests.conftest import (
+    MID_APPLICANT,
+    STRONG_APPLICANT,
+    WEAK_APPLICANT,
+    bearer_header,
+    decide,
+)
 
 CNIC = "35202-1234567-1"
 CNIC_DIGITS = "3520212345671"
@@ -389,7 +395,13 @@ def test_history_gathers_every_application_score_month_and_alert(client: TestCli
     assert summary["latest_score"] == second["risk_score"]
     assert summary["lowest_score"] == min(first["risk_score"], second["risk_score"])
     assert summary["highest_score"] == max(first["risk_score"], second["risk_score"])
-    assert summary["approved_facilities"] == 2
+    # Only the first was approved by an officer; the second is recommended
+    # for approval and still open.
+    assert summary["approved_facilities"] == 1
+    assert rows[1]["recommendation"] == "Approve" and rows[1]["final_decision"] is None
+    assert rows[1]["decision_status"] == "Pending" and rows[0]["decision_status"] == "Approved"
+    assert rows[0]["policy_version"] == rows[1]["policy_version"] == "1.0"
+    assert summary["policy_versions_used"] == ["1.0"]
     assert summary["monitored_months"] == 2
     assert summary["open_alerts"] == 1 and summary["total_alerts"] == 1
     assert summary["model_versions_used"] == [first["model_version"]]
@@ -417,6 +429,7 @@ def test_the_facility_history_route_still_takes_an_application_id(client: TestCl
     """``/ews/borrowers/{id}/history`` predates borrowers and is unchanged."""
     first = _score(client, STRONG_APPLICANT)
     second = _score(client, STRONG_APPLICANT, borrower_public_id=first["borrower_public_id"])
+    decide(client, second["application_id"])
     client.post(
         "/ews/monitor",
         json={

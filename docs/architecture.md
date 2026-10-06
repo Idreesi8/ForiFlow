@@ -35,27 +35,153 @@ sequenceDiagram
     participant Dashboard
     participant API as FastAPI /score
     participant Engine as MLScoringService
+    participant Policy as policy_service
     participant DB as PostgreSQL
 
     Officer->>Dashboard: Submit SMEApplicant
     Dashboard->>API: POST /api/score
-    API->>Engine: score(applicant)
-    Engine->>Engine: Map intake fields to ratios
-    Engine->>Engine: Scale, predict PD, invert to 0-100
-    Engine->>Engine: SHAP contributions
-    Engine-->>API: ScoreResult
-    API->>DB: Persist Application + shap_explanation_json
-    API-->>Dashboard: ScoreResponse 201
-    Dashboard-->>Officer: Gauge + waterfall
+    API->>Policy: active_policy()
+    API->>Engine: score(applicant, bands)
+    Engine->>Engine: Scale, predict PD, invert to 0-100, SHAP
+    Engine-->>API: assessment (score, PD, contributions)
+    API->>Policy: evaluate(policy, score, amount)
+    Policy-->>API: recommendation, rule, authority
+    API->>DB: Application (Pending) + audit entries
+    API-->>Dashboard: assessment + recommendation + Pending
+    Officer->>Dashboard: Approve / Reject / Escalate
+    Dashboard->>API: POST /api/score/applications/{id}/decision
+    API->>DB: decision + audit entry
 ```
 
-Policy bands are fixed in one place (`Decision` in `backend/schemas.py`):
+## Model, policy, human
 
-| Score | Decision | Risk band |
-|------:|----------|-----------|
-| 0–40 | Rejected | High Risk |
-| 41–70 | Manual Review | Medium Risk |
-| 71–100 | Approved | Low Risk |
+ForiFlow is a credit decision-support system. It does not approve or reject a
+loan. Since 2.0.0 the three roles are separate in the code, the database and
+the API:
+
+| Layer | Code | Produces | Stored on the application |
+|---|---|---|---|
+| **Model** | `services/scoring_service.py` | Risk score 0-100, raw and calibrated probability of default, SHAP contributions | `risk_score`, `raw_pd`, `calibrated_pd`, `model_version`, `scoring_engine`, `shap_explanation_json` |
+| **Policy** | `services/policy_rules.py` (pure rules), `services/policy_service.py` (versions) | Risk band, a **recommendation** (Approve / Manual Review / Decline), who may approve, the rule that applied | `risk_band`, `decision`, `policy_id`, `policy_version`, `policy_evaluation`, `reason_codes` |
+| **Human** | `services/decision_service.py` | The **decision**: Approved or Rejected, by a named officer, with a reason | `decision_status`, `review_decision`, `review_note`, `reviewed_by`, `reviewed_at`, escalation fields |
+
+`decision` keeps the wording it has had since 1.0 (`Approved`, `Manual Review`,
+`Rejected`) so existing clients and data keep working, but it now means only
+"the policy recommends this". The API also returns it as `recommendation`
+(`Approve`, `Manual Review`, `Decline`). Nothing is approved or rejected until
+an officer records it.
+
+### Credit policy
+
+`credit_policies` holds versioned policy configuration:
+
+| Field | Demo policy v1.0 | Meaning |
+|---|---|---|
+| `decline_max_score` | 40 | Score at or below: recommend Decline (High Risk) |
+| `manual_review_max_score` | 70 | Above that and at or below: recommend Manual Review (Medium Risk); above: recommend Approve (Low Risk) |
+| `manager_approval_limit_pkr` | 2,000,000 | Largest facility a manager may approve alone |
+| `decline_override_admin_only` | true | Approving against a Decline recommendation needs an admin |
+
+**These are demo values.** They are the round numbers ForiFlow has always used.
+They were not derived from data, were not tuned on the hold-out set, and are
+not validated thresholds for Pakistani SME lending. A lender sets its own.
+
+Rules:
+
+- One version is active (a partial unique index enforces it). New assessments
+  use the active version.
+- A version's figures are **never edited and never deleted**. A change is a new
+  version (`POST /policy/versions`, admin), created as a draft, then activated
+  (`POST /policy/versions/{id}/activate`, admin), which retires the previous one.
+- Each application stores the policy version **and a snapshot of the rule that
+  applied** (`policy_evaluation`: cut-offs, triggered rule, authority limit). A
+  later policy cannot change what a past application was recommended, and an
+  application is decided under the authority limits it was assessed under.
+- Every create, activate and retire is written to the audit trail.
+- `MANAGER_APPROVAL_LIMIT_PKR` only sets the limit of the first (demo) policy
+  when it is created. After that the policy is the single source.
+- The EWS thresholds (15-point drop, 10% default probability) are monitoring
+  rules, not credit-decision policy, and are unchanged in `ews_service.py`.
+
+### Decision workflow
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending: assessed, recommendation stored
+    Pending --> Approved: manager within limit, or admin
+    Pending --> Rejected: manager or admin
+    Pending --> Escalated: manager passes it up
+    Escalated --> Approved: admin
+    Escalated --> Rejected: admin
+    Pending --> Superseded: re-scored
+    Escalated --> Superseded: re-scored
+```
+
+Authority is enforced in `decision_service.record_action`, on the server:
+
+| Action | Analyst | Manager | Admin |
+|---|---|---|---|
+| Approve, facility within the manager limit | no | yes | yes |
+| Approve, facility above the limit | no | no (`403`) | yes |
+| Approve against a Decline recommendation | no | only if the policy allows | yes |
+| Reject | no | yes | yes |
+| Escalate to an admin | no | yes | not applicable |
+| Anything on an escalated application | no | no (`403`) | yes |
+
+A written reason (10 to 1000 characters) is always required. A decision is
+recorded once and is not changed (`409`). A refused action is itself audited.
+Only an approved application can be monitored by the EWS.
+
+### Re-scoring
+
+An application's assessment is never overwritten. `POST /score` with
+`rescore_of_application_id` stores a **new** application linked to the earlier
+one (`supersedes_application_id` / `superseded_by_application_id`); the earlier
+one keeps its score, explanation, model version and policy version and is
+marked `Superseded`. Only an undecided application can be re-scored. The audit
+entry `application.rescored` records who did it, both assessments, and exactly
+which inputs changed. Every new application also records how many earlier
+applications the borrower already has. `GET /score/applications/{id}/decision-history`
+returns the whole chain and its events.
+
+### Reason codes
+
+`services/reason_codes.py` is a deterministic layer on top of SHAP; it does not
+replace it. Rule: take the SHAP contributions, keep those that lowered the score
+by at least 0.5 points, order them largest first, keep the top three, and give
+each the fixed code of its feature. Codes exist only for features an
+explanation can contain.
+
+| Code | Meaning | Feature | Engine |
+|---|---|---|---|
+| R01 | Facility is large against annual turnover | `loan_to_income` | trained model |
+| R02 | Adverse repayment history | `payment_history_score` | both |
+| R03 | Short trading history | `years_in_operation` | both |
+| R04 | Installment is high against turnover / cash flow | `installment_to_income`, `loan_affordability` | not in the served model / fallback |
+| R05 | High existing debt burden | `debt_service_to_income`, `debt_burden` | not in the served model / fallback |
+| R06 | Requested tenure adds risk | `tenure_months` | not in the served model |
+| R07 | Low digital payment volume | `monthly_digital_payments` | fallback |
+| R08 | Irregular order volumes | `order_consistency` | fallback |
+| R09 | Slow inventory turnover | `inventory_turnover` | fallback |
+| R10 | Very small business | `num_employees` | fallback |
+
+The served model reads three features, so in practice it produces R01, R02 and
+R03 only.
+
+### Migration notes (0007)
+
+- No row is deleted. No decision and no policy version is invented.
+- Existing applications keep `policy_id` / `policy_version` **NULL**: no policy
+  version was recorded when they were scored.
+- `decision_status` is taken from each row's own columns under the rule in
+  force when it was scored: an officer's Manual Review decision stays as it is
+  (`decision_source = officer`); an undecided Manual Review is `Pending`; an
+  Approved or Rejected band is that outcome with `decision_source =
+  legacy_auto`, because before 2.0 the band alone was final. No officer is
+  recorded for those, since none decided. Facilities already being monitored
+  therefore stay approved.
+- `calibrated_pd` is copied from the stored explanation where present;
+  `raw_pd` was never stored and stays NULL.
 
 ## Machine-learning pipeline
 
@@ -273,8 +399,8 @@ flowchart TB
     officer[Officer browser] --> fe
 ```
 
-Images: `foriflow-backend:1.10.0` (`python:3.12-slim` + `libgomp1`) and
-`foriflow-frontend:1.10.0` (Node 20 build, nginx 1.27). See
+Images: `foriflow-backend:2.0.0` (`python:3.12-slim` + `libgomp1`) and
+`foriflow-frontend:2.0.0` (Node 20 build, nginx 1.27). See
 [deployment.md](deployment.md).
 
 ## Repository map

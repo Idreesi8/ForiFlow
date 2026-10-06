@@ -13,7 +13,7 @@ from models.database import Application, User
 from routers.portfolio import _add_months
 from services.auth_service import hash_password
 from services.statement_service import StatementError, parse_statement
-from tests.conftest import MID_APPLICANT, STRONG_APPLICANT, bearer_header
+from tests.conftest import MID_APPLICANT, STRONG_APPLICANT, bearer_header, decide
 
 SAMPLE = (
     Path(__file__).resolve().parents[2] / "docs" / "samples" / "sample-wallet-statement.csv"
@@ -246,6 +246,8 @@ def _backdate(db_session_factory, application_id: int, days: int) -> None:
     try:
         application = db.get(Application, application_id)
         application.created_at = utcnow() - timedelta(days=days)
+        if application.reviewed_at is not None:  # the schedule runs from approval
+            application.reviewed_at = application.created_at
         db.commit()
     finally:
         db.close()
@@ -269,19 +271,26 @@ def _month(client: TestClient, application_id: int, month: int, **fields: Any) -
     assert client.post("/ews/monitor", json=payload).status_code == 201
 
 
+def _facility(client: TestClient, **extra: Any) -> int:
+    """Score a strong applicant and approve it, so there is a facility to remind about."""
+    application_id = client.post("/score", json={**STRONG_APPLICANT, **extra}).json()[
+        "application_id"
+    ]
+    decide(client, application_id)
+    return application_id
+
+
 def test_a_new_facility_has_no_reminder_yet(client: TestClient) -> None:
-    client.post("/score", json=STRONG_APPLICANT)
+    _facility(client)
     assert _reminders(client) == {}
     assert client.get("/portfolio/reminders", headers={"Authorization": ""}).status_code == 401
 
 
 def test_due_soon_overdue_and_arrears(client: TestClient, db_session_factory) -> None:
     installment = STRONG_APPLICANT["loan_amount_pkr"] / STRONG_APPLICANT["tenure_months"]
-    soon = client.post(
-        "/score", json={**STRONG_APPLICANT, "contact_phone": "+923001234567"}
-    ).json()["application_id"]
-    overdue = client.post("/score", json=STRONG_APPLICANT).json()["application_id"]
-    behind = client.post("/score", json=STRONG_APPLICANT).json()["application_id"]
+    soon = _facility(client, contact_phone="+923001234567")
+    overdue = _facility(client)
+    behind = _facility(client)
     _backdate(db_session_factory, soon, 25)      # first installment due in a few days
     _backdate(db_session_factory, overdue, 45)   # first installment about two weeks late
     _backdate(db_session_factory, behind, 35)
@@ -307,7 +316,7 @@ def test_due_soon_overdue_and_arrears(client: TestClient, db_session_factory) ->
 
 def test_recording_the_month_clears_the_reminder(client: TestClient, db_session_factory) -> None:
     installment = STRONG_APPLICANT["loan_amount_pkr"] / STRONG_APPLICANT["tenure_months"]
-    facility = client.post("/score", json=STRONG_APPLICANT).json()["application_id"]
+    facility = _facility(client)
     _backdate(db_session_factory, facility, 45)
     assert _reminders(client)[facility]["kind"] == "overdue"
 
@@ -318,7 +327,7 @@ def test_recording_the_month_clears_the_reminder(client: TestClient, db_session_
 def test_defaulted_and_unapproved_facilities_get_no_reminder(
     client: TestClient, db_session_factory
 ) -> None:
-    defaulted = client.post("/score", json=STRONG_APPLICANT).json()["application_id"]
+    defaulted = _facility(client)
     pending = client.post("/score", json=MID_APPLICANT).json()["application_id"]
     _backdate(db_session_factory, defaulted, 80)
     _backdate(db_session_factory, pending, 80)

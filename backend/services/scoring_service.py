@@ -34,6 +34,7 @@ from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
 
 from schemas import (
+    RECOMMENDATION_OF,
     ApprovalPath,
     ApprovalStep,
     Decision,
@@ -41,6 +42,8 @@ from schemas import (
     RiskBand,
     ShapFeatureContribution,
 )
+from services import policy_rules
+from services.policy_rules import DEMO_BANDS, ScoreBands
 
 logger = logging.getLogger(__name__)
 
@@ -99,14 +102,22 @@ INVENTORY_TURNOVER_CAP: float = 12.0
 YEARS_IN_OPERATION_CAP: float = 10.0
 EMPLOYEES_CAP: int = 50
 
-# Decision policy: 0-40 Rejected, 41-70 Manual Review, 71-100 Approved.
-REJECT_UPPER_BOUND: float = 40.0
-MANUAL_REVIEW_UPPER_BOUND: float = 70.0
+# The score cut-offs are policy, not model, and live in services.policy_rules.
+# These two names are kept only so existing imports keep working; they are the
+# demo policy's defaults, and nothing in this module decides with them.
+REJECT_UPPER_BOUND: float = DEMO_BANDS.decline_max_score
+MANUAL_REVIEW_UPPER_BOUND: float = DEMO_BANDS.manual_review_max_score
 
 # A neutral applicant sits at the midpoint of every normalised feature, which
 # makes the SHAP base value exactly 50 points.
 NEUTRAL_NORMALISED_VALUE: float = 0.5
 BASE_VALUE: float = 50.0
+
+# How a recommendation is worded. The stored value ("Approved") reads like an
+# outcome; a recommendation must not.
+RECOMMENDATION_LABELS: dict[Decision, str] = {
+    decision: recommendation.value for decision, recommendation in RECOMMENDATION_OF.items()
+}
 
 COMPLIANCE_NOTE: str = (
     "SHAP values are stored on-premise so a bank can support an SBP-oriented "
@@ -142,11 +153,17 @@ class ScoreResult:
     The trailing fields are only populated by :class:`MLScoringService`: the
     surrogate has no probability estimate and derives its contributions on
     demand instead of caching them.
+
+    ``decision`` and ``risk_band`` are not model output. They are how the
+    policy bands passed to :meth:`ScoringService.score` read the score
+    (``services.policy_rules``), carried here so the explanation can name them.
+    ``decision`` is a recommendation; an officer makes the decision.
     """
 
     risk_score: float
     decision: Decision
     risk_band: RiskBand
+    bands: ScoreBands = DEMO_BANDS
     normalised_features: dict[str, float] = field(default_factory=dict)
     raw_features: dict[str, float] = field(default_factory=dict)
     probability_of_default: float | None = None
@@ -186,7 +203,6 @@ class ScoringService:
                 YEARS_IN_OPERATION_CAP,
                 EMPLOYEES_CAP,
             ],
-            "policy": [REJECT_UPPER_BOUND, MANUAL_REVIEW_UPPER_BOUND],
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
@@ -245,27 +261,20 @@ class ScoringService:
         }
 
     @staticmethod
-    def decision_for(risk_score: float) -> Decision:
-        """Apply the ForiFlow decision policy to a score."""
-        if risk_score <= REJECT_UPPER_BOUND:
-            return Decision.REJECTED
-        if risk_score <= MANUAL_REVIEW_UPPER_BOUND:
-            return Decision.MANUAL_REVIEW
-        return Decision.APPROVED
+    def decision_for(risk_score: float, bands: ScoreBands = DEMO_BANDS) -> Decision:
+        """The policy recommendation for a score (see ``services.policy_rules``)."""
+        return policy_rules.recommendation_for(risk_score, bands)
 
     @staticmethod
-    def risk_band_for(risk_score: float) -> RiskBand:
-        """Map a score onto its reporting risk band."""
-        if risk_score <= REJECT_UPPER_BOUND:
-            return RiskBand.HIGH
-        if risk_score <= MANUAL_REVIEW_UPPER_BOUND:
-            return RiskBand.MEDIUM
-        return RiskBand.LOW
+    def risk_band_for(risk_score: float, bands: ScoreBands = DEMO_BANDS) -> RiskBand:
+        """The risk band for a score (see ``services.policy_rules``)."""
+        return policy_rules.risk_band_for(risk_score, bands)
 
-    def score(self, applicant: SMEApplicantLike) -> ScoreResult:
-        """Score an applicant and derive its decision band.
+    def score(self, applicant: SMEApplicantLike, bands: ScoreBands = DEMO_BANDS) -> ScoreResult:
+        """Score an applicant; label the score with the given policy bands.
 
-        Returns a score in ``[0, 100]`` where higher is more creditworthy.
+        Returns a score in ``[0, 100]`` where higher is more creditworthy. The
+        score does not depend on ``bands``; only the band label does.
         """
         normalised = self.normalise_features(applicant)
         weighted_sum = sum(
@@ -277,8 +286,9 @@ class ScoringService:
 
         return ScoreResult(
             risk_score=risk_score,
-            decision=self.decision_for(risk_score),
-            risk_band=self.risk_band_for(risk_score),
+            decision=self.decision_for(risk_score, bands),
+            risk_band=self.risk_band_for(risk_score, bands),
+            bands=bands,
             normalised_features=normalised,
             raw_features=self._raw_feature_values(applicant),
         )
@@ -344,8 +354,9 @@ class ScoringService:
         strengths = [c for c in contributions if c.contribution > 0][:3]
 
         sentences = [
-            f"Score {result.risk_score:.1f}/100 ({result.risk_band.value}) "
-            f"resulted in a '{result.decision.value}' outcome."
+            f"Score {result.risk_score:.1f}/100 ({result.risk_band.value}). "
+            f"Policy recommendation: {RECOMMENDATION_LABELS[result.decision]}. "
+            "The final decision is made by an authorised credit officer."
         ]
         if strengths:
             sentences.append(
@@ -360,9 +371,7 @@ class ScoringService:
                 + "."
             )
         if result.decision is Decision.MANUAL_REVIEW:
-            sentences.append(
-                "Referred to a credit officer for manual verification of cash flow evidence."
-            )
+            sentences.append("Cash flow evidence should be verified before deciding.")
         return " ".join(sentences)
 
 
@@ -378,10 +387,16 @@ class ScoringService:
         application_id: int,
         business_name: str,
         applicant: SMEApplicantLike | None = None,
+        policy_version: str | None = None,
     ) -> ExplanationResponse:
         """Assemble the full explanation payload for a scored application."""
+        from services.reason_codes import reason_codes_for
+
         contributions = self.explain(result)
         return ExplanationResponse(
+            recommendation=RECOMMENDATION_OF[result.decision],
+            policy_version=policy_version,
+            reason_codes=reason_codes_for(contributions),
             application_id=application_id,
             business_name=business_name,
             risk_score=result.risk_score,
@@ -685,7 +700,7 @@ class MLScoringService(ScoringService):
         vector = np.array([[clipped[name] for name in self.feature_names]], dtype=float)
         return self.scaler.transform(vector), clipped, raw
 
-    def score(self, applicant: SMEApplicantLike) -> ScoreResult:
+    def score(self, applicant: SMEApplicantLike, bands: ScoreBands = DEMO_BANDS) -> ScoreResult:
         """Score an applicant with the trained ensemble.
 
         Returns a score in ``[0, 100]`` where higher is more creditworthy, along
@@ -701,13 +716,14 @@ class MLScoringService(ScoringService):
 
         return ScoreResult(
             risk_score=risk_score,
-            decision=self.decision_for(risk_score),
-            risk_band=self.risk_band_for(risk_score),
+            decision=self.decision_for(risk_score, bands),
+            risk_band=self.risk_band_for(risk_score, bands),
+            bands=bands,
             normalised_features=clipped,
             raw_features={name: round(value, 4) for name, value in raw.items()},
             probability_of_default=round(probability_of_default, 6),
             calibrated_pd=self.calibrated_pd(probability_of_default),
-            confidence=self._confidence(member_pds, risk_score),
+            confidence=self._confidence(member_pds, risk_score, bands),
             contributions=contributions,
         )
 
@@ -777,7 +793,9 @@ class MLScoringService(ScoringService):
             return np.zeros_like(signed)
         return signed * (gap / total)
 
-    def _confidence(self, member_pds: dict[str, float], risk_score: float) -> float:
+    def _confidence(
+        self, member_pds: dict[str, float], risk_score: float, bands: ScoreBands = DEMO_BANDS
+    ) -> float:
         """Heuristic 0-100 confidence in the decision.
 
         Combines agreement between the two ensemble members with the score's
@@ -789,8 +807,8 @@ class MLScoringService(ScoringService):
         agreement = clamp(1.0 - disagreement / CONFIDENCE_DISAGREEMENT_SPAN)
 
         distance = min(
-            abs(risk_score - REJECT_UPPER_BOUND),
-            abs(risk_score - MANUAL_REVIEW_UPPER_BOUND),
+            abs(risk_score - bands.decline_max_score),
+            abs(risk_score - bands.manual_review_max_score),
         )
         margin = clamp(distance / CONFIDENCE_MARGIN_SPAN)
 
@@ -948,9 +966,9 @@ class MLScoringService(ScoringService):
         smallest_loan = min(loan, lowest_ratio * turnover * 12.0)
         largest_turnover = max(turnover, loan / (lowest_ratio * 12.0))
 
-        targets = [(Decision.APPROVED, MANUAL_REVIEW_UPPER_BOUND)]
+        targets = [(Decision.APPROVED, result.bands.manual_review_max_score)]
         if result.decision is Decision.REJECTED:
-            targets.insert(0, (Decision.MANUAL_REVIEW, REJECT_UPPER_BOUND))
+            targets.insert(0, (Decision.MANUAL_REVIEW, result.bands.decline_max_score))
 
         searches = []
         for _, floor_score in targets:

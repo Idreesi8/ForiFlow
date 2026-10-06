@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from models.database import Application, User, get_db
 from schemas import ExplanationResponse
-from services import audit_service
+from services import audit_service, policy_service
 from services.audit_service import Action, Audit
 from services.auth_service import get_current_user
 from services.scoring_service import ScoringService, get_scoring_service
@@ -38,16 +38,38 @@ def _load_application(application_id: int, db: Session) -> Application:
 
 
 def _build_explanation(
-    application: Application, scorer: ScoringService
+    application: Application, scorer: ScoringService, db: Session
 ) -> ExplanationResponse:
-    """Recompute the explanation from the stored applicant features."""
-    result = scorer.score(application)
+    """Recompute the explanation from the stored applicant features.
+
+    The score is read against the cut-offs the application was assessed under,
+    so a later policy change does not relabel it.
+    """
+    result = scorer.score(application, policy_service.bands_for_application(db, application))
     return scorer.build_explanation(
         result,
         application_id=application.id,
         business_name=application.business_name,
         applicant=application,
+        policy_version=application.policy_version,
     )
+
+
+def _with_reason_codes(explanation: ExplanationResponse) -> ExplanationResponse:
+    """Fill in what an explanation stored before 2.0 does not carry.
+
+    Reason codes and the recommendation wording are pure functions of what is
+    already stored, so they are derived on read; the stored record is untouched.
+    """
+    from schemas import RECOMMENDATION_OF
+    from services.reason_codes import reason_codes_for
+
+    update: dict = {}
+    if not explanation.reason_codes:
+        update["reason_codes"] = reason_codes_for(explanation.feature_contributions)
+    if explanation.recommendation is None:
+        update["recommendation"] = RECOMMENDATION_OF[explanation.decision]
+    return explanation.model_copy(update=update) if update else explanation
 
 
 @router.post(
@@ -89,9 +111,9 @@ async def explain_application(
             stored = None
 
     if stored is not None and not refresh:
-        return stored
+        return _with_reason_codes(stored)
 
-    explanation = _build_explanation(application, scorer)
+    explanation = _build_explanation(application, scorer, db)
     if stored is None:
         application.shap_explanation_json = json.dumps(
             explanation.model_dump(mode="json")
@@ -130,10 +152,10 @@ async def get_explanation(
 
     if application.shap_explanation_json:
         try:
-            return ExplanationResponse.model_validate_json(
-                application.shap_explanation_json
+            return _with_reason_codes(
+                ExplanationResponse.model_validate_json(application.shap_explanation_json)
             )
         except ValueError:
             pass
 
-    return _build_explanation(application, scorer)
+    return _build_explanation(application, scorer, db)

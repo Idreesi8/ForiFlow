@@ -15,6 +15,7 @@ from pathlib import Path
 from sqlalchemy import (
     DDL,
     JSON,
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -25,6 +26,7 @@ from sqlalchemy import (
     Text,
     create_engine,
     event,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import (
@@ -187,6 +189,78 @@ class ModelVersion(Base):
         return f"<ModelVersion id={self.id} version={self.version!r} status={self.status!r}>"
 
 
+class CreditPolicy(Base):
+    """One version of the credit policy: the cut-offs and authority limits.
+
+    The model produces a score; the policy says what the score recommends and
+    who may approve what. A version's figures are never edited: a change is a
+    new version. One version is active at a time (a partial unique index), and
+    every application stores the version it was assessed under, so retiring a
+    policy does not change what any past application was recommended.
+
+    The shipped version is a demo policy. Its cut-offs are round numbers, not
+    thresholds validated for Pakistani SME lending.
+    """
+
+    __tablename__ = "credit_policies"
+    __table_args__ = (
+        CheckConstraint("status IN ('draft', 'active', 'retired')", name="ck_credit_policies_status"),
+        CheckConstraint(
+            "decline_max_score >= 0 AND decline_max_score < manual_review_max_score "
+            "AND manual_review_max_score <= 100",
+            name="ck_credit_policies_bands",
+        ),
+        CheckConstraint(
+            "manager_approval_limit_pkr >= 0", name="ck_credit_policies_manager_limit"
+        ),
+        Index(
+            "uq_credit_policies_one_active",
+            "status",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    version: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 'draft': created, never used. 'active': scoring uses it. 'retired': was active.
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
+    # Score at or below this: recommend Decline (high risk).
+    decline_max_score: Mapped[float] = mapped_column(Float, nullable=False)
+    # Score above decline_max and at or below this: recommend Manual Review
+    # (medium risk). Above it: recommend Approve (low risk).
+    manual_review_max_score: Mapped[float] = mapped_column(Float, nullable=False)
+    # Largest facility a manager may approve alone; above it an admin approves.
+    manager_approval_limit_pkr: Mapped[float] = mapped_column(Float, nullable=False)
+    # True: only an admin may approve against a Decline recommendation.
+    decline_override_admin_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    activated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def is_active(self) -> bool:
+        """True for the version new assessments are made under."""
+        return self.status == "active"
+
+    @property
+    def approve_above_score(self) -> float:
+        """Scores above this are recommended for approval."""
+        return self.manual_review_max_score
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging helper
+        return f"<CreditPolicy id={self.id} version={self.version!r} status={self.status!r}>"
+
+
 class AuditLog(Base):
     """One thing someone did, written once and never changed.
 
@@ -293,6 +367,14 @@ class Application(Base):
             "review_decision IS NULL OR review_decision IN ('Approved', 'Rejected')",
             name="ck_applications_review_decision",
         ),
+        CheckConstraint(
+            "decision_status IN ('Pending', 'Escalated', 'Approved', 'Rejected', 'Superseded')",
+            name="ck_applications_decision_status",
+        ),
+        CheckConstraint(
+            "decision_source IS NULL OR decision_source IN ('officer', 'legacy_auto')",
+            name="ck_applications_decision_source",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -327,6 +409,48 @@ class Application(Base):
     scoring_engine: Mapped[str | None] = mapped_column(String(16), nullable=True)
     model_version_id: Mapped[int | None] = mapped_column(
         ForeignKey("model_versions.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+
+    # --- model assessment, fixed at scoring time ---
+    # The model's own probability of default (trained on balanced data, so it
+    # ranks well but runs high) and the calibrated one shown to officers.
+    # NULL for the surrogate engine and for rows scored before migration 0007.
+    raw_pd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    calibrated_pd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 'High Risk' / 'Medium Risk' / 'Low Risk' under the policy below.
+    risk_band: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # --- policy recommendation, fixed at scoring time ---
+    # ``decision`` above holds the recommendation in its original vocabulary
+    # ('Approved' = recommend approve). It is never a final decision.
+    # NULL policy columns mean "scored before policies were recorded".
+    policy_id: Mapped[int | None] = mapped_column(
+        ForeignKey("credit_policies.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    policy_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    policy_evaluation: Mapped[dict | None] = mapped_column(JsonColumn, nullable=True)
+    reason_codes: Mapped[list | None] = mapped_column(JsonColumn, nullable=True)
+
+    # --- human decision ---
+    # 'Pending' until an authorised officer decides; 'Escalated' once a
+    # manager has passed it to an admin; 'Superseded' when it was re-scored
+    # before any decision. ``review_*`` below hold the officer's decision.
+    decision_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="Pending", index=True
+    )
+    # 'officer': a named officer decided. 'legacy_auto': decided by the score
+    # band alone under the rule in force before 2.0, with no officer recorded.
+    decision_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    escalated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    escalation_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The earlier assessment this one replaced. That row is kept, unchanged.
+    supersedes_application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applications.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    # Set on the replaced row, so it can be followed forward as well as back.
+    superseded_by_application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applications.id", ondelete="RESTRICT"), nullable=True
     )
 
     # Line of business, for portfolio concentration. NULL before migration 0004.
@@ -369,6 +493,55 @@ class Application(Base):
     ews_records: Mapped[list["EWSTracking"]] = relationship(
         back_populates="borrower", cascade="all, delete-orphan"
     )
+
+    @property
+    def authority_view(self) -> dict:
+        """Who may approve this application now, and the limit that applies.
+
+        Read from the policy snapshot stored at scoring time. An application
+        scored before policies were recorded has none, so the active policy
+        governs it; that is the policy an officer deciding it today works under.
+        """
+        from sqlalchemy import select
+        from sqlalchemy.orm import object_session
+
+        from schemas import Decision
+        from services.policy_rules import (
+            DEMO_MANAGER_APPROVAL_LIMIT_PKR,
+            approval_authority,
+        )
+
+        snapshot = (self.policy_evaluation or {}).get("authority_rule")
+        if snapshot is None:
+            session = object_session(self)
+            active = (
+                session.scalar(select(CreditPolicy).where(CreditPolicy.status == "active"))
+                if session is not None
+                else None
+            )
+            snapshot = {
+                "manager_approval_limit_pkr": (
+                    active.manager_approval_limit_pkr
+                    if active is not None
+                    else DEMO_MANAGER_APPROVAL_LIMIT_PKR
+                ),
+                "decline_override_admin_only": (
+                    active.decline_override_admin_only if active is not None else True
+                ),
+            }
+        role, reason = approval_authority(
+            loan_amount_pkr=self.loan_amount_pkr,
+            recommendation=Decision(self.decision),
+            manager_approval_limit_pkr=float(snapshot["manager_approval_limit_pkr"]),
+            decline_override_admin_only=bool(snapshot["decline_override_admin_only"]),
+            escalated=self.decision_status == "Escalated",
+        )
+        return {
+            "approve_requires": role,
+            "reason": reason,
+            "manager_approval_limit_pkr": float(snapshot["manager_approval_limit_pkr"]),
+            "decline_override_admin_only": bool(snapshot["decline_override_admin_only"]),
+        }
 
     @property
     def borrower_public_id(self) -> str | None:

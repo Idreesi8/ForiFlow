@@ -277,6 +277,9 @@ def history(db: Session, borrower: Borrower) -> BorrowerHistory:
                 tenure_months=application.tenure_months,
                 risk_score=application.risk_score,
                 decision=summary.decision,
+                recommendation=summary.recommendation,
+                policy_version=application.policy_version,
+                decision_status=summary.decision_status,
                 final_decision=summary.final_decision,
                 review_decision=summary.review_decision,
                 reviewed_by=application.reviewed_by,
@@ -320,6 +323,9 @@ def history(db: Session, borrower: Borrower) -> BorrowerHistory:
             ),
             scoring_engines_used=list(
                 dict.fromkeys(row.scoring_engine or "unrecorded" for row in rows)
+            ),
+            policy_versions_used=list(
+                dict.fromkeys(row.policy_version or "unrecorded" for row in rows)
             ),
         ),
         applications=rows,

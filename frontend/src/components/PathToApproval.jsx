@@ -2,7 +2,8 @@ import { bandForDecision } from "../lib/decisions.js";
 import { formatPKR } from "../lib/format.js";
 
 /**
- * What would move a Rejected or Manual Review application into a better band.
+ * What would move a Decline or Manual Review recommendation into a better band.
+ * A better recommendation is still not an approval: an officer decides.
  *
  * The API finds each figure by searching the monotone model: a smaller
  * facility or a higher turnover can only score the same or better, so there is
@@ -15,7 +16,7 @@ export default function PathToApproval({ path, compact = false }) {
   return (
     <div className="rounded-lg border border-brand-200 bg-brand-50 px-4 py-3">
       <p className="text-xs font-semibold tracking-wide text-brand-800 uppercase">
-        Path to approval
+        Path to a better recommendation
       </p>
       {compact ? null : (
         <p className="mt-1 text-xs text-slate-600">
@@ -31,7 +32,9 @@ export default function PathToApproval({ path, compact = false }) {
             step.max_loan_pkr !== null || step.required_monthly_turnover_pkr !== null;
           return (
             <li key={step.target_decision} className="text-sm text-slate-800">
-              <span className={`badge mr-2 ${band.badgeClass}`}>{step.target_decision}</span>
+              <span className={`badge mr-2 bg-white ring-1 ring-slate-300 ${band.textClass}`}>
+                Recommend {band.recommendation}
+              </span>
               {reachable ? (
                 <span>
                   {step.max_loan_pkr !== null ? (

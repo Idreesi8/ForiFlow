@@ -1,13 +1,23 @@
-/** Credit policy bands shared by the dial, tables and charts. */
+/**
+ * Bands shared by the dial, tables and charts.
+ *
+ * Three different things are kept apart everywhere in the dashboard:
+ *   - the model's assessment (score, risk band),
+ *   - the policy's recommendation (Approve / Manual Review / Decline),
+ *   - the officer's decision (Approved / Rejected, or still pending).
+ * The API field `decision` holds the recommendation in its original wording
+ * ("Approved" = recommend approve). It is never the final decision.
+ */
 
 export const DECISION_APPROVED = "Approved";
 export const DECISION_MANUAL_REVIEW = "Manual Review";
 export const DECISION_REJECTED = "Rejected";
 
-/** Policy matrix: 0-40 Rejected, 41-70 Manual Review, 71-100 Approved. */
+/** Demo policy: 0-40 Decline, 41-70 Manual Review, 71-100 Approve (recommendations). */
 export const SCORE_BANDS = [
   {
     decision: DECISION_REJECTED,
+    recommendation: "Decline",
     riskBand: "High Risk",
     min: 0,
     max: 40,
@@ -22,6 +32,7 @@ export const SCORE_BANDS = [
   },
   {
     decision: DECISION_MANUAL_REVIEW,
+    recommendation: "Manual Review",
     riskBand: "Medium Risk",
     min: 41,
     max: 70,
@@ -36,6 +47,7 @@ export const SCORE_BANDS = [
   },
   {
     decision: DECISION_APPROVED,
+    recommendation: "Approve",
     riskBand: "Low Risk",
     min: 71,
     max: 100,
@@ -66,19 +78,25 @@ export function bandForDecision(decision) {
   return SCORE_BANDS.find((band) => band.decision === decision) ?? FALLBACK_BAND;
 }
 
-/**
- * The decision that stands: the model's band, or the officer's call on a
- * Manual Review case. `null` while that review is pending.
- */
-export function finalDecisionOf(application) {
-  if (!application) return null;
-  if (application.final_decision !== undefined) return application.final_decision;
-  // Payloads without the field (older API) fall back to the model band.
-  return application.decision === DECISION_MANUAL_REVIEW ? null : application.decision;
+/** The recommendation wording for a stored `decision` value. */
+export function recommendationLabel(decision) {
+  return bandForDecision(decision).recommendation;
 }
 
+/** The officer's decision: "Approved", "Rejected", or `null` while undecided. */
+export function finalDecisionOf(application) {
+  if (!application) return null;
+  return application.final_decision ?? null;
+}
+
+/** Pending, Escalated, Approved, Rejected or Superseded. */
+export function decisionStatusOf(application) {
+  return application?.decision_status ?? (finalDecisionOf(application) || "Pending");
+}
+
+/** Still waiting for an officer (pending, or escalated to an admin). */
 export function isPendingReview(application) {
-  return application?.decision === DECISION_MANUAL_REVIEW && finalDecisionOf(application) === null;
+  return ["Pending", "Escalated"].includes(decisionStatusOf(application));
 }
 
 /** Alert lifecycle styling. Active alerts are always red. */

@@ -100,6 +100,21 @@ export const reviewApplication = (applicationId, { decision, note }) =>
     .post(`/score/applications/${applicationId}/review`, { decision, note })
     .then((response) => response.data);
 
+/** Record the officer's decision: "Approved", "Rejected" or "Escalated". */
+export const decideApplication = (applicationId, payload) =>
+  client
+    .post(`/score/applications/${applicationId}/decision`, payload)
+    .then((response) => response.data);
+
+export const fetchPolicyVersions = () =>
+  client.get("/policy/versions").then((response) => response.data);
+
+export const createPolicyVersion = (payload) =>
+  client.post("/policy/versions", payload).then((response) => response.data);
+
+export const activatePolicyVersion = (policyId) =>
+  client.post(`/policy/versions/${policyId}/activate`).then((response) => response.data);
+
 export const takeAlertForReview = (alertId) =>
   client.patch(`/ews/alerts/${alertId}/review`).then((response) => response.data);
 

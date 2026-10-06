@@ -17,6 +17,7 @@ from tests.conftest import (
     TEST_ADMIN_PASSWORD,
     TEST_ADMIN_USERNAME,
     bearer_header,
+    decide,
 )
 
 NOTE = "Clean receipts for five years; facility is modest against turnover."
@@ -72,6 +73,7 @@ def test_scoring_writes_the_borrower_application_score_and_explanation(
         Action.MODEL_REGISTERED,
         Action.APPLICATION_CREATED,
         Action.APPLICATION_SCORED,
+        Action.RECOMMENDATION_GENERATED,
         Action.EXPLANATION_GENERATED,
     ):
         assert expected in actions
@@ -79,7 +81,11 @@ def test_scoring_writes_the_borrower_application_score_and_explanation(
     scored = _entries(db_session_factory, action=Action.APPLICATION_SCORED)[0]
     assert scored.entity_type == "application" and scored.entity_id == application_id
     assert scored.new_state["risk_score"] == body["risk_score"]
-    assert scored.new_state["decision"] == body["decision"]
+    # The score is the model's; the recommendation has its own entry.
+    assert "decision" not in scored.new_state
+    recommended = _entries(db_session_factory, action=Action.RECOMMENDATION_GENERATED)[0]
+    assert recommended.new_state["recommendation"] == body["recommendation"]
+    assert recommended.new_state["decision_status"] == "Pending"
     assert scored.details["model_version"] == body["model_version"]
     assert scored.details["scoring_engine"] == "surrogate"
 
@@ -157,7 +163,11 @@ def test_officer_decision_keeps_before_and_after(client: TestClient, db_session_
     )
 
     entry = _entries(db_session_factory, action=Action.OFFICER_DECISION)[0]
-    assert entry.previous_state == {"decision": "Manual Review", "review_decision": None}
+    assert entry.previous_state == {
+        "decision": "Manual Review",
+        "review_decision": None,
+        "decision_status": "Pending",
+    }
     assert entry.new_state["review_decision"] == "Approved"
     assert entry.new_state["review_note"] == NOTE
     assert entry.new_state["reviewed_by"] == TEST_ADMIN_USERNAME
@@ -187,6 +197,7 @@ def test_a_corrected_month_keeps_the_figures_it_replaced(
     client: TestClient, db_session_factory
 ) -> None:
     application_id = client.post("/score", json=STRONG_APPLICANT).json()["application_id"]
+    decide(client, application_id)
     assert _month(client, application_id, "Late 60-89", amount_paid_pkr=1000).status_code == 201
     assert _month(client, application_id, "On Time", amount_paid_pkr=66_000).status_code == 201
 
@@ -205,6 +216,7 @@ def test_an_alert_is_audited_from_raised_to_resolved(
     client: TestClient, db_session_factory
 ) -> None:
     application_id = client.post("/score", json=STRONG_APPLICANT).json()["application_id"]
+    decide(client, application_id)
     alert = _month(client, application_id, "Default").json()["alert"]
     client.patch(f"/ews/alerts/{alert['id']}/review")
     client.patch(f"/ews/alerts/{alert['id']}/resolve", json={"note": "Handed to remedial."})
@@ -224,6 +236,7 @@ def test_an_alert_closed_by_a_correction_is_audited(
     client: TestClient, db_session_factory
 ) -> None:
     application_id = client.post("/score", json=STRONG_APPLICANT).json()["application_id"]
+    decide(client, application_id)
     _month(client, application_id, "Default")
     _month(client, application_id, "On Time")
 
@@ -414,6 +427,7 @@ def test_the_trail_is_newest_first_and_filters(client: TestClient) -> None:
     assert {row["action"] for row in one} == {
         "application.created",
         "application.scored",
+        "recommendation.generated",
         "explanation.generated",
     }
     assert client.get("/audit/logs", params={"username": "nobody"}).json() == []

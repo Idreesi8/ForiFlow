@@ -14,7 +14,7 @@ export function getStoredRole() {
   return window.localStorage.getItem(ROLE_KEY) ?? "";
 }
 
-/** Managers and admins decide Manual Review cases and resolve alerts. */
+/** Managers and admins decide applications and resolve alerts. */
 export function canDecideCredit() {
   return ["admin", "manager"].includes(getStoredRole());
 }

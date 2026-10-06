@@ -120,6 +120,11 @@ backend/
   services/audit_service.py   # append-only audit trail (who, what, when)
   services/borrower_service.py# borrowers, repeat-application linkage, history
   services/model_registry.py  # which model scored what (model_versions)
+  services/policy_rules.py    # pure policy rules: score -> band, recommendation, authority
+  services/policy_service.py  # versioned credit policy (credit_policies)
+  services/decision_service.py# the human decision, escalation, re-score chain
+  services/reason_codes.py    # coded risk factors derived from SHAP
+  routers/policy.py           # read the policy; admin creates and activates versions
   routers/borrowers.py        # borrowers and their history
   routers/audit.py            # read-only audit trail (admin)
   scripts/seed_admin.py       # create or reset an officer account

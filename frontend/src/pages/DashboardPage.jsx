@@ -62,7 +62,7 @@ export default function DashboardPage() {
   const decisionData = useMemo(
     () =>
       SCORE_BANDS.map((band) => ({
-        name: band.decision,
+        name: band.recommendation,
         value: portfolio?.model_decisions?.[band.decision] ?? 0,
         color: band.color,
       })).filter((item) => item.value > 0),
@@ -130,7 +130,7 @@ export default function DashboardPage() {
       <section className="grid gap-6 xl:grid-cols-3">
         <div className="card">
           <div className="card-header">
-            <h2 className="card-title">Model decision mix</h2>
+            <h2 className="card-title">Recommendation mix</h2>
           </div>
           <div className="px-5 py-4" style={{ height: 300 }}>
             {decisionData.length === 0 ? (

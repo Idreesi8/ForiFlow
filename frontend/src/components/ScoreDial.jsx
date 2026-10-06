@@ -7,7 +7,7 @@ import { SCORE_BANDS, bandForDecision, bandForScore } from "../lib/decisions.js"
  * Semi-circular credit score gauge (0-100) drawn with Recharts.
  *
  * The outer ring shows the three policy bands (red 0-40 Rejected, yellow 41-70
- * Manual Review, green 71-100 Approved), the inner arc fills up to the score
+ * Manual Review, green 71-100 Approve), the inner arc fills up to the score
  * and the needle points at the exact value. The needle and hub are drawn in an
  * overlay SVG so the geometry stays pixel-exact at any `size`.
  */
@@ -66,7 +66,7 @@ export default function ScoreDial({
         role="img"
         aria-label={
           hasScore
-            ? `Credit score ${value.toFixed(1)} out of 100, ${decision ?? band.decision}`
+            ? `Risk score ${value.toFixed(1)} out of 100, ${riskBand ?? band.riskBand}`
             : "Credit score not available"
         }
       >
@@ -165,11 +165,13 @@ export default function ScoreDial({
             className={`badge px-3 py-1.5 text-sm ${band.badgeClass}`}
             data-testid="score-decision"
           >
-            {decision ?? band.decision}
-          </span>
-          <span className="text-xs font-medium text-slate-500">
             {riskBand ?? band.riskBand}
           </span>
+          {decision ? (
+            <span className="text-xs font-medium text-slate-500">
+              Recommendation: {band.recommendation}
+            </span>
+          ) : null}
         </div>
       ) : (
         <p className="mt-1 text-sm text-slate-500">Awaiting assessment</p>
@@ -206,7 +208,7 @@ export default function ScoreDial({
                     isActive ? item.textClass : "text-slate-500"
                   }`}
                 >
-                  {item.decision}
+                  {item.riskBand}
                 </span>
               </li>
             );

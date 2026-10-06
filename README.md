@@ -29,8 +29,9 @@ Pakistani SMEs face a financing gap:
 ForiFlow is an end-to-end AI credit intelligence platform that:
 
 - Scores unbanked SMEs using **alternative data** (digital payments and other officer-entered signals)
-- Provides **SHAP explainability** for every decision, stored on-premise to support an SBP-oriented review (ForiFlow is not SBP-certified and has no live ECIB connector)
-- Monitors approved borrowers (model-approved, or Manual Review approved by an officer) with an **Early Warning System** that raises an alert when the monthly score drops more than 15 points below origination, or when a Markov chain puts default within three months at 10% or more. The chain is fitted on real monthly repayment histories (UCI credit card accounts, Taiwan 2005), not on SME loans
+- Gives a risk assessment and a policy **recommendation**; an authorised credit officer makes every decision
+- Provides **SHAP explainability** for every assessment, stored on-premise to support an SBP-oriented review (ForiFlow is not SBP-certified and has no live ECIB connector)
+- Monitors approved borrowers (approved by an officer) with an **Early Warning System** that raises an alert when the monthly score drops more than 15 points below origination, or when a Markov chain puts default within three months at 10% or more. The chain is fitted on real monthly repayment histories (UCI credit card accounts, Taiwan 2005), not on SME loans
 
 ## 🏗️ Architecture
 
@@ -59,17 +60,18 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 | Feature | Description |
 |---------|-------------|
 | 🎯 **AI Credit Scoring** | XGBoost + Random Forest soft-voting ensemble. Score: 0-100 |
-| 📊 **SHAP Waterfall Charts** | Every decision explained with feature attribution |
+| 📊 **SHAP Waterfall Charts** | Every assessment explained with feature attribution, plus coded top risk factors (R01, R02, …) |
 | 📈 **Calibrated PD & Model Performance** | Each score carries a probability of default calibrated on out-of-fold predictions; a Model Performance page shows the hold-out ROC curve, confusion matrix, threshold table, default rate per band and the six-model comparison |
 | 🧭 **Path to approval** | For a rejected or referred applicant, the exact facility size and the evidenced turnover at which the same business would reach the next band, found by searching the monotone model |
 | 🧾 **Turnover from a statement** | Upload a wallet or bank statement CSV; ForiFlow computes monthly turnover from the transactions, flags what to check, and records on the credit file whether the scored figures match the statement |
 | 📨 **Payment reminders** | Installments overdue, due within a week or in arrears, each with a drafted message in English and Roman Urdu to copy or open in WhatsApp |
 | 📉 **Population drift monitor** | Population Stability Index of the score and each model input against the training data, with the value chance alone would give at that sample size, so a small portfolio is not misread as drift |
+| 🧑‍⚖️ **Decision support, not auto-approval** | The model gives a risk assessment, a versioned and configurable credit policy turns it into a recommendation, and an authorised officer makes the decision. No score approves or rejects a loan |
 | 🧾 **Traceability** | Every application is filed under a borrower (one business, many applications, full history), stores the model version and engine that scored it, and every action is written to an append-only audit trail the database itself refuses to edit |
 | ⚖️ **Group audit** | Approval rate and pricing accuracy per age band, income quarter, housing status and loan purpose on the hold-out: attributes the model never reads. Shows where the model is too harsh or too lenient, and states what cannot be audited (no gender in the data) |
 | 🖨️ **Credit memo** | A printable one-page record per application: request, score, factor points, turnover evidence, decision and reason |
 | 💼 **Loan book analytics** | Disbursed, collected, overdue and outstanding amounts, portfolio at risk (30+ days), defaults, a decision matrix and a per-sector table, from the months officers record |
-| ✅ **Officer decision on Manual Review** | An admin approves or rejects each 41–70 case with a written reason; the model band, the officer's call, name and time are all kept, and only approved facilities can be monitored |
+| ✅ **Officer decision on every application** | A manager or admin approves, rejects or escalates each application with a written reason, whatever the policy recommended; the recommendation, the officer's decision, name and time are all kept, and only approved facilities can be monitored |
 | 🚨 **Early Warning System** | Officer-submitted monthly observation. A Markov chain fitted on 24,000 real repayment histories gives the probability of default within three months and the expected days to default; an alert fires at 10% or more, or on a >15-point score drop |
 | 🏦 **PKR Banking Context** | PKR amounts; designed for SBP-oriented explainability (not SBP-certified, no live ECIB feed) |
 | 🐳 **Docker Ready** | One-command deployment for bank demos |

@@ -158,7 +158,12 @@ def test_build_explanation_returns_narrative_and_factors(
     assert explanation.application_id == 7
     assert explanation.risk_score == result.risk_score
     assert explanation.top_negative_factors
-    assert "Rejected" in explanation.narrative
+    # Worded as a recommendation, never as an outcome.
+    assert "Policy recommendation: Decline" in explanation.narrative
+    assert "authorised credit officer" in explanation.narrative
+    assert "Rejected" not in explanation.narrative
+    assert explanation.recommendation == "Decline"
+    assert explanation.decision == "Rejected"  # the stored wording is kept
     assert "no live ECIB" in explanation.compliance_note
     assert "not SBP-certified" in explanation.compliance_note
 

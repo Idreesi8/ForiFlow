@@ -9,12 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from config import manager_approval_limit_pkr
 from models.database import Alert, Application, User, get_db, utcnow
 from schemas import (
     AlertStatus,
     ApplicationSummary,
     Decision,
+    DecisionHistory,
+    DecisionStatus,
+    RECOMMENDATION_OF,
     OfficerDecision,
     PortfolioStats,
     ReviewRequest,
@@ -24,7 +26,13 @@ from schemas import (
     StatementRequest,
     UserRole,
 )
-from services import audit_service, borrower_service, model_registry
+from services import (
+    audit_service,
+    borrower_service,
+    decision_service,
+    model_registry,
+    policy_service,
+)
 from services.audit_service import Action, Audit
 from services.auth_service import get_current_user, require_manager
 from services.scoring_service import ScoringService, get_scoring_service
@@ -58,25 +66,71 @@ async def score_application(
         bool, Query(description="Embed the SHAP explanation in the response.")
     ] = True,
 ) -> ScoreResponse:
-    """Score an SME application, persist it and return the credit decision.
+    """Assess an SME application and return a recommendation. Nothing is decided here.
 
-    The score runs from 0 (worst) to 100 (best) and maps onto the ForiFlow
-    policy bands: 0-40 ``Rejected``, 41-70 ``Manual Review``, 71-100
-    ``Approved``.
+    Three separate things come back:
+
+    * **assessment**: what the model said (score 0-100, probability of default).
+    * **policy**: what the active credit policy recommends for that score
+      (Approve / Manual Review / Decline) and who may approve.
+    * **officer_decision**: always ``Pending``. An authorised officer records
+      the decision with ``POST /score/applications/{id}/decision``.
+
+    ``decision`` is the recommendation in the wording used since 1.0
+    (``Approved`` means "recommend approve"); it is not a final decision.
 
     The application is filed under a borrower: the one named by
     ``borrower_public_id``, else the one holding the given CNIC or NTN, else a
-    new one opened from the application's own details. The model version and
-    engine that produced the score are stored with it, and the borrower, the
-    application, the score and the explanation each get an audit entry in the
-    same transaction.
+    new one. ``rescore_of_application_id`` re-assesses an undecided application:
+    a new application is stored, the earlier one is kept unchanged and marked
+    Superseded, and the audit trail records who re-scored it and which inputs
+    changed.
     """
     evidence = _turnover_evidence(applicant)
+
+    previous: Application | None = None
+    if applicant.rescore_of_application_id is not None:
+        previous = _load_application(applicant.rescore_of_application_id, db, for_update=True)
+        if previous.decision_status not in decision_service.OPEN_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Application {previous.id} is {previous.decision_status}. Only an "
+                    "undecided application can be re-scored; open a new application instead."
+                ),
+            )
+        if previous.borrower is None:  # pragma: no cover - guarded by NOT NULL
+            raise HTTPException(status_code=409, detail="The application has no borrower.")
+        if (
+            applicant.borrower_public_id is not None
+            and applicant.borrower_public_id != previous.borrower.public_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Application {previous.id} belongs to borrower "
+                    f"{previous.borrower.public_id}. A re-score stays with that borrower."
+                ),
+            )
+        applicant = applicant.model_copy(
+            update={"borrower_public_id": previous.borrower.public_id}
+        )
+
     borrower, borrower_created = borrower_service.resolve_for_application(
         db, applicant, actor=officer, context=audit
     )
     served_model = model_registry.ensure_registered(db, scorer, audit)
-    result = scorer.score(applicant)
+    policy = policy_service.active_policy(db)
+
+    # Model: the assessment. Policy: what it recommends. Neither decides.
+    result = scorer.score(applicant, policy_service.bands_of(policy))
+    evaluation = policy_service.evaluate(policy, result.risk_score, applicant.loan_amount_pkr)
+
+    prior = db.execute(
+        select(func.count(Application.id), func.max(Application.id)).where(
+            Application.borrower_id == borrower.id
+        )
+    ).one()
 
     application = Application(
         borrower_id=borrower.id,
@@ -99,7 +153,15 @@ async def score_application(
         contact_phone=applicant.contact_phone,
         turnover_evidence_json=json.dumps(evidence) if evidence else None,
         risk_score=result.risk_score,
-        decision=result.decision.value,
+        raw_pd=result.probability_of_default,
+        calibrated_pd=result.calibrated_pd,
+        risk_band=evaluation.risk_band.value,
+        # The recommendation, in the stored wording. Not a decision.
+        decision=evaluation.recommendation.value,
+        policy_id=evaluation.policy_id,
+        policy_version=evaluation.policy_version,
+        policy_evaluation=evaluation.snapshot(),
+        decision_status=DecisionStatus.PENDING.value,
         scored_by=officer.username,
     )
 
@@ -111,10 +173,12 @@ async def score_application(
         application_id=application.id,
         business_name=application.business_name,
         applicant=applicant,
+        policy_version=evaluation.policy_version,
     )
     # Persisted so the rationale can be retrieved later even if the model
     # is retrained. Not an SBP certification.
     application.shap_explanation_json = json.dumps(explanation.model_dump(mode="json"))
+    application.reason_codes = [code.model_dump() for code in explanation.reason_codes]
 
     audit_service.record(
         db,
@@ -138,6 +202,11 @@ async def score_application(
         details={
             "borrower_created": borrower_created,
             "turnover_from_statement": bool(evidence and evidence.get("matches_statement")),
+            # Earlier applications on file for this borrower, so repeated
+            # attempts for the same business are visible from the first entry.
+            "borrower_prior_applications": int(prior[0]),
+            "borrower_previous_application_id": prior[1],
+            "rescore_of_application_id": previous.id if previous is not None else None,
         },
         context=audit,
     )
@@ -149,8 +218,7 @@ async def score_application(
         actor=officer,
         new={
             "risk_score": result.risk_score,
-            "decision": result.decision.value,
-            "risk_band": result.risk_band.value,
+            "probability_of_default_raw": result.probability_of_default,
             "probability_of_default": result.calibrated_pd,
         },
         details={
@@ -159,6 +227,30 @@ async def score_application(
             "model_version_id": served_model.id,
             "artifact_sha256": served_model.artifact_sha256,
             "fallback_reason": served_model.fallback_reason,
+        },
+        context=audit,
+    )
+    audit_service.record(
+        db,
+        action=Action.RECOMMENDATION_GENERATED,
+        entity_type="application",
+        entity_id=application.id,
+        actor=officer,
+        new={
+            "recommendation": RECOMMENDATION_OF[evaluation.recommendation].value,
+            "risk_band": evaluation.risk_band.value,
+            "decision_status": DecisionStatus.PENDING.value,
+        },
+        details={
+            "policy_id": evaluation.policy_id,
+            "policy_version": evaluation.policy_version,
+            "policy_name": evaluation.policy_name,
+            "triggered_rules": evaluation.triggered_rules,
+            "approve_requires": evaluation.approve_requires,
+            "authority_reason": evaluation.authority_reason,
+            "manager_approval_limit_pkr": evaluation.manager_approval_limit_pkr,
+            "risk_score": result.risk_score,
+            "reason_codes": [code.code for code in explanation.reason_codes],
         },
         context=audit,
     )
@@ -177,9 +269,12 @@ async def score_application(
         },
         context=audit,
     )
+    if previous is not None:
+        decision_service.supersede(db, previous, application, officer=officer, context=audit)
 
     db.commit()
     db.refresh(application)
+    summary = ApplicationSummary.model_validate(application)
 
     return ScoreResponse(
         application_id=application.id,
@@ -189,8 +284,8 @@ async def score_application(
         tenure_months=application.tenure_months,
         monthly_installment_pkr=applicant.monthly_installment_pkr,
         risk_score=application.risk_score,
-        decision=result.decision,
-        risk_band=result.risk_band,
+        decision=evaluation.recommendation,
+        risk_band=evaluation.risk_band,
         confidence=result.confidence,
         model_version=application.model_version,
         scoring_engine=application.scoring_engine,
@@ -198,6 +293,14 @@ async def score_application(
         borrower_public_id=borrower.public_id,
         borrower_created=borrower_created,
         probability_of_default=result.calibrated_pd,
+        recommendation=summary.recommendation,
+        policy_version=application.policy_version,
+        decision_status=summary.decision_status,
+        assessment=summary.assessment,
+        policy=summary.policy,
+        officer_decision=summary.officer_decision,
+        reason_codes=explanation.reason_codes,
+        supersedes_application_id=application.supersedes_application_id,
         explanation=explanation if include_explanation else None,
         created_at=application.created_at,
         scored_by=application.scored_by,
@@ -212,15 +315,20 @@ async def score_application(
 async def list_applications(
     db: DbSession,
     decision: Annotated[
-        Decision | None, Query(description="Filter by the model's credit decision.")
+        Decision | None,
+        Query(description="Filter by the policy recommendation (legacy wording)."),
     ] = None,
     pending_review: Annotated[
         bool | None,
-        Query(description="true: Manual Review cases still awaiting an officer decision."),
+        Query(description="true: applications still awaiting an officer decision."),
     ] = None,
     final_decision: Annotated[
         OfficerDecision | None,
-        Query(description="The decision that stands: the model band, or the officer's call."),
+        Query(description="The officer's decision: Approved or Rejected."),
+    ] = None,
+    decision_status: Annotated[
+        DecisionStatus | None,
+        Query(description="Pending, Escalated, Approved, Rejected or Superseded."),
     ] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -230,17 +338,13 @@ async def list_applications(
     if decision is not None:
         statement = statement.where(Application.decision == decision.value)
     if pending_review is True:
-        statement = statement.where(
-            Application.decision == Decision.MANUAL_REVIEW.value,
-            Application.review_decision.is_(None),
-        )
+        statement = statement.where(_is_open())
     elif pending_review is False:
-        statement = statement.where(
-            (Application.decision != Decision.MANUAL_REVIEW.value)
-            | Application.review_decision.is_not(None)
-        )
+        statement = statement.where(~_is_open())
     if final_decision is not None:
         statement = statement.where(_final_is(final_decision.value))
+    if decision_status is not None:
+        statement = statement.where(Application.decision_status == decision_status.value)
 
     applications = db.scalars(statement.offset(offset).limit(limit)).all()
     return [ApplicationSummary.model_validate(app) for app in applications]
@@ -258,14 +362,22 @@ SCORE_BUCKETS: tuple[tuple[str, float, float], ...] = (
 
 
 def _final_is(decision: str):
-    """SQL condition: the decision that stands equals ``decision``."""
-    return or_(
-        Application.decision == decision,
-        and_(
-            Application.decision == Decision.MANUAL_REVIEW.value,
-            Application.review_decision == decision,
-        ),
-    )
+    """SQL condition: an officer's decision on the application equals ``decision``."""
+    return Application.decision_status == decision
+
+
+def _current():
+    """SQL condition: not an assessment that was replaced by a re-score.
+
+    A superseded assessment is kept and listed, but it is not a separate
+    application, so the totals leave it out.
+    """
+    return Application.decision_status != DecisionStatus.SUPERSEDED.value
+
+
+def _is_open():
+    """SQL condition: the application still awaits an officer decision."""
+    return Application.decision_status.in_(decision_service.OPEN_STATUSES)
 
 
 def _in_bucket(lower: float, upper: float):
@@ -321,13 +433,14 @@ async def summarise_statement(body: StatementRequest) -> dict:
     summary="Portfolio totals for the dashboard",
 )
 async def portfolio_stats(db: DbSession) -> PortfolioStats:
-    """Counts, exposure, score histogram and open alerts over every row."""
+    """Counts, exposure, score histogram and open alerts.
+
+    Assessments replaced by a re-score are left out; ``superseded_assessments``
+    says how many there are.
+    """
     approved = _final_is(Decision.APPROVED.value)
     rejected = _final_is(Decision.REJECTED.value)
-    pending = and_(
-        Application.decision == Decision.MANUAL_REVIEW.value,
-        Application.review_decision.is_(None),
-    )
+    pending = _is_open()
     totals = db.execute(
         select(
             func.count(Application.id),
@@ -340,14 +453,16 @@ async def portfolio_stats(db: DbSession) -> PortfolioStats:
                 func.count(case((_in_bucket(lower, upper), 1)))
                 for _label, lower, upper in SCORE_BUCKETS
             ],
-        )
+        ).where(_current())
     ).one()
     total, pending_count, approved_count, rejected_count, exposure, average = totals[:6]
     bucket_counts = totals[6:]
 
     by_band = dict.fromkeys((band.value for band in Decision), 0)
     for band, count in db.execute(
-        select(Application.decision, func.count()).group_by(Application.decision)
+        select(Application.decision, func.count())
+        .where(_current())
+        .group_by(Application.decision)
     ):
         by_band[band] = count
 
@@ -358,7 +473,14 @@ async def portfolio_stats(db: DbSession) -> PortfolioStats:
 
     return PortfolioStats(
         total_applications=total,
+        superseded_assessments=db.scalar(
+            select(func.count(Application.id)).where(~_current())
+        )
+        or 0,
         model_decisions=by_band,
+        recommendations={
+            RECOMMENDATION_OF[Decision(band)].value: count for band, count in by_band.items()
+        },
         pending_review=pending_count,
         final_approved=approved_count,
         final_rejected=rejected_count,
@@ -385,96 +507,59 @@ async def get_application(application_id: int, db: DbSession) -> ApplicationSumm
 
 
 @router.post(
+    "/applications/{application_id}/decision",
+    response_model=ApplicationSummary,
+    summary="Record the officer's decision: approve, reject or escalate (manager or admin)",
+)
+@router.post(
     "/applications/{application_id}/review",
     response_model=ApplicationSummary,
-    summary="Record the officer decision on a Manual Review application (manager or admin)",
+    summary="Same as /decision; the route name used before 2.0",
 )
-async def review_application(
+async def decide_application(
     application_id: int, body: ReviewRequest, db: DbSession, officer: Manager, audit: Audit
 ) -> ApplicationSummary:
-    """Approve or reject a Manual Review case, with the reason, once.
+    """Record the human decision on an application, with the reason, once.
 
-    The model's band stays in ``decision``; the officer's call, note, name and
-    time are stored beside it. Approved and Rejected bands are already final,
-    and a recorded review cannot be overwritten.
+    Every application needs this, whatever the policy recommended: a
+    recommendation of Approve is not an approval. Authority is checked here,
+    under the policy version the application was assessed under:
+
+    * a manager may reject, may approve up to the manager limit, and may
+      escalate to an admin;
+    * approving above the limit, approving against a Decline recommendation
+      (when the policy requires it) and deciding an escalated application
+      need an admin.
+
+    A refused action returns ``403`` and is itself written to the audit trail.
+    A recorded decision cannot be changed (``409``). The assessment, the
+    recommendation and the model and policy versions are left exactly as they
+    were stored at scoring time.
     """
     # Row lock, so two officers deciding at once cannot both record a decision.
     application = _load_application(application_id, db, for_update=True)
-    if application.decision != Decision.MANUAL_REVIEW.value:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"Application {application.id} was {application.decision} by the model. "
-                "Only Manual Review cases need an officer decision."
-            ),
-        )
-    if application.review_decision is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"Application {application.id} was already {application.review_decision} "
-                f"by {application.reviewed_by}. A recorded decision is not changed."
-            ),
-        )
-
-    # Approval authority by size. Declining needs no higher authority.
-    limit = manager_approval_limit_pkr()
-    if (
-        body.decision is OfficerDecision.APPROVED
-        and officer.role != UserRole.ADMIN.value
-        and application.loan_amount_pkr > limit
-    ):
-        # The refusal is itself recorded, and committed before the error leaves.
-        audit_service.record(
-            db,
-            action=Action.APPROVAL_DENIED,
-            entity_type="application",
-            entity_id=application.id,
-            actor=officer,
-            details={
-                "reason": "above_manager_limit",
-                "loan_amount_pkr": application.loan_amount_pkr,
-                "manager_approval_limit_pkr": limit,
-            },
-            context=audit,
-        )
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                f"A facility of PKR {application.loan_amount_pkr:,.0f} is above the manager "
-                f"approval limit of PKR {limit:,.0f}. An admin must approve it. "
-                "A manager can still reject it."
-            ),
-        )
-
-    application.review_decision = body.decision.value
-    application.review_note = body.note
-    application.reviewed_by = officer.username
-    application.reviewed_at = utcnow()
-    audit_service.record(
-        db,
-        action=Action.OFFICER_DECISION,
-        entity_type="application",
-        entity_id=application.id,
-        actor=officer,
-        previous={"decision": application.decision, "review_decision": None},
-        new={
-            "review_decision": application.review_decision,
-            "review_note": application.review_note,
-            "reviewed_by": application.reviewed_by,
-            "reviewed_at": application.reviewed_at,
-        },
-        details={
-            "risk_score": application.risk_score,
-            "loan_amount_pkr": application.loan_amount_pkr,
-            "model_version": application.model_version,
-        },
-        context=audit,
+    decision_service.record_action(
+        db, application, body.decision, body.note, officer=officer, context=audit
     )
     db.commit()
     db.refresh(application)
     return ApplicationSummary.model_validate(application)
+
+
+@router.get(
+    "/applications/{application_id}/decision-history",
+    response_model=DecisionHistory,
+    summary="Every assessment, recommendation and decision event for an application",
+)
+async def decision_history(application_id: int, db: DbSession) -> DecisionHistory:
+    """The application's re-score chain and its audited events, oldest first.
+
+    ``assessments`` lists the application and every assessment it replaced or
+    was replaced by, each with the score, model version and policy version it
+    was given. ``events`` are the audit entries on those applications: created,
+    scored, recommendation generated, re-scored, escalated, decided, refused.
+    """
+    return decision_service.history(db, _load_application(application_id, db))
 
 
 def _load_application(

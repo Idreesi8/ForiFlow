@@ -45,14 +45,8 @@ PAR30_STATUSES = {
 
 
 def _final_is(decision: str):
-    """SQL condition: the model's band, or the officer's call on Manual Review."""
-    return or_(
-        Application.decision == decision,
-        and_(
-            Application.decision == Decision.MANUAL_REVIEW.value,
-            Application.review_decision == decision,
-        ),
-    )
+    """SQL condition: an officer's decision on the application equals ``decision``."""
+    return Application.decision_status == decision
 
 
 @router.get(
@@ -147,9 +141,9 @@ async def portfolio_summary(db: DbSession) -> PortfolioSummary:
     }
     outcome = case((approved, "approved"), (rejected, "rejected"), else_="pending")
     for band, result, count in db.execute(
-        select(Application.decision, outcome, func.count()).group_by(
-            Application.decision, outcome
-        )
+        select(Application.decision, outcome, func.count())
+        .where(Application.decision_status != "Superseded")
+        .group_by(Application.decision, outcome)
     ):
         matrix[Decision(band)][result] = count
 
@@ -180,7 +174,9 @@ async def portfolio_summary(db: DbSession) -> PortfolioSummary:
                 func.count(case((approved, 1))),
                 func.coalesce(func.sum(case((approved, Application.loan_amount_pkr))), 0.0),
                 func.avg(Application.risk_score),
-            ).group_by(Application.business_sector)
+            )
+            .where(Application.decision_status != "Superseded")
+            .group_by(Application.business_sector)
         )
     ]
     sectors.sort(key=lambda row: (-row.approved_exposure_pkr, row.sector))

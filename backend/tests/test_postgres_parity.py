@@ -63,6 +63,7 @@ def postgres_session_factory_fixture() -> Generator[sessionmaker[Session], None,
         connection.execute(text("DROP TABLE IF EXISTS alerts CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS applications CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS borrowers CASCADE"))
+        connection.execute(text("DROP TABLE IF EXISTS credit_policies CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS model_versions CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS audit_logs CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS users CASCADE"))

@@ -9,7 +9,13 @@ from fastapi.testclient import TestClient
 
 from models.database import User
 from services.auth_service import hash_password
-from tests.conftest import MID_APPLICANT, STRONG_APPLICANT, WEAK_APPLICANT, bearer_header
+from tests.conftest import (
+    MID_APPLICANT,
+    STRONG_APPLICANT,
+    WEAK_APPLICANT,
+    bearer_header,
+    decide,
+)
 
 NOTE = "Clean POS receipts for five years; facility is 28% of turnover."
 
@@ -35,7 +41,8 @@ def _month(borrower: dict[str, Any], month: int, **overrides: Any) -> dict[str, 
 @pytest.fixture(name="approved")
 def approved_fixture(client: TestClient) -> dict[str, Any]:
     scored = _score(client, STRONG_APPLICANT)
-    assert scored["decision"] == "Approved"
+    assert scored["decision"] == "Approved"  # the recommendation
+    decide(client, scored["application_id"])  # the officer's approval
     return scored
 
 
@@ -60,7 +67,13 @@ def test_stats_count_every_application_and_officer_decisions(client: TestClient)
     rejected_mr = _score(client, MID_APPLICANT)
     _score(client, MID_APPLICANT)  # left pending
 
-    for application, decision in ((approved_mr, "Approved"), (rejected_mr, "Rejected")):
+    # A recommendation decides nothing: the officer approves and rejects each one.
+    for application, decision in (
+        (strong, "Approved"),
+        (weak, "Rejected"),
+        (approved_mr, "Approved"),
+        (rejected_mr, "Rejected"),
+    ):
         response = client.post(
             f"/score/applications/{application['application_id']}/review",
             json={"decision": decision, "note": NOTE},
@@ -70,6 +83,7 @@ def test_stats_count_every_application_and_officer_decisions(client: TestClient)
     body = client.get("/score/stats").json()
     assert body["total_applications"] == 5
     assert body["model_decisions"] == {"Rejected": 1, "Manual Review": 3, "Approved": 1}
+    assert body["recommendations"] == {"Decline": 1, "Manual Review": 3, "Approve": 1}
     assert body["pending_review"] == 1
     assert body["final_approved"] == 2
     assert body["final_rejected"] == 2

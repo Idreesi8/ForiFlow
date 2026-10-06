@@ -12,7 +12,7 @@ from ml import ews_markov
 from ml.features import load_ews_transition
 from schemas import EWSMonitorRequest, InstallmentStatus
 from services.ews_service import MODEL_ALERT_PROBABILITY, STATUS_TO_CHAIN_STATE, EWSService
-from tests.conftest import STRONG_APPLICANT
+from tests.conftest import STRONG_APPLICANT, decide
 
 CHAIN = load_ews_transition()
 needs_chain = pytest.mark.skipif(CHAIN is None, reason="ml.ews_markov not run")
@@ -170,6 +170,7 @@ def test_the_model_can_alert_when_the_score_has_not_dropped() -> None:
 @needs_chain
 def test_monitoring_returns_the_probability(client: TestClient) -> None:
     scored = client.post("/score", json=STRONG_APPLICANT).json()
+    decide(client, scored["application_id"])
     body = client.post(
         "/ews/monitor",
         json={

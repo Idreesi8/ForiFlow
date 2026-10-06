@@ -185,6 +185,29 @@ def ml_client_fixture(
     app.dependency_overrides[get_scoring_service] = lambda: ScoringService()
 
 
+DECISION_NOTE = "Reviewed the file and the evidence; the decision is recorded here."
+
+
+def decide(
+    client: TestClient,
+    application_id: int,
+    decision: str = "Approved",
+    headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Record an officer decision (as the admin unless ``headers`` says otherwise).
+
+    Since 2.0 a recommendation is never a decision, so a test that needs an
+    approved facility has to approve it, exactly as an officer would.
+    """
+    response = client.post(
+        f"/score/applications/{application_id}/decision",
+        json={"decision": decision, "note": DECISION_NOTE},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 @pytest.fixture(name="scored_application_id")
 def scored_application_id_fixture(client: TestClient) -> int:
     """Score a strong applicant and return the persisted application id."""

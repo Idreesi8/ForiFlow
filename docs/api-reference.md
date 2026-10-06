@@ -23,8 +23,11 @@ so changing a user's role takes effect immediately.
 | Score, explain, list applications | yes | yes | yes |
 | Record EWS observations, read alerts, reminders and history | yes | yes | yes |
 | Take an EWS alert for review | yes | yes | yes |
-| Reject a Manual Review application | no (`403`) | yes | yes |
-| Approve a Manual Review application | no (`403`) | up to `MANAGER_APPROVAL_LIMIT_PKR` | yes |
+| Reject an application | no (`403`) | yes | yes |
+| Approve an application | no (`403`) | up to the policy's manager limit; not against a Decline recommendation | yes |
+| Escalate an application to an admin | no (`403`) | yes | not applicable |
+| Decide an escalated application | no (`403`) | no (`403`) | yes |
+| Create or activate a credit policy version | no (`403`) | no (`403`) | yes |
 | Resolve an EWS alert | no (`403`) | yes | yes |
 | List or create officer accounts | no (`403`) | no (`403`) | yes |
 
@@ -69,7 +72,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "1.10.0",
+  "version": "2.0.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts",
@@ -87,7 +90,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "1.10.0",
+  "version": "2.0.0",
   "database": "connected",
   "scoring_engine": "ml",
   "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26",
@@ -218,11 +221,11 @@ application scored before 1.10 whose stored explanation named no model.
 
 List scored applications, newest first.
 
-Query: `decision` (the model's band: `Rejected` | `Manual Review` | `Approved`),
-`final_decision` (the decision that stands: `Approved` | `Rejected`, i.e. the
-model's band or the officer's call on a Manual Review case), `pending_review`
-(`true`: Manual Review cases still awaiting an officer decision; `false`: every
-other row), `limit` (1–200, default 50), `offset`.
+Query: `decision` (the policy recommendation, legacy wording: `Rejected` |
+`Manual Review` | `Approved`), `final_decision` (the officer's decision:
+`Approved` | `Rejected`), `pending_review` (`true`: still awaiting an officer
+decision; `false`: every other row), `decision_status`, `limit` (1–200,
+default 50), `offset`. See "Model, policy, human (2.0.0)" below.
 
 **Response `200`**
 
@@ -294,7 +297,9 @@ is counted once; the edges 40 and 70 are the policy boundaries.
 
 ## POST `/score/applications/{id}/review` (manager or admin)
 
-Record the final decision on a Manual Review application, with the reason.
+The pre-2.0 name of `POST /score/applications/{id}/decision`, kept working.
+Since 2.0 it records the officer's decision on **any** application, and also
+accepts `Escalated`. See "Model, policy, human (2.0.0)" below.
 
 ```json
 { "decision": "Approved", "note": "Five years of clean POS receipts; facility is 28% of turnover." }
@@ -304,8 +309,8 @@ Record the final decision on a Manual Review application, with the reason.
 **Response `200`**: the application, as in `GET /score/applications/{id}`,
 with `review_decision`, `review_note`, `reviewed_by` and `reviewed_at` set.
 
-A manager approving a facility above `MANAGER_APPROVAL_LIMIT_PKR` (default
-2,000,000) gets `403`; an admin must approve it. A manager may reject at any
+A manager approving a facility above the policy's manager limit (2,000,000 in
+the demo policy) gets `403`; an admin must approve it. A manager may reject at any
 size. Each application reports `approval_authority` (`manager` or `admin`) and
 `manager_approval_limit_pkr`.
 
@@ -652,3 +657,86 @@ Actions: `auth.login`, `auth.login_failed`, `user.created`, `borrower.created`,
 `ews.alert_updated`, `ews.alert_auto_resolved`, `ews.alert_taken`,
 `ews.alert_resolved`, `model.registered`, `model.activated`,
 `migration.applied`.
+
+## Model, policy, human (2.0.0)
+
+Since 2.0.0 no score decides anything. Every application response carries
+three separate objects, and `decision_status` is `Pending` until an officer
+acts. Existing fields are unchanged in name and type.
+
+| Field | What it is |
+|---|---|
+| `assessment` | Model output: `risk_score`, `risk_band`, `probability_of_default_raw`, `probability_of_default` (calibrated), `model_version`, `scoring_engine` |
+| `policy` | Policy output: `recommendation`, `policy_id`, `policy_version`, `policy_name`, `triggered_rules`, `reason`, `authority` (`approve_requires`, `manager_approval_limit_pkr`, `reason`) |
+| `officer_decision` | Human output: `status`, `decision`, `decided_by`, `decided_at`, `note`, `source`, `overrides_recommendation`, escalation fields |
+| `recommendation` | `Approve`, `Manual Review` or `Decline` |
+| `decision` | The same recommendation in the pre-2.0 wording (`Approved`, `Manual Review`, `Rejected`). **Not a final decision.** Kept for compatibility |
+| `decision_status` | `Pending`, `Escalated`, `Approved`, `Rejected` or `Superseded` |
+| `final_decision` | `Approved` or `Rejected` once an officer has decided; `null` before |
+| `reason_codes` | Up to three coded risk factors derived from the SHAP contributions |
+
+**Behaviour change.** Before 2.0 an `Approved` or `Rejected` band was final and
+only `Manual Review` went to an officer. Now every application needs an officer
+decision, and only an approved one can be monitored by `/ews/monitor`.
+Applications from before 2.0 keep the outcome they had, marked
+`officer_decision.source = "legacy_auto"`.
+
+### POST `/score/applications/{id}/decision` (manager or admin)
+
+Records the human decision. `/score/applications/{id}/review` is the same
+handler under its pre-2.0 name.
+
+```json
+{ "decision": "Approved", "note": "Statement supports the stated turnover." }
+```
+
+`decision` is `Approved`, `Rejected` or `Escalated`; `note` is 10 to 1000
+characters. **`200`**: the application. **`403`**: the role may not take that
+action (above the manager limit, against a Decline recommendation, or the
+application is escalated); the refusal is audited. **`409`**: already decided,
+superseded, or an admin tried to escalate.
+
+### GET `/score/applications/{id}/decision-history`
+
+`assessments`: the application and every assessment it replaced or was replaced
+by, oldest first, each with its score, recommendation, model version, policy
+version and decision status. `events`: the audit entries on those applications
+(created, scored, recommendation generated, re-scored, escalated, refused,
+decided). `note` is set when part of the chain predates the audit trail.
+
+### Re-scoring
+
+`POST /score` with `rescore_of_application_id` re-assesses an undecided
+application. A new application is stored and returned with
+`supersedes_application_id`; the earlier one is kept and marked `Superseded`.
+`409` if the earlier one is already decided or superseded.
+
+### GET `/score/applications` filters
+
+`decision_status=` any status. `pending_review=true` now means Pending or
+Escalated, whatever the recommendation. `final_decision=` is the officer's
+decision. `/score/stats` leaves superseded assessments out of its totals and
+reports them as `superseded_assessments`.
+
+## Credit policy (2.0.0)
+
+| Route | Purpose |
+|---|---|
+| `GET /policy/active` | The version in force. Any officer |
+| `GET /policy/versions` | Every version, newest first, with `applications_assessed`. Any officer |
+| `POST /policy/versions` (admin) | Create a version as a draft. A version number cannot be reused (`409`) |
+| `POST /policy/versions/{id}/activate` (admin) | Make it active and retire the previous one |
+
+```json
+{ "version": "1.1", "name": "Pilot Credit Policy", "decline_max_score": 45,
+  "manual_review_max_score": 75, "manager_approval_limit_pkr": 1500000,
+  "decline_override_admin_only": true }
+```
+
+There is no route that edits or deletes a version. The shipped version 1.0 is
+a demo policy (40 / 70 / PKR 2,000,000); its cut-offs are not validated for
+Pakistani SME lending.
+
+New audit actions: `recommendation.generated`, `application.escalated`,
+`application.rescored`, `application.superseded`, `policy.created`,
+`policy.activated`, `policy.retired`.

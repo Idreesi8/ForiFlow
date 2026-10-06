@@ -82,7 +82,7 @@ export default function MemoPage() {
 
         <Section title="Model assessment">
           <Row label="Score">{application.risk_score.toFixed(2)} out of 100</Row>
-          <Row label="Model decision">{application.decision}</Row>
+          <Row label="Risk band">{application.risk_band ?? "—"}</Row>
           {explanation.probability_of_default !== null &&
           explanation.probability_of_default !== undefined ? (
             <Row label="Probability of default">
@@ -91,6 +91,22 @@ export default function MemoPage() {
             </Row>
           ) : null}
           <Row label="Model">{explanation.model_version ?? "—"}</Row>
+        </Section>
+
+        <Section title="Policy recommendation">
+          <Row label="Recommendation">
+            {application.recommendation} (a recommendation, not a decision)
+          </Row>
+          <Row label="Policy">
+            {application.policy?.policy_version
+              ? `${application.policy.policy_name} v${application.policy.policy_version}`
+              : "Not recorded (scored before policy versions were stored)"}
+          </Row>
+          {application.reason_codes?.length ? (
+            <Row label="Top risk factors">
+              {application.reason_codes.map((code) => `${code.code} ${code.label}`).join("; ")}
+            </Row>
+          ) : null}
         </Section>
 
         <Section title="Why this score">
@@ -183,8 +199,8 @@ export default function MemoPage() {
           )}
         </Section>
 
-        <Section title="Decision">
-          <Row label="Final decision">{final ?? "Pending officer review"}</Row>
+        <Section title="Credit officer decision">
+          <Row label="Status">{final ?? application.decision_status}</Row>
           {application.review_decision ? (
             <>
               <Row label="Decided by">
@@ -192,13 +208,19 @@ export default function MemoPage() {
               </Row>
               <Row label="Reason">{application.review_note}</Row>
             </>
-          ) : application.decision === "Manual Review" ? (
-            <p className="text-slate-600">Awaiting a manager or admin decision.</p>
-          ) : (
+          ) : final ? (
             <p className="text-slate-600">
-              The model's band is final for Approved and Rejected outcomes.
+              Recorded before release 2.0, when the score band alone decided. No officer
+              decision is on file.
             </p>
+          ) : (
+            <p className="text-slate-600">Awaiting a manager or admin decision.</p>
           )}
+          {application.escalated_by ? (
+            <Row label="Escalated by">
+              {application.escalated_by} on {formatDateTime(application.escalated_at)}
+            </Row>
+          ) : null}
         </Section>
 
         <footer className="border-t border-slate-200 pt-4 text-xs text-slate-500">

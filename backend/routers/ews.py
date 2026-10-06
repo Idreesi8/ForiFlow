@@ -65,21 +65,28 @@ def _state(row: object, fields: tuple[str, ...]) -> dict:
 def _require_approved_facility(borrower: Application) -> None:
     """Only an approved application became a facility, so only it is monitored.
 
-    Approved means Approved by the model, or Manual Review and then approved
-    by an officer. ForiFlow keeps no separate disbursement record.
+    Approved means an officer approved it (or, for an application from before
+    2.0, that the score band alone did under the rule then in force). A
+    recommendation of Approve is not an approval. ForiFlow keeps no separate
+    disbursement record.
     """
-    final = ApplicationSummary.model_validate(borrower).final_decision
-    if final is Decision.APPROVED:
+    state = borrower.decision_status
+    if state == "Approved":
         return
-    if final is None:
+    if state in ("Pending", "Escalated"):
         detail = (
             f"Application {borrower.id} is still awaiting an officer decision "
-            "(Manual Review). Approve it first, then monitor it."
+            f"(recommendation: {borrower.decision}). Approve it first, then monitor it."
         )
-    elif borrower.decision == Decision.MANUAL_REVIEW.value:
+    elif state == "Superseded":
         detail = (
-            f"Application {borrower.id} was rejected by {borrower.reviewed_by} after "
-            "manual review, so there is no facility to monitor."
+            f"Application {borrower.id} was re-scored as application "
+            f"{borrower.superseded_by_application_id}, so there is no facility to monitor."
+        )
+    elif borrower.reviewed_by:
+        detail = (
+            f"Application {borrower.id} was Rejected by {borrower.reviewed_by}, "
+            "so there is no facility to monitor."
         )
     else:
         detail = (
