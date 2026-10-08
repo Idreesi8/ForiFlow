@@ -99,7 +99,7 @@ function ValueLabel({ x, y, width, height, value }) {
 /**
  * Horizontal SHAP contribution chart for one application.
  *
- * Contributions are additive: base value + every bar reconstructs the final
+ * Contributions are additive: the model reference baseline + every bar reconstructs the final
  * score, which is the identity the backend guarantees and asserts in tests.
  * Pass `explanation` to render a payload you already have, or `applicationId`
  * to fetch it from `POST /explain/{id}`.
@@ -188,13 +188,13 @@ export default function ShapWaterfall({
           explanation.probability_of_default !== undefined ? (
             <div
               className="text-right"
-              title="Calibrated on the public training file's default rate, not on a Pakistani SME portfolio."
+              title="Display only: calibrated on the public training file's default rate, not on a Pakistani SME portfolio. The score and the bars use the raw model probability."
             >
               <p className="tabular text-2xl leading-none font-bold text-slate-900">
                 {(explanation.probability_of_default * 100).toFixed(1)}%
               </p>
               <p className="text-[11px] tracking-wide text-slate-500 uppercase">
-                Default probability
+                Calibrated PD (display only)
               </p>
             </div>
           ) : null}
@@ -208,7 +208,11 @@ export default function ShapWaterfall({
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SummaryTile label="Base value" value={summary.base.toFixed(1)} />
+        <SummaryTile
+          label="Model reference baseline"
+          value={summary.base.toFixed(1)}
+          title="The score the model gives its SHAP reference sample. Not a portfolio average."
+        />
         <SummaryTile
           label="Positive impact"
           value={`+${summary.positive.toFixed(1)}`}
@@ -337,7 +341,7 @@ function displayAdditiveSummary(baseValue, positiveTotal, negativeTotal, riskSco
   };
 }
 
-function SummaryTile({ label, value, tone, emphasis = false }) {
+function SummaryTile({ label, value, tone, emphasis = false, title }) {
   const toneClass =
     tone === "positive"
       ? "text-emerald-700"
@@ -347,6 +351,7 @@ function SummaryTile({ label, value, tone, emphasis = false }) {
 
   return (
     <div
+      title={title}
       className={`rounded-lg border px-3 py-2 ${
         emphasis ? "border-brand-200 bg-brand-50" : "border-slate-200 bg-white"
       }`}

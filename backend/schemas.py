@@ -394,7 +394,11 @@ class ModelAssessment(BaseModel):
         ),
     )
     probability_of_default: float | None = Field(
-        default=None, description="The calibrated probability of default (0-1)."
+        default=None,
+        description=(
+            "The calibrated probability of default (0-1). Display only: the score "
+            "uses the raw probability. Calibrated to the public training file."
+        ),
     )
     model_version: str | None = None
     scoring_engine: str | None = None
@@ -543,7 +547,14 @@ class ExplanationResponse(BaseModel):
     risk_score: float
     decision: Decision
     risk_band: RiskBand
-    base_value: float = Field(..., description="Portfolio average score before features apply.")
+    base_value: float = Field(
+        ...,
+        description=(
+            "Model reference baseline: the score the model gives its SHAP reference "
+            "sample (for the trained ensemble, SMOTE-balanced training rows). Not a "
+            "portfolio average."
+        ),
+    )
     feature_contributions: list[ShapFeatureContribution]
     top_positive_factors: list[str]
     top_negative_factors: list[str]
@@ -576,11 +587,12 @@ class ExplanationResponse(BaseModel):
         ge=0,
         le=1,
         description=(
-            "Calibrated probability of default (0-1): isotonic regression on "
-            "out-of-fold predictions, calibrated to the default rate of the public "
-            "training file, not of a Pakistani SME portfolio. The score and bands "
-            "stay on the raw model. Absent for the surrogate engine and for "
-            "explanations stored before 1.4.0."
+            "Calibrated probability of default (0-1), display only. Since 2.2 the "
+            "calibrator is chosen and fitted on the validation split (before: "
+            "isotonic regression on out-of-fold training predictions). Calibrated to "
+            "the default rate of the public training file, not of a Pakistani SME "
+            "portfolio. The score, bands and SHAP stay on the raw model. Absent for "
+            "the surrogate engine and for explanations stored before 1.4.0."
         ),
     )
 
@@ -1438,6 +1450,10 @@ class ModelVersionResponse(BaseModel):
     feature_set_version: str | None = None
     trained_at: str | None = None
     metrics: dict | None = None
+    provenance: dict | None = Field(
+        default=None,
+        description="Since 2.2: dataset hash, split, seed, preprocessing and calibration. Null on older rows.",
+    )
     status: str
     is_active: bool
     fallback_reason: str | None = None

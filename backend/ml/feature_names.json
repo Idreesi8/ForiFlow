@@ -7,7 +7,7 @@
   "feature_clips": {
     "loan_to_income": [
       0.02,
-      0.4999616030717543
+      0.5
     ],
     "payment_history_score": [
       25.0,
@@ -15,15 +15,164 @@
     ],
     "years_in_operation": [
       0.0,
-      17.0
+      18.0
     ]
   },
+  "feature_medians": {
+    "loan_to_income": 0.14814814814814814,
+    "payment_history_score": 80.0,
+    "years_in_operation": 4.0
+  },
   "dataset": "credit_risk_shared",
-  "dataset_note": "32k rows, limited to the 3 shared features",
-  "rows": 32581,
-  "default_rate": 0.21816396059052823,
+  "dataset_note": "public consumer loans, limited to the 3 features ForiFlow can supply",
+  "dataset_identifier": "credit_risk_dataset.csv (public 'Credit Risk Dataset', consumer loans)",
+  "dataset_type": "public_consumer_credit",
+  "dataset_type_label": "Public consumer credit data, not Pakistani SME banking data",
+  "dataset_file": "credit_risk_dataset.csv",
+  "dataset_sha256": "ce3c6d2167717bf1627d1c0c81cbccd28323cd4aa7b96d542599366d5ff6aac8",
+  "rows": 32416,
+  "rows_in_file": 32581,
+  "excluded_rows": {
+    "exact_duplicate_rows": 165
+  },
+  "default_rate": 0.2186744819785079,
+  "random_seed": 42,
+  "split": {
+    "method": "stratified on the default flag: 20% final test set first, then 25% of the rest as validation (20% of the file), the remaining 60% as training",
+    "seed": 42,
+    "fractions": {
+      "train": 0.6000000000000001,
+      "validation": 0.2,
+      "final_test": 0.2
+    },
+    "rows": {
+      "train": 19449,
+      "validation": 6483,
+      "final_test": 6484
+    },
+    "default_rate": {
+      "train": 0.2186744819785079,
+      "validation": 0.2187258985037791,
+      "final_test": 0.21869216533004318
+    },
+    "id_sha256": {
+      "train": "1964095d01ea87b9892e2b90ddc051a79e6995c7e9a9a182be012f2eb41f777b",
+      "validation": "d384a435f1fedcd113168306f793f3ad3e34f05b539d6fc9dfc5d3843f1afdde",
+      "final_test": "260027f5234bfcfc0e6fdd8971736d239dd5e6dec636ec4866fb57704c6d811b"
+    },
+    "uses": {
+      "train": "imputation medians, clip bounds, scaler, SMOTE, model fitting, 5-fold CV",
+      "validation": "calibration method choice and fit; baseline comparison",
+      "final_test": "one final evaluation only; nothing is chosen or tuned on it"
+    }
+  },
+  "preprocessing": {
+    "version": "2.2.0",
+    "steps": [
+      "drop exact duplicate rows of the raw file (before the split)",
+      "map onto loan_to_income, payment_history_score, years_in_operation",
+      "median imputation, medians learned on the training split",
+      "clip to the training split's 1st/99th percentiles",
+      "StandardScaler fitted on the training split",
+      "SMOTE (k=5) on the scaled training rows only"
+    ],
+    "fitted_on": "training split only",
+    "clip_quantiles": [
+      0.01,
+      0.99
+    ]
+  },
+  "model_config": {
+    "ensemble": "soft voting, weights xgb 0.6 / rf 0.4",
+    "xgboost": {
+      "objective": "binary:logistic",
+      "base_score": null,
+      "booster": null,
+      "callbacks": null,
+      "colsample_bylevel": null,
+      "colsample_bynode": null,
+      "colsample_bytree": 0.9,
+      "device": null,
+      "early_stopping_rounds": null,
+      "enable_categorical": false,
+      "eval_metric": "logloss",
+      "feature_types": null,
+      "feature_weights": null,
+      "gamma": null,
+      "grow_policy": null,
+      "importance_type": null,
+      "interaction_constraints": null,
+      "learning_rate": 0.08,
+      "max_bin": null,
+      "max_cat_threshold": null,
+      "max_cat_to_onehot": null,
+      "max_delta_step": null,
+      "max_depth": 5,
+      "max_leaves": null,
+      "min_child_weight": 5,
+      "missing": NaN,
+      "monotone_constraints": [
+        1,
+        -1,
+        -1
+      ],
+      "multi_strategy": null,
+      "n_estimators": 300,
+      "n_jobs": -1,
+      "num_parallel_tree": null,
+      "random_state": 42,
+      "reg_alpha": null,
+      "reg_lambda": 1.0,
+      "sampling_method": null,
+      "scale_pos_weight": 1.0,
+      "subsample": 0.9,
+      "tree_method": "hist",
+      "validate_parameters": null,
+      "verbosity": null
+    },
+    "random_forest": {
+      "bootstrap": true,
+      "ccp_alpha": 0.0,
+      "class_weight": null,
+      "criterion": "gini",
+      "max_depth": 12,
+      "max_features": "sqrt",
+      "max_leaf_nodes": null,
+      "max_samples": null,
+      "min_impurity_decrease": 0.0,
+      "min_samples_leaf": 40,
+      "min_samples_split": 2,
+      "min_weight_fraction_leaf": 0.0,
+      "monotonic_cst": [
+        1,
+        -1,
+        -1
+      ],
+      "n_estimators": 250,
+      "n_jobs": -1,
+      "oob_score": false,
+      "random_state": 42,
+      "verbose": 0,
+      "warm_start": false
+    },
+    "smote": {
+      "k_neighbors": 5,
+      "random_state": 42,
+      "applied_to": "scaled training rows only"
+    },
+    "scaler": "StandardScaler fitted on the training split",
+    "logistic_regression_baseline": {
+      "max_iter": 1000,
+      "random_state": 42
+    }
+  },
   "shap_output_space": "probability",
-  "shap_additivity_max_error": 5.079072823432895e-08,
+  "shap_additivity_max_error": 1.738328217482099e-07,
+  "shap_reference": {
+    "rows": 50,
+    "source": "random sample of the SMOTE-balanced (50/50) training rows",
+    "description": "Model reference baseline: the ensemble's expected score over this reference sample. It is not the average of a bank portfolio or of the public file, whose default rate is about 22%."
+  },
   "ensemble_weights": {
     "xgb": 0.6,
     "rf": 0.4
@@ -38,54 +187,276 @@
     80.0
   ],
   "cross_validation": {
+    "scope": "training split only",
     "folds": 5,
-    "auc_roc_mean": 0.7752217608152002,
-    "auc_roc_std": 0.007338855422182144,
-    "f1_mean": 0.5425236860721261,
+    "auc_roc_mean": 0.7743449309871809,
+    "auc_roc_std": 0.007305061145026656,
+    "f1_mean": 0.5420015319792669,
+    "pr_auc_mean": 0.5682821705197724,
     "per_fold": [
       {
-        "auc": 0.7757266645410892,
-        "f1": 0.5444444444444444,
-        "pr_auc": 0.568803475933741,
-        "seconds": 1.5854201460001605
+        "auc_roc": 0.7870209795185116,
+        "pr_auc": 0.5948973070162534,
+        "f1": 0.5625625625625625,
+        "brier": 0.1840265675371427
       },
       {
-        "auc": 0.7877029979838944,
-        "f1": 0.5515320334261838,
-        "pr_auc": 0.5919121603831956,
-        "seconds": 1.4729630580000048
+        "auc_roc": 0.7713645445093147,
+        "pr_auc": 0.5735756047059615,
+        "f1": 0.5376558603491272,
+        "brier": 0.18704283984906708
       },
       {
-        "auc": 0.7764983845201078,
-        "f1": 0.5396627108057465,
-        "pr_auc": 0.5702234143800841,
-        "seconds": 1.4248836669999037
+        "auc_roc": 0.7760519436127833,
+        "pr_auc": 0.5756637813921472,
+        "f1": 0.5385012919896641,
+        "brier": 0.18493762344304948
       },
       {
-        "auc": 0.7658638576407857,
-        "f1": 0.5398119122257053,
-        "pr_auc": 0.5512287660015663,
-        "seconds": 1.5152567989998715
+        "auc_roc": 0.7724731037151702,
+        "pr_auc": 0.5506293682335434,
+        "f1": 0.5438505448884277,
+        "brier": 0.18680439876139765
       },
       {
-        "auc": 0.7703168993901239,
-        "f1": 0.5371673294585501,
-        "pr_auc": 0.55298076912651,
-        "seconds": 1.6130464289999509
+        "auc_roc": 0.764814083580125,
+        "pr_auc": 0.5466447912509566,
+        "f1": 0.527437400106553,
+        "brier": 0.1852913094996124
       }
     ]
   },
-  "holdout": {
-    "auc": 0.7730584437184356,
-    "f1": 0.5463690663313423,
-    "pr_auc": 0.5644904753524013,
-    "brier": 0.18518202059000738,
-    "score_min": 4.5887207144960085,
-    "score_median": 61.30921767366652,
-    "score_max": 91.92023031894342,
-    "share_rejected": 0.1855148074267301,
-    "share_manual_review": 0.634647844100046,
-    "share_approved": 0.17983734847322388
+  "validation": {
+    "rows": 6483,
+    "evaluation_threshold": 0.5,
+    "ensemble_raw": {
+      "rows": 6483,
+      "positives": 1418,
+      "auc_roc": 0.7798402850392012,
+      "pr_auc": 0.569534816101062,
+      "brier": 0.18653620745914168,
+      "threshold": 0.5,
+      "precision": 0.46835443037974683,
+      "recall": 0.6262341325811002,
+      "f1": 0.5359082679541339,
+      "accuracy": 0.7627641523985809,
+      "mean_predicted": 0.44849592945660016,
+      "confusion": {
+        "true_positive": 888,
+        "false_positive": 1008,
+        "false_negative": 530,
+        "true_negative": 4057
+      }
+    },
+    "ensemble_calibrated_out_of_fold": {
+      "rows": 6483,
+      "positives": 1418,
+      "auc_roc": 0.7767889092015365,
+      "pr_auc": 0.5570126603616583,
+      "brier": 0.13033418596807766,
+      "threshold": 0.5,
+      "precision": 0.6900584795321637,
+      "recall": 0.41607898448519043,
+      "f1": 0.519137703475583,
+      "accuracy": 0.8314052136356626,
+      "mean_predicted": 0.2180521587809164,
+      "confusion": {
+        "true_positive": 590,
+        "false_positive": 265,
+        "false_negative": 828,
+        "true_negative": 4800
+      }
+    },
+    "baselines": {
+      "logistic_regression": {
+        "rows": 6483,
+        "positives": 1418,
+        "auc_roc": 0.7721046703155175,
+        "pr_auc": 0.5439259555062865,
+        "brier": 0.19151403934782082,
+        "threshold": 0.5,
+        "precision": 0.41587982832618026,
+        "recall": 0.6833568406205924,
+        "f1": 0.5170757737459979,
+        "accuracy": 0.7208082677772636,
+        "mean_predicted": 0.4452286055666323,
+        "confusion": {
+          "true_positive": 969,
+          "false_positive": 1361,
+          "false_negative": 449,
+          "true_negative": 3704
+        }
+      },
+      "xgboost": {
+        "rows": 6483,
+        "positives": 1418,
+        "auc_roc": 0.7803017054734154,
+        "pr_auc": 0.5715355252274515,
+        "brier": 0.1793611544985068,
+        "threshold": 0.5,
+        "precision": 0.4736,
+        "recall": 0.6262341325811002,
+        "f1": 0.5393258426966292,
+        "accuracy": 0.7660033934906679,
+        "mean_predicted": 0.43357938588769984,
+        "confusion": {
+          "true_positive": 888,
+          "false_positive": 987,
+          "false_negative": 530,
+          "true_negative": 4078
+        }
+      },
+      "random_forest": {
+        "rows": 6483,
+        "positives": 1418,
+        "auc_roc": 0.7759515578160918,
+        "pr_auc": 0.5627122492977656,
+        "brier": 0.20794339137937207,
+        "threshold": 0.5,
+        "precision": 0.43586206896551727,
+        "recall": 0.6685472496473907,
+        "f1": 0.5276927358753131,
+        "accuracy": 0.7382384698442079,
+        "mean_predicted": 0.47087074480995067,
+        "confusion": {
+          "true_positive": 948,
+          "false_positive": 1227,
+          "false_negative": 470,
+          "true_negative": 3838
+        }
+      },
+      "ensemble": {
+        "rows": 6483,
+        "positives": 1418,
+        "auc_roc": 0.7798402850392012,
+        "pr_auc": 0.569534816101062,
+        "brier": 0.18653620745914168,
+        "threshold": 0.5,
+        "precision": 0.46835443037974683,
+        "recall": 0.6262341325811002,
+        "f1": 0.5359082679541339,
+        "accuracy": 0.7627641523985809,
+        "mean_predicted": 0.44849592945660016,
+        "confusion": {
+          "true_positive": 888,
+          "false_positive": 1008,
+          "false_negative": 530,
+          "true_negative": 4057
+        }
+      }
+    }
+  },
+  "calibration": {
+    "method": "isotonic",
+    "method_label": "isotonic regression over bins of 250 loans",
+    "selection": {
+      "criterion": "out-of-fold Brier score, 5-fold cross-fit within the validation set",
+      "brier_out_of_fold": {
+        "none": 0.18653620745914168,
+        "isotonic": 0.13033418596807766,
+        "sigmoid": 0.13033946454970566
+      }
+    },
+    "fitted_on": {
+      "set": "validation",
+      "rows": 6483
+    },
+    "raw_probability": [
+      0.20441310996741893,
+      0.2926903878445505,
+      0.30674490790733283,
+      0.3164254784262722,
+      0.3238293094145074,
+      0.36048101105187486,
+      0.3678876520699023,
+      0.3896388502119275,
+      0.39391055646142525,
+      0.40448148546449064,
+      0.41574889825046124,
+      0.4397498110773407,
+      0.460548243615754,
+      0.49097577654670577,
+      0.5232002752868194,
+      0.5614036161362591,
+      0.6124300311797971,
+      0.6856341594671326,
+      0.7575856901186664,
+      0.7986294068794623,
+      0.8570340066647851
+    ],
+    "calibrated_probability": [
+      0.0673076923076923,
+      0.0673076923076923,
+      0.08653846153846154,
+      0.08653846153846154,
+      0.09884467265725289,
+      0.09884467265725289,
+      0.10810810810810811,
+      0.10810810810810811,
+      0.1274131274131274,
+      0.15444015444015444,
+      0.1583011583011583,
+      0.16988416988416988,
+      0.21621621621621623,
+      0.21621621621621623,
+      0.22393822393822393,
+      0.2471042471042471,
+      0.305019305019305,
+      0.47876447876447875,
+      0.6023166023166023,
+      0.7297297297297297,
+      0.7799227799227799
+    ],
+    "display_only": true,
+    "note": "Maps the raw ensemble probability to an observed default rate of the public file. Display only: the score stays 100 x (1 - raw probability) and SHAP explains the raw probability."
+  },
+  "evaluation_threshold": {
+    "raw_probability": 0.5,
+    "note": "Model evaluation threshold, fixed before any result was seen and never tuned. Credit policy thresholds are separate and configurable."
+  },
+  "dataset_selection": {
+    "note": "credit_risk_shared was chosen over loan_default_full and combined_shared in release 1.x by 5-fold CV over each whole file, before this protocol existed. That choice between datasets is not re-run; no hyperparameter, threshold or calibrator of this model was chosen on the final test set.",
+    "candidates": [
+      {
+        "name": "credit_risk_shared",
+        "features": [
+          "loan_to_income",
+          "payment_history_score",
+          "years_in_operation"
+        ],
+        "rows": 32581,
+        "auc_roc": 0.7752217608152002,
+        "f1": 0.5425236860721261,
+        "note": "32k rows, limited to the 3 shared features"
+      },
+      {
+        "name": "loan_default_full",
+        "features": [
+          "loan_to_income",
+          "installment_to_income",
+          "debt_service_to_income",
+          "payment_history_score",
+          "years_in_operation",
+          "tenure_months"
+        ],
+        "rows": 255347,
+        "auc_roc": 0.6439392380179223,
+        "f1": 0.2629354432229104,
+        "note": "255k rows, all 6 features genuinely present"
+      },
+      {
+        "name": "combined_shared",
+        "features": [
+          "loan_to_income",
+          "payment_history_score",
+          "years_in_operation"
+        ],
+        "rows": 287928,
+        "auc_roc": 0.6350746861503067,
+        "f1": 0.27541221088492795,
+        "note": "288k rows over the true column intersection (no fabricated columns)"
+      }
+    ]
   },
   "candidates": [
     {
@@ -128,6 +499,18 @@
       "note": "288k rows over the true column intersection (no fabricated columns)"
     }
   ],
-  "selection_skipped": false,
-  "trained_at": "2026-09-25T10:38:26"
+  "selection_skipped": true,
+  "previous_model": {
+    "trained_at": "2026-09-25T10:38:26",
+    "protocol": "pre-2.2: medians and clip bounds learned on the whole file before an 80/20 split; the same 20% hold-out reused for evaluation, fairness and band reports",
+    "cv_auc_roc_mean": 0.7752217608152002,
+    "cv_auc_roc_std": 0.007338855422182144,
+    "holdout_auc_roc": 0.7730584437184356,
+    "holdout_pr_auc": 0.5644904753524013,
+    "holdout_f1": 0.5463690663313423,
+    "holdout_brier_raw": 0.18518202059000738,
+    "rows": 32581
+  },
+  "training_protocol_version": "2.2.0",
+  "trained_at": "2026-10-08T17:36:16"
 }

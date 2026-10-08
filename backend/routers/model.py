@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from models.database import Application, ModelVersion, get_db
 from schemas import ModelVersionResponse
 from services.auth_service import get_current_user
+from services import feature_contract
 from services.drift_service import drift_report
+from services.scoring_service import ScoringService, get_scoring_service
 
 router = APIRouter(
     prefix="/model",
@@ -82,13 +84,16 @@ async def active_model_version(db: Annotated[Session, Depends(get_db)]) -> Model
     )
 
 
-@router.get("/evaluation", summary="Hold-out evaluation of the served model")
+@router.get("/evaluation", summary="Final test-set evaluation of the served model")
 async def model_evaluation() -> dict[str, Any]:
     """ROC curve, class-wise results, calibration and default rate per band.
 
-    Measured by ``ml.evaluate_model`` on the 20% hold-out that neither the
-    served model nor its calibrator has seen. These figures describe the trained
-    ensemble on the public training file; they are not live portfolio results.
+    Measured once by ``ml.evaluate_model`` on the final test set (20% of the
+    file) that neither the model, its preprocessing nor its calibrator has
+    seen. ``holdout`` is the pre-2.2 name for the same figures. The score
+    cut-offs used here are model evaluation cut-offs, not the credit policy in
+    force. These figures describe a demonstration model on public consumer
+    credit data; they are not live portfolio results.
     """
     from ml.features import load_model_evaluation
 
@@ -129,6 +134,10 @@ async def population_drift(db: Annotated[Session, Depends(get_db)]) -> dict[str,
 
     evaluation = _require(load_model_evaluation(), "evaluate_model")
     reference = evaluation.get("reference_distributions")
+    reference = {
+        name: {key: value for key, value in row.items() if key != "source"}
+        for name, row in (reference or {}).items()
+    }
     if not reference:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -150,29 +159,179 @@ async def population_drift(db: Annotated[Session, Depends(get_db)]) -> dict[str,
             live[name].append(
                 float(application.risk_score) if name == "risk_score" else clipped[name]
             )
-    return drift_report(reference, live)
+    report = drift_report(reference, live)
+    report["reference_label"] = "Reference / Demo Distribution"
+    report["reference_note"] = (
+        "The reference is the public consumer credit training file (training inputs, "
+        "validation scores), not a bank portfolio. This is not production drift "
+        "monitoring: that needs a reference from the bank's own approved loans."
+    )
+    return report
 
 
-@router.get("/fairness", summary="How the model treats groups it cannot see")
+@router.get("/fairness", summary="Subgroup Performance Analysis on the final test set")
 async def fairness_audit() -> dict[str, Any]:
-    """Approval rate, pricing gap and wrong decisions per group on the hold-out.
+    """Per group: count, default rate, AUC, precision and recall where the sample allows.
 
-    Recorded by ``ml.fairness_audit`` for age, income, housing and loan purpose:
-    attributes of the public file that the model never reads. The file has no
-    gender, so gender is not audited.
+    Recorded once by ``ml.evaluate_model`` on the final test set for age,
+    income, housing and loan purpose: attributes of the public file that the
+    model never reads. Small groups are marked "Insufficient sample size". The
+    file has no gender, region or religion. Descriptive only: it does not
+    establish that the model is fair.
     """
     from ml.features import load_fairness_audit
 
     return _require(load_fairness_audit(), "fairness_audit")
 
 
-@router.get("/comparison", summary="Served model against the alternatives")
+@router.get("/comparison", summary="Served ensemble against the baselines")
 async def model_comparison() -> dict[str, Any]:
-    """Cross-validated metrics of every model the ensemble was chosen over.
+    """Logistic regression, XGBoost alone, random forest alone and the ensemble.
 
-    Recorded by ``ml.compare_models`` with the same data, folds and pipeline
-    for each model, including a paired t-test against the served ensemble.
+    Same split and train-only preprocessing for each: 5-fold CV on the training
+    split and validation figures (``ml.train_real_model``), final-test figures
+    once (``ml.evaluate_model``). A paired t-test over the CV folds compares each
+    with the ensemble.
     """
     from ml.features import load_model_comparison
 
     return _require(load_model_comparison(), "compare_models")
+
+
+LIMITATIONS: list[str] = [
+    "Demonstration model trained on public consumer credit data. It is not validated "
+    "for Pakistani SME lending and must not be used for autonomous credit decisions.",
+    "Three features only (facility size against turnover, repayment history read as "
+    "clean or adverse, years in operation); other intake fields do not change the score.",
+    "Monthly turnover is estimated from digital receipts or cash flow typed by an "
+    "officer; there is no bank, bureau or POS integration.",
+    "The calibrated probability is display only and calibrated to the public file's "
+    "default rate, not to any Pakistani SME portfolio.",
+    "EWS monitoring data in a pilot is officer-entered or demo data.",
+    "Drift is measured against the public training file (a reference / demo "
+    "distribution), not against a bank portfolio.",
+]
+
+
+@router.get("/card", summary="Model status, performance, data and limits in one place")
+async def model_card(
+    scorer: Annotated[ScoringService, Depends(get_scoring_service)],
+) -> dict[str, Any]:
+    """What the Model page shows first. Every figure comes from the recorded files.
+
+    ``serving_engine`` is the engine scoring right now; the trained model's
+    figures are reported whether or not it is the one serving, and say so.
+    """
+    from ml.data_quality import load_data_quality
+    from ml.features import load_feature_metadata, load_model_comparison, load_model_evaluation
+
+    try:
+        metadata = load_feature_metadata()
+    except (OSError, ValueError):
+        metadata = {}
+    evaluation = load_model_evaluation() or {}
+    if evaluation.get("model_trained_at") != metadata.get("trained_at"):
+        evaluation = {}
+    quality = load_data_quality() or {}
+    comparison = load_model_comparison() or {}
+    final = evaluation.get("final_test") or {}
+    calibration = metadata.get("calibration") or {}
+    return {
+        "serving_engine": scorer.engine,
+        "serving_model_version": scorer.model_version,
+        "serving_artifact_sha256": scorer.artifact_sha256,
+        "serving_fallback_reason": scorer.fallback_reason,
+        "status": {
+            "model_version": (
+                f"ensemble-xgb-rf-{metadata.get('dataset', 'unknown')}-{metadata.get('trained_at', 'undated')}"
+                if metadata
+                else None
+            ),
+            "trained_at": metadata.get("trained_at"),
+            "training_protocol_version": metadata.get("training_protocol_version"),
+            "dataset_identifier": metadata.get("dataset_identifier") or metadata.get("dataset"),
+            "dataset_type": metadata.get("dataset_type_label")
+            or "Public consumer credit data, not Pakistani SME banking data",
+            "dataset_sha256": metadata.get("dataset_sha256"),
+            "random_seed": metadata.get("random_seed"),
+            "split": metadata.get("split"),
+            "features": metadata.get("feature_names"),
+            "preprocessing": metadata.get("preprocessing"),
+        },
+        "performance": {
+            "evaluated_on": "final test set (measured once)" if final else None,
+            "final_test_raw": final.get("metrics_raw"),
+            "final_test_calibrated": final.get("metrics_calibrated"),
+            "cross_validation_training_split": metadata.get("cross_validation"),
+            "validation": (metadata.get("validation") or {}).get("ensemble_raw"),
+            "previous_model": metadata.get("previous_model"),
+        },
+        "evaluation_thresholds": evaluation.get("evaluation_thresholds")
+        or metadata.get("evaluation_threshold"),
+        "policy_note": (
+            "Credit policy thresholds (Approve / Manual Review / Decline) are configured "
+            "on the Credit Policy page and stored with each application. They are not "
+            "derived from, or optimised on, these model results."
+        ),
+        "baselines": evaluation.get("baselines"),
+        "baseline_cross_validation": {
+            name: {
+                key: row.get(key)
+                for key in ("auc_roc_mean", "auc_roc_std", "pr_auc_mean", "f1_mean", "brier_mean", "vs_served")
+            }
+            for name, row in (comparison.get("models") or {}).items()
+        }
+        if comparison.get("model_trained_at") == metadata.get("trained_at")
+        else None,
+        "calibration": {
+            "method": calibration.get("method_label"),
+            "fitted_on": calibration.get("fitted_on"),
+            "selection": calibration.get("selection"),
+            "display_only": True,
+            "brier_raw_final_test": (final.get("raw") or {}).get("brier"),
+            "brier_calibrated_final_test": (final.get("calibrated") or {}).get("brier"),
+            "brier_no_skill_final_test": final.get("brier_no_skill"),
+            "ece_raw_final_test": (final.get("raw") or {}).get("expected_calibration_error"),
+            "ece_calibrated_final_test": (final.get("calibrated") or {}).get("expected_calibration_error"),
+            "note": calibration.get("note"),
+        }
+        if calibration
+        else None,
+        "shap": {
+            "output_space": metadata.get("shap_output_space"),
+            "additivity_max_error": metadata.get("shap_additivity_max_error"),
+            "reference": metadata.get("shap_reference"),
+        },
+        "data_quality": {
+            "rows_in_file": quality.get("rows"),
+            "columns_in_file": quality.get("columns"),
+            "model_features": quality.get("feature_count"),
+            "target_positive_rate": (quality.get("target") or {}).get("positive_rate"),
+            "duplicate_rows": quality.get("duplicate_rows"),
+            "excluded_rows": quality.get("excluded_rows"),
+            "missing_values": quality.get("missing_values"),
+            "model_feature_missing_values": quality.get("model_feature_missing_values"),
+            "dataset_type": quality.get("dataset_type"),
+        }
+        if quality
+        else None,
+        "limitations": LIMITATIONS,
+        "model_card": "docs/model_card.md",
+    }
+
+
+@router.get("/data-quality", summary="Data-quality report of the training file")
+async def data_quality() -> dict[str, Any]:
+    """Rows, target balance, missing, duplicate and out-of-range values, and what
+    training does about them. Public consumer credit data, not SME banking data."""
+    from ml.data_quality import load_data_quality
+
+    return _require(load_data_quality(), "data_quality")
+
+
+@router.get("/feature-contract", summary="Which intake fields reach the score")
+async def model_feature_contract(
+    scorer: Annotated[ScoringService, Depends(get_scoring_service)],
+) -> dict[str, Any]:
+    """Model features, fields collected but unused, and future SME data needs."""
+    return feature_contract.contract(scorer)

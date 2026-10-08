@@ -290,6 +290,16 @@ OPTIONAL: dict[str, tuple[str, ...]] = {
 }
 
 
+# Migration 0009 adds model provenance; an older file's model_versions lacks it.
+OPTIONAL_0009: dict[str, tuple[str, ...]] = {
+    "model_versions": (
+        *OPTIONAL["model_versions"][: OPTIONAL["model_versions"].index("metrics") + 1],
+        "provenance",
+        *OPTIONAL["model_versions"][OPTIONAL["model_versions"].index("metrics") + 1 :],
+    ),
+}
+
+
 class MigrationError(RuntimeError):
     """Raised when the SQLite file cannot be copied safely."""
 
@@ -348,6 +358,7 @@ def assert_schema(connection: sqlite3.Connection) -> dict[str, tuple[str, ...]]:
             EXPECTED_0006.get(table),
             EXPECTED_0007.get(table),
             EXPECTED_0008.get(table),
+            OPTIONAL_0009.get(table),
         ):
             raise MigrationError(
                 f"Table {table!r} columns {names} do not match expected {expected}."

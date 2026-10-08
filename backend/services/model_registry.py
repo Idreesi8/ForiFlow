@@ -29,22 +29,54 @@ def feature_set_version(features: list[str]) -> str:
 def describe(scorer: ScoringService) -> dict:
     """Everything worth recording about the engine that is scoring now."""
     metadata = getattr(scorer, "metadata", None) or {}
+    evaluation = getattr(scorer, "evaluation", None) or {}
     features = list(getattr(scorer, "feature_names", None) or sorted(scorer.weights))
     cv = metadata.get("cross_validation", {})
     holdout = metadata.get("holdout", {})
+    validation = (metadata.get("validation") or {}).get("ensemble_raw") or {}
+    final_test = (evaluation.get("final_test") or {}).get("metrics_raw") or {}
+    final_calibrated = (evaluation.get("final_test") or {}).get("metrics_calibrated") or {}
     metrics = {
         key: value
         for key, value in {
             "cv_auc_roc_mean": cv.get("auc_roc_mean"),
             "cv_auc_roc_std": cv.get("auc_roc_std"),
+            # Pre-2.2 artefacts only: the reused 20% hold-out.
             "holdout_auc_roc": holdout.get("auc"),
             "holdout_f1": holdout.get("f1"),
             "holdout_pr_auc": holdout.get("pr_auc"),
             "holdout_brier": holdout.get("brier"),
+            "validation_auc_roc": validation.get("auc_roc"),
+            "final_test_auc_roc": final_test.get("auc_roc"),
+            "final_test_pr_auc": final_test.get("pr_auc"),
+            "final_test_precision": final_test.get("precision"),
+            "final_test_recall": final_test.get("recall"),
+            "final_test_f1": final_test.get("f1"),
+            "final_test_brier_raw": final_test.get("brier"),
+            "final_test_brier_calibrated": final_calibrated.get("brier"),
             "training_rows": metadata.get("rows"),
         }.items()
         if value is not None
     }
+    calibration = metadata.get("calibration") or {}
+    provenance = (
+        {
+            "dataset_identifier": metadata.get("dataset_identifier"),
+            "dataset_type": metadata.get("dataset_type_label"),
+            "dataset_sha256": metadata.get("dataset_sha256"),
+            "random_seed": metadata.get("random_seed"),
+            "split": {
+                key: (metadata.get("split") or {}).get(key)
+                for key in ("method", "seed", "rows", "id_sha256")
+            },
+            "preprocessing_version": (metadata.get("preprocessing") or {}).get("version"),
+            "calibration_method": calibration.get("method_label"),
+            "training_protocol_version": metadata.get("training_protocol_version"),
+            "model_config": metadata.get("model_config"),
+        }
+        if metadata.get("training_protocol_version")
+        else None
+    )
     return {
         "version": scorer.model_version,
         "engine": scorer.engine,
@@ -54,6 +86,7 @@ def describe(scorer: ScoringService) -> dict:
         "feature_set_version": feature_set_version(features),
         "trained_at": metadata.get("trained_at"),
         "metrics": metrics or None,
+        "provenance": provenance,
         "fallback_reason": scorer.fallback_reason,
     }
 

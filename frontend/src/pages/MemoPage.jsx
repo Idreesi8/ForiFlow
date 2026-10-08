@@ -85,7 +85,7 @@ export default function MemoPage() {
           <Row label="Risk band">{application.risk_band ?? "—"}</Row>
           {explanation.probability_of_default !== null &&
           explanation.probability_of_default !== undefined ? (
-            <Row label="Probability of default">
+            <Row label="Calibrated PD (display only)">
               {formatPercent(explanation.probability_of_default)} (calibrated on the public
               training file)
             </Row>
@@ -120,7 +120,7 @@ export default function MemoPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               <tr>
-                <td className="py-2 text-slate-600">Average applicant (base value)</td>
+                <td className="py-2 text-slate-600">Model reference baseline (not a portfolio average)</td>
                 <td />
                 <td className="tabular py-2 text-right">{explanation.base_value.toFixed(2)}</td>
               </tr>

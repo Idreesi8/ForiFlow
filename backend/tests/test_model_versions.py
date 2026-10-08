@@ -68,9 +68,26 @@ def test_the_trained_ensemble_records_itself_with_its_fingerprint(
     assert active["training_dataset"] == ml_service.metadata["dataset"]
     assert active["feature_set"] == ml_service.feature_names
     assert active["trained_at"] == ml_service.metadata["trained_at"]
-    assert active["metrics"]["holdout_auc_roc"] == pytest.approx(
-        ml_service.metadata["holdout"]["auc"]
-    )
+    if "holdout" in ml_service.metadata:  # a pre-2.2 artefact
+        assert active["metrics"]["holdout_auc_roc"] == pytest.approx(
+            ml_service.metadata["holdout"]["auc"]
+        )
+    else:
+        # 2.2: validation and final-test figures, and how to reproduce the model.
+        assert active["metrics"]["validation_auc_roc"] == pytest.approx(
+            ml_service.metadata["validation"]["ensemble_raw"]["auc_roc"]
+        )
+        assert "holdout_auc_roc" not in active["metrics"]
+        if ml_service.evaluation is not None:
+            assert active["metrics"]["final_test_auc_roc"] == pytest.approx(
+                ml_service.evaluation["final_test"]["metrics_raw"]["auc_roc"]
+            )
+        provenance = active["provenance"]
+        assert provenance["dataset_sha256"] == ml_service.metadata["dataset_sha256"]
+        assert provenance["random_seed"] == ml_service.metadata["random_seed"]
+        assert provenance["split"]["id_sha256"] == ml_service.metadata["split"]["id_sha256"]
+        assert provenance["preprocessing_version"] == "2.2.0"
+        assert provenance["calibration_method"] == ml_service.metadata["calibration"]["method_label"]
     assert active["applications_scored"] == 1
 
 

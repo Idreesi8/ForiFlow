@@ -172,6 +172,9 @@ class ModelVersion(Base):
     feature_set_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
     trained_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
     metrics: Mapped[dict | None] = mapped_column(JsonColumn, nullable=True)
+    # Since 2.2: how to reproduce the model (dataset hash, split, seed,
+    # preprocessing version, calibration, config). NULL on earlier rows.
+    provenance: Mapped[dict | None] = mapped_column(JsonColumn, nullable=True)
     # 'active': the model this service is scoring with now. One row at a time.
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     # Why the fallback formula is serving, when it is: 'pinned',

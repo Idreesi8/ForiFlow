@@ -128,7 +128,7 @@ export default function ReviewPanel({ applicationId, onDecided }) {
               <span className="ml-1 text-slate-500">/ 100</span>
             </Fact>
             <Fact label="Risk band">{application.risk_band ?? band.riskBand}</Fact>
-            <Fact label="Probability of default">
+            <Fact label="Calibrated PD (display only)">
               {pd !== null && pd !== undefined ? formatPercent(pd) : "Not available"}
             </Fact>
             <Fact label="Model version">

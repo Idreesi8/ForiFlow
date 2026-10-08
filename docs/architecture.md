@@ -71,6 +71,32 @@ the API:
 (`Approve`, `Manual Review`, `Decline`). Nothing is approved or rejected until
 an officer records it.
 
+### Model training and evaluation (2.2)
+
+```mermaid
+flowchart LR
+    raw[credit_risk_dataset.csv<br/>public consumer loans] --> dedupe[drop exact duplicates]
+    dedupe --> split{stratified split<br/>seed 42}
+    split -->|60%| train[training split]
+    split -->|20%| val[validation split]
+    split -->|20%| test[final test set]
+    train --> prep[medians, clip bounds, scaler<br/>learned here only]
+    prep --> smote[SMOTE on training rows]
+    smote --> fit[ensemble + baselines]
+    fit --> val
+    val --> cal[calibrator chosen and fitted<br/>display only]
+    cal --> test
+    test --> once[one final evaluation<br/>ml.evaluate_model]
+```
+
+`ml/pipeline.py` holds the protocol and `docs/model_card.md` the results. The
+model is a demonstration model on public consumer credit data; the policy
+cut-offs are not derived from it, and the Model page shows the model
+evaluation thresholds beside the credit policy thresholds so neither is
+mistaken for the other. Each model version records its provenance (dataset
+hash, split fingerprints, seed, preprocessing version, calibration) in
+`model_versions.provenance`.
+
 ### Credit policy
 
 `credit_policies` holds versioned policy configuration:
@@ -413,8 +439,8 @@ flowchart TB
     officer[Officer browser] --> fe
 ```
 
-Images: `foriflow-backend:2.1.0` (`python:3.12-slim` + `libgomp1`) and
-`foriflow-frontend:2.1.0` (Node 20 build, nginx 1.27). See
+Images: `foriflow-backend:2.2.0` (`python:3.12-slim` + `libgomp1`) and
+`foriflow-frontend:2.2.0` (Node 20 build, nginx 1.27). See
 [deployment.md](deployment.md).
 
 ## Repository map

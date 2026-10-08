@@ -1,59 +1,42 @@
-"""Check whether the served model treats groups of applicants differently.
+"""Subgroup Performance Analysis of the served model (formerly "group audit").
 
-Run from the ``backend`` directory, after :mod:`ml.evaluate_model`::
+Since 2.2 this runs inside ``python -m ml.evaluate_model``, on the final test
+set, once. It joins each test loan back to four attributes of the public file
+that the model never reads (age, income, housing, loan purpose) and reports
+per group, where the sample allows:
 
-    python -m ml.fairness_audit
+* sample count, defaults and default rate;
+* ROC-AUC, and precision and recall at the model evaluation threshold
+  (raw probability 0.5, fixed in advance, not a credit policy threshold);
+* the calibrated probability against the observed default rate;
+* approval and rejection shares at the demo policy's 40 / 70 cut-offs, which
+  describe that policy, not the model.
 
-The model reads three inputs and none of them is age, housing, income or the
-purpose of the loan. That does not make it neutral: an input can stand in for a
-group (years in operation is short for the young), and a model that cannot see
-something that matters will misprice the people it matters for.
-
-This script takes the same 20% hold-out as the evaluation, joins each loan back
-to four attributes of the public file that the model never saw, and reports for
-every group:
-
-* how often it is approved, and that rate against the best-treated group (the
-  "four-fifths" screen used in fair-lending reviews);
-* the probability of default the model gives the group against the default rate
-  the group really had, which is the test that matters: a gap means the model is
-  too harsh or too lenient for that group, whatever the approval rates are;
-* the wrong decisions on each side: good payers rejected, defaulters approved.
-
-Results are written to ``ml/fairness_audit.json``. The file has no gender, so
-gender cannot be audited here. Nothing in this script changes the model.
+A group with fewer than :data:`MIN_GROUP_ROWS` loans, or fewer than
+:data:`MIN_CLASS_ROWS` defaults or non-defaults, is marked "Insufficient
+sample size" and its AUC is not reported. Similar figures across groups do not
+make the model "fair": the file is consumer loans, has no gender, region or
+religion, and is not Pakistani SME data.
 """
 
 from __future__ import annotations
 
-import json
 import math
 import time
 
-import joblib
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import train_test_split
 
 from ml.evaluate_model import MANUAL_REVIEW_UPPER_BOUND, REJECT_UPPER_BOUND
-from ml.features import (
-    FAIRNESS_PATH,
-    MODEL_PATH,
-    SCALER_PATH,
-    load_feature_metadata,
-    load_model_evaluation,
-)
-from ml.train_real_model import (
-    RANDOM_STATE,
-    TARGET,
-    build_candidates,
-    load_datasets,
-    map_credit_risk,
-)
 
 # A group smaller than this is reported but takes no part in any verdict.
 MIN_GROUP_ROWS = 100
+# Below this many defaults (or non-defaults) AUC, precision and recall are noise.
+MIN_CLASS_ROWS = 10
+INSUFFICIENT = "Insufficient sample size"
+# Model evaluation threshold on the raw probability (see ml.pipeline).
+EVALUATION_THRESHOLD = 0.5
 # Fair-lending screen: a group approved at under 80% of the best group's rate.
 FOUR_FIFTHS = 0.80
 # Two-sided 95% normal interval.
@@ -84,6 +67,11 @@ def group_row(
     rows = int(len(y))
     defaults = int(y.sum())
     good, bad = y == 0, y == 1
+    sufficient = (
+        rows >= MIN_GROUP_ROWS and defaults >= MIN_CLASS_ROWS and rows - defaults >= MIN_CLASS_ROWS
+    )
+    flagged = raw_pd >= EVALUATION_THRESHOLD
+    caught = int((flagged & bad).sum())
     observed = float(y.mean())
     predicted = float(calibrated_pd.mean())
     # Is the gap larger than the group's size alone would produce?
@@ -108,7 +96,11 @@ def group_row(
         "defaulters_approved": (
             float((scores[bad] > MANUAL_REVIEW_UPPER_BOUND).mean()) if bad.any() else None
         ),
-        "auc_roc": float(roc_auc_score(y, raw_pd)) if 0 < defaults < rows else None,
+        "auc_roc": float(roc_auc_score(y, raw_pd)) if sufficient else None,
+        "recall": float(caught / defaults) if defaults else None,
+        "precision": float(caught / flagged.sum()) if flagged.any() else None,
+        "evaluation_threshold": EVALUATION_THRESHOLD,
+        "sample_status": "Sufficient" if sufficient else INSUFFICIENT,
         "small_group": rows < MIN_GROUP_ROWS,
     }
 
@@ -156,36 +148,22 @@ def audit_attribute(
     }
 
 
-def main() -> int:
-    """Score the hold-out, split it by group and write the JSON."""
-    metadata = load_feature_metadata()
-    features = metadata["feature_names"]
-    evaluation = load_model_evaluation()
-    if evaluation is None or evaluation.get("model_trained_at") != metadata.get("trained_at"):
-        raise SystemExit("Run `python -m ml.evaluate_model` first: no calibrator for this model.")
+def subgroup_analysis(
+    held: pd.DataFrame,
+    training_rows: pd.DataFrame,
+    raw_pd: np.ndarray,
+    calibrated_pd: np.ndarray,
+    y: np.ndarray,
+    *,
+    dataset: str,
+    trained_at: str | None,
+) -> dict:
+    """The analysis over ``held`` (the final test rows of the raw file).
 
-    source = load_datasets(("credit_risk",))["credit_risk"]
-    mapped = {"credit_risk": map_credit_risk(source)}
-    winner = next(c for c in build_candidates(mapped) if c.name == metadata["dataset"])
-    X, y = winner.frame[features], winner.frame[TARGET]
-    X_train, X_test, _, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=RANDOM_STATE
-    )
-
-    model = joblib.load(MODEL_PATH)
-    scaler = joblib.load(SCALER_PATH)
-    raw_pd = model.predict_proba(scaler.transform(X_test.to_numpy()))[:, 1]
-    calibrator = evaluation["calibrator"]
-    calibrated_pd = np.interp(
-        raw_pd, calibrator["raw_probability"], calibrator["calibrated_probability"]
-    )
+    Income quarters are cut on ``training_rows`` so the test set defines nothing.
+    """
     scores = 100.0 * (1.0 - raw_pd)
-    y_arr = y_test.to_numpy()
-
-    # The attributes the model never saw, for the same hold-out rows. Income
-    # quarters are cut on the training rows so the hold-out does not define them.
-    held = source.loc[X_test.index]
-    cuts = source.loc[X_train.index, "person_income"].quantile([0.25, 0.5, 0.75]).tolist()
+    cuts = training_rows["person_income"].quantile([0.25, 0.5, 0.75]).tolist()
     attributes = [
         (
             "Age",
@@ -196,8 +174,9 @@ def main() -> int:
         (
             "Income",
             "Facility size against income is the main input, so small earners "
-            "borrowing the same amount score lower by design. Cut on annual income "
-            f"at {cuts[0]:,.0f} / {cuts[1]:,.0f} / {cuts[2]:,.0f} (file currency).",
+            "borrowing the same amount score lower by design. Cut on the training "
+            f"split's annual income at {cuts[0]:,.0f} / {cuts[1]:,.0f} / {cuts[2]:,.0f} "
+            "(file currency).",
             pd.cut(
                 held["person_income"], [-1.0, *cuts, float("inf")], labels=INCOME_LABELS
             ).astype(str),
@@ -216,44 +195,46 @@ def main() -> int:
             list(PURPOSE_LABELS.values()),
         ),
     ]
-
-    payload = {
-        "dataset": metadata["dataset"],
-        "model_trained_at": metadata.get("trained_at"),
+    return {
+        "title": "Subgroup Performance Analysis",
+        "dataset": dataset,
+        "model_trained_at": trained_at,
+        "evaluated_on": "final test set",
         "protocol": (
-            "The served model on the same 20% hold-out as the evaluation, joined "
-            "to attributes of the public file that the model never reads. Approved "
-            f"means a score above {MANUAL_REVIEW_UPPER_BOUND:.0f}; rejected means "
-            f"{REJECT_UPPER_BOUND:.0f} or below. A group under {MIN_GROUP_ROWS} "
-            "loans is shown but takes no part in a verdict."
+            "The served model on the final test set, joined to attributes of the public "
+            "file that the model never reads. Precision and recall use the model "
+            f"evaluation threshold (raw probability {EVALUATION_THRESHOLD}). Approved and "
+            f"rejected use the demo policy cut-offs ({MANUAL_REVIEW_UPPER_BOUND:.0f} / "
+            f"{REJECT_UPPER_BOUND:.0f}) and describe that policy, not the model. A group "
+            f"under {MIN_GROUP_ROWS} loans, or with under {MIN_CLASS_ROWS} defaults or "
+            "non-defaults, is marked insufficient and takes no part in a verdict."
         ),
-        "rows": int(len(y_arr)),
-        "overall": group_row("All", scores, raw_pd, calibrated_pd, y_arr),
+        "interpretation": (
+            "Descriptive only. Similar figures do not establish that the model is fair; "
+            "the file is consumer loans without gender, region or religion, not "
+            "Pakistani SME lending data."
+        ),
+        "rows": int(len(y)),
+        "overall": group_row("All", scores, raw_pd, calibrated_pd, y),
         "four_fifths": FOUR_FIFTHS,
         "min_group_rows": MIN_GROUP_ROWS,
+        "min_class_rows": MIN_CLASS_ROWS,
         "not_audited": [
             "Gender: the file does not record it.",
             "Region, religion and ethnicity: the file does not record them.",
             "Pakistani SMEs: these are consumer loans from a public file.",
         ],
         "attributes": [
-            audit_attribute(name, note, labels, order, scores, raw_pd, calibrated_pd, y_arr)
+            audit_attribute(name, note, labels, order, scores, raw_pd, calibrated_pd, y)
             for name, note, labels, order in attributes
         ],
         "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
-    FAIRNESS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-    for block in payload["attributes"]:
-        print(f"\n{block['attribute']} (reference: {block['reference_group']})")
-        for row in block["groups"]:
-            print(
-                f"  {row['group']:<20} n={row['rows']:>5}  approved {row['approval_rate']:.3f}"
-                f"  ratio {row['approval_ratio']:.2f}  observed {row['observed_default_rate']:.3f}"
-                f"  predicted {row['predicted_default_rate']:.3f}"
-                f"{'  MISPRICED' if row['gap_beyond_noise'] and not row['small_group'] else ''}"
-            )
-    print(f"\nwrote {FAIRNESS_PATH.name}")
+
+def main() -> int:
+    """Since 2.2 the analysis is part of the one final evaluation."""
+    print("Run `python -m ml.evaluate_model`: it writes the subgroup analysis on the final test set.")
     return 0
 
 

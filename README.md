@@ -50,7 +50,7 @@ ForiFlow is an end-to-end AI credit intelligence platform that:
           └─────────────┘           └─────────────┘           └─────────────┘
 ```
 
-\* 5-fold CV 0.7752 ± 0.0073, hold-out 0.7731 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio).
+\* Final test set 0.7748 (5-fold CV on the training split 0.7743 ± 0.0073; 3 features; a demonstration model trained on public consumer credit data — not validated for Pakistani SME lending).
 
 In Docker the dashboard calls `/api` on its own origin and nginx forwards that
 prefix to FastAPI, so a bank laptop never has to configure CORS.
@@ -61,14 +61,14 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 |---------|-------------|
 | 🎯 **AI Credit Scoring** | XGBoost + Random Forest soft-voting ensemble. Score: 0-100 |
 | 📊 **SHAP Waterfall Charts** | Every assessment explained with feature attribution, plus coded top risk factors (R01, R02, …) |
-| 📈 **Calibrated PD & Model Performance** | Each score carries a probability of default calibrated on out-of-fold predictions; a Model Performance page shows the hold-out ROC curve, confusion matrix, threshold table, default rate per band and the six-model comparison |
+| 📈 **Model page & model card** | Leakage-free protocol (train / validation / untouched final test), baselines (logistic regression, XGBoost, random forest), display-only calibrated PD, data-quality report, model evaluation thresholds shown apart from the credit policy, and a [model card](docs/model_card.md) |
 | 🧭 **Path to approval** | For a rejected or referred applicant, the exact facility size and the evidenced turnover at which the same business would reach the next band, found by searching the monotone model |
 | 🧾 **Turnover from a statement** | Upload a wallet or bank statement CSV; ForiFlow computes monthly turnover from the transactions, flags what to check, and records on the credit file whether the scored figures match the statement |
 | 📨 **Payment reminders** | Installments overdue, due within a week or in arrears, each with a drafted message in English and Roman Urdu to copy or open in WhatsApp |
 | 📉 **Population drift monitor** | Population Stability Index of the score and each model input against the training data, with the value chance alone would give at that sample size, so a small portfolio is not misread as drift |
 | 🧑‍⚖️ **Decision support, not auto-approval** | The model gives a risk assessment, a versioned and configurable credit policy turns it into a recommendation, and an authorised officer makes the decision. No score approves or rejects a loan |
 | 🧾 **Traceability** | Every application is filed under a borrower (one business, many applications, full history), stores the model version and engine that scored it, and every action is written to an append-only audit trail the database itself refuses to edit |
-| ⚖️ **Group audit** | Approval rate and pricing accuracy per age band, income quarter, housing status and loan purpose on the hold-out: attributes the model never reads. Shows where the model is too harsh or too lenient, and states what cannot be audited (no gender in the data) |
+| ⚖️ **Subgroup Performance Analysis** | Count, default rate, ROC-AUC, precision and recall per age band, income quarter, housing status and loan purpose on the final test set; small groups marked "Insufficient sample size"; states what cannot be analysed (no gender in the data) |
 | 🖨️ **Credit memo** | A printable one-page record per application: request, score, factor points, turnover evidence, decision and reason |
 | 💼 **Loan book analytics** | Disbursed, collected, overdue and outstanding amounts, portfolio at risk (30+ days), defaults, a decision matrix and a per-sector table, from the months officers record |
 | ✅ **Officer decision on every application** | A manager or admin approves, rejects or escalates each application with a written reason, whatever the policy recommended; the recommendation, the officer's decision, name and time are all kept, and only approved facilities can be monitored |
@@ -131,8 +131,8 @@ in `frontend/`. Vite proxies `/api` to the API.
 
 ## 📊 Performance
 
-- **AUC-ROC:** 5-fold CV 0.7752 ± 0.0073, hold-out 0.7731 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio). 0.85+ remains a bank-data target, not a measured result.
-- **Calibration (hold-out, 6,517 loans):** Brier 0.1852 raw → 0.1302 after isotonic calibration (0.1706 for always predicting the base rate). Observed default rate: Rejected 59.5%, Manual Review 14.6%, Approved 8.4%. Calibrated to the public file's 21.8% default rate, not to Pakistani SMEs.
+- **AUC-ROC:** final test set 0.7748 (6,484 loans, measured once); 5-fold CV on the training split 0.7743 ± 0.0073 (3 features, public consumer credit data — not a real SME portfolio). Logistic regression reaches 0.7630 and XGBoost alone 0.7744: the ensemble adds nothing meaningful over XGBoost alone. 0.85+ remains a bank-data target, not a measured result.
+- **Calibration (final test):** Brier 0.1845 raw → 0.1304 with an isotonic calibrator chosen and fitted on the validation split (0.1709 for always predicting the base rate). Display only; calibrated to the public file's 21.9% default rate, not to Pakistani SMEs.
 - **Response time:** median 150 ms, p90 207 ms per score including SHAP (30 runs in the Docker container on the development laptop, 26 September 2026)
 - **Concurrency:** not load-tested; the shipped Compose stack runs a single uvicorn process behind nginx, sized for a single-branch pilot
 

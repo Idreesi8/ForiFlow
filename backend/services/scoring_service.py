@@ -448,6 +448,9 @@ CONFIDENCE_MARGIN_WEIGHT: float = 0.4
 CONFIDENCE_MARGIN_SPAN: float = 30.0
 CONFIDENCE_DISAGREEMENT_SPAN: float = 0.5
 
+# Probability-space SHAP must reproduce each member's prediction to this.
+SHAP_ADDITIVITY_TOLERANCE: float = 1e-6
+
 
 def _rebind_shap_links(explainers: dict[str, Any]) -> dict[str, Any]:
     """Point each explainer's ``link`` at this interpreter's ``shap.links``.
@@ -485,10 +488,19 @@ class MLScoringService(ScoringService):
     probability. That is also what keeps the base value near 50 and the policy
     bands meaningful.
 
-    The absolute probability is reported separately: an isotonic calibrator
-    fitted by :mod:`ml.evaluate_model` maps the raw probability onto the default
-    rate observed in the training file. It is monotone, so it never reorders
-    applicants, and the score, the bands and the SHAP values stay on the raw model.
+    The absolute probability is reported separately and is display only: a
+    calibrator chosen and fitted on the validation split (``metadata
+    ["calibration"]`` since 2.2; ``ml.evaluate_model`` before) maps the raw
+    probability onto the default rate of the public training file. It is
+    monotone, so it never reorders applicants, and the score, the bands and the
+    SHAP values stay on the raw model.
+
+    The SHAP base value is the *model reference baseline*: the ensemble's
+    expected score over a small reference sample of the SMOTE-balanced training
+    rows. It is not the average of a bank portfolio or of the public file.
+
+    This is a demonstration model trained on public consumer credit data. It is
+    not validated for Pakistani SME lending and must not decide credit alone.
     """
 
     def __init__(
@@ -511,6 +523,11 @@ class MLScoringService(ScoringService):
         from ml.features import payment_history_levels
 
         self.history_levels = payment_history_levels(metadata)
+        self.evaluation = (
+            evaluation
+            if evaluation and evaluation.get("model_trained_at") == metadata.get("trained_at")
+            else None
+        )
         self.calibration = self._calibration_breakpoints(evaluation)
         self.monotone: dict[str, int] = metadata.get("monotone_constraints", {})
         self.explainers: dict[str, Any] = _rebind_shap_links(shap_bundle["explainers"])
@@ -578,12 +595,18 @@ class MLScoringService(ScoringService):
     def _calibration_breakpoints(
         self, evaluation: dict[str, Any] | None
     ) -> tuple[list[float], list[float]] | None:
-        """Isotonic breakpoints, or ``None`` when they do not belong to this model.
+        """Calibrator breakpoints, or ``None`` when none belongs to this model.
 
-        A calibrator fitted for an earlier training run would put wrong
-        probabilities on the file, so it is ignored unless its timestamp matches
-        the served artefact. Re-run ``python -m ml.evaluate_model`` after retraining.
+        Since 2.2 the calibrator is saved with the model (``metadata
+        ["calibration"]``), fitted on the validation split. Older artefacts kept
+        it in ``model_evaluation.json``, which is used only when its timestamp
+        matches the served artefact.
         """
+        own = self.metadata.get("calibration") or {}
+        raw = own.get("raw_probability") or []
+        calibrated = own.get("calibrated_probability") or []
+        if len(raw) >= 2 and len(raw) == len(calibrated):
+            return list(raw), list(calibrated)
         if not evaluation:
             return None
         if evaluation.get("model_trained_at") != self.metadata.get("trained_at"):
@@ -624,7 +647,12 @@ class MLScoringService(ScoringService):
                 estimator.n_jobs = 1
 
     def _expected_score(self) -> float:
-        """Score of an average training applicant, used as the SHAP base value."""
+        """The SHAP base value: the model reference baseline, in score points.
+
+        The ensemble's expected raw probability over the SHAP reference sample
+        (SMOTE-balanced training rows, so near a 50% default prior), turned into a
+        score. It is a reference point for the attributions, not a portfolio average.
+        """
         from ml.shap_utils import expected_positive_value
 
         if self.output_space != "probability":
@@ -649,19 +677,26 @@ class MLScoringService(ScoringService):
         # Read from the artefact's own metadata so the published figures can
         # never drift from the model actually being served.
         cv = self.metadata.get("cross_validation", {})
+        final_test = ((self.evaluation or {}).get("final_test") or {}).get("raw") or {}
         holdout = self.metadata.get("holdout", {})
-        metrics = (
-            f"5-fold CV {cv['auc_roc_mean']:.4f} ± {cv['auc_roc_std']:.4f}, "
-            f"hold-out {holdout['auc']:.4f} "
-            if "auc_roc_mean" in cv and "auc" in holdout
-            else ""
-        )
+        if "auc_roc_mean" in cv and "auc_roc" in final_test:
+            metrics = (
+                f"5-fold CV on the training split {cv['auc_roc_mean']:.4f} ± "
+                f"{cv['auc_roc_std']:.4f}, final test {final_test['auc_roc']:.4f} "
+            )
+        elif "auc_roc_mean" in cv and "auc" in holdout:
+            metrics = f"5-fold CV {cv['auc_roc_mean']:.4f} ± {cv['auc_roc_std']:.4f}, hold-out {holdout['auc']:.4f} "
+        else:
+            metrics = ""
         note = (
             f"{COMPLIANCE_NOTE} Scored by the trained XGBoost + RandomForest "
             f"ensemble ({self.metadata.get('dataset', 'unknown')} dataset, "
             f"{metrics}(n={int(self.metadata.get('rows', 0)):,}, "
             f"{len(self.feature_names)} features, trained on a public/proxy "
-            "dataset — not a real SME portfolio) with TreeSHAP attributions."
+            "dataset — not a real SME portfolio) with TreeSHAP attributions. "
+            "This is a demonstration model trained on public consumer credit data; "
+            "it is not validated for Pakistani SME lending and must not be used for "
+            "autonomous credit decisions."
         )
         if self.history_levels is not None:
             midpoint = sum(self.history_levels) / 2.0
@@ -671,9 +706,10 @@ class MLScoringService(ScoringService):
             )
         if self.calibration is not None:
             note += (
-                " The probability of default is calibrated to the "
+                " The probability of default shown is calibrated (display only) to the "
                 f"{float(self.metadata.get('default_rate', 0.0)):.1%} default rate of "
-                "that public file, not to a Pakistani SME portfolio."
+                "that public file, not to a Pakistani SME portfolio; the score and SHAP "
+                "use the raw model probability."
             )
         if unused:
             note += (
@@ -712,7 +748,7 @@ class MLScoringService(ScoringService):
         member_pds = self._member_probabilities(scaled)
         probability_of_default = self._ensemble_probability(member_pds)
         risk_score = round(clamp(100.0 * (1.0 - probability_of_default), 0.0, 100.0), 2)
-        contributions = self._shap_contributions(scaled, risk_score)
+        contributions = self._shap_contributions(scaled, risk_score, member_pds)
 
         return ScoreResult(
             risk_score=risk_score,
@@ -749,7 +785,36 @@ class MLScoringService(ScoringService):
             for name, probability in member_pds.items()
         ) / total_weight
 
-    def _shap_contributions(self, scaled, risk_score: float) -> dict[str, float]:
+    def _member_shap(self, name: str, explainer: Any, scaled, target: float | None):
+        """One member's attributions, verified to add up to its own prediction.
+
+        An input lying exactly on a split threshold (for example 0.5 years, the
+        midpoint between whole years in the training data) is sent left by
+        scikit-learn (``<=``) but can be sent right by the TreeSHAP kernel, so
+        the attributions would explain a neighbouring leaf. When the check fails,
+        the input is moved by one float32 step either way, which the model scores
+        identically, and the version whose attributions add up is used.
+        """
+        import numpy as np
+
+        from ml.shap_utils import expected_positive_value, positive_class_shap
+
+        base = expected_positive_value(explainer) if target is not None else None
+        values = np.asarray(positive_class_shap(explainer.shap_values(scaled))[0], dtype=float)
+        if target is None or abs(base + values.sum() - target) <= SHAP_ADDITIVITY_TOLERANCE:
+            return values
+        point = np.asarray(scaled, dtype=np.float32)
+        for direction in (-np.inf, np.inf):
+            nudged = np.nextafter(point, np.float32(direction)).astype(np.float64)
+            candidate = np.asarray(positive_class_shap(explainer.shap_values(nudged))[0], dtype=float)
+            if abs(base + candidate.sum() - target) <= SHAP_ADDITIVITY_TOLERANCE:
+                return candidate
+        logger.warning("SHAP attributions of %s do not add up to its prediction.", name)
+        return values
+
+    def _shap_contributions(
+        self, scaled, risk_score: float, member_pds: dict[str, float] | None = None
+    ) -> dict[str, float]:
         """Attribute the score to each feature, in score points.
 
         Shapley values are additive across a weighted average of models, so
@@ -759,12 +824,15 @@ class MLScoringService(ScoringService):
         """
         import numpy as np
 
-        from ml.shap_utils import positive_class_shap
-
         total = np.zeros(len(self.feature_names))
         for name, explainer in self.explainers.items():
-            values = positive_class_shap(explainer.shap_values(scaled))[0]
-            total += self.shap_weights[name] * np.asarray(values, dtype=float)
+            target = (
+                member_pds.get(name)
+                if member_pds is not None and self.output_space == "probability"
+                else None
+            )
+            values = self._member_shap(name, explainer, scaled, target)
+            total += self.shap_weights[name] * values
 
         if self.output_space == "probability":
             points = -100.0 * total

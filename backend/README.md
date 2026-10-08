@@ -135,10 +135,12 @@ backend/
   ml/features.py              # canonical feature schema shared by train + serve
   ml/train_real_model.py      # training pipeline -> model, scaler, SHAP, metadata
   ml/predict_sample.py        # single-applicant smoke test
-  ml/compare_models.py        # served ensemble vs LR, XGB, RF, LightGBM, MLP
-  ml/evaluate_model.py        # isotonic calibrator + hold-out ROC, confusion, bands
+  ml/pipeline.py              # 2.2 leakage-free protocol: split, train-only preprocessing, baselines, calibration
+  ml/data_quality.py          # data-quality report of the training file
+  ml/compare_models.py        # superseded pointer: baselines now come from train + evaluate
+  ml/evaluate_model.py        # the final test set, once: metrics, baselines, subgroups, drift reference
   ml/ews_markov.py            # early-warning Markov chain fitted on UCI monthly histories
-  ml/fairness_audit.py        # approval and pricing per group the model cannot see
+  ml/fairness_audit.py        # Subgroup Performance Analysis (run by ml.evaluate_model)
   ml/shap_utils.py            # SHAP output normalisation helpers
   ml/data/                    # raw CSV training data (not committed)
   tests/                      # pytest suite (in-memory SQLite, plus PostgreSQL parity tests)
@@ -149,15 +151,31 @@ backend/
 ### Training
 
 ```bash
-python -m ml.train_real_model                          # full run, ~20 min
-python -m ml.train_real_model --dataset credit_risk_shared   # retrain only, ~2 min
-python -m ml.predict_sample                            # score one applicant
+python -m ml.train_real_model      # 2.2 protocol: train + validation, ~30 s
+python -m ml.evaluate_model        # the final test set, once (refuses a second run)
+python -m ml.predict_sample        # score one applicant
 ```
 
-`--dataset` skips the candidate comparison for routine retrains and carries the
-previously recorded comparison into the new metadata for traceability. It only
-reads the file that training set needs: `credit_risk_shared` (the served model)
-needs `credit_risk_dataset.csv` alone.
+Since 2.2 training follows a leakage-free protocol (`ml/pipeline.py`); the
+model card is [`docs/model_card.md`](../docs/model_card.md):
+
+1. Drop exact duplicate rows of `credit_risk_dataset.csv` (165), then map onto
+   the three features.
+2. Split, stratified, seed 42: training 60% (19,449), validation 20% (6,483),
+   final test 20% (6,484). Row-id fingerprints are stored in the metadata.
+3. Learn imputation medians, 1st/99th percentile clip bounds and the scaler on
+   the **training split only**; SMOTE on the scaled training rows only (and
+   inside each CV fold, on that fold's training part only).
+4. 5-fold CV on the training split for the ensemble and the baselines
+   (logistic regression, XGBoost alone, random forest alone).
+5. Fit on the training split; choose and fit the display-only calibrator on
+   the validation split.
+6. `ml.evaluate_model` then measures everything once on the final test set
+   and writes the Subgroup Performance Analysis.
+
+Before 2.2 the medians and clip bounds were learned on the whole file and one
+20% hold-out was reused for evaluation, calibration reporting and the group
+audit. The dataset choice (below) dates from that time and is not re-run.
 
 #### Training data
 
@@ -170,22 +188,18 @@ publishers). Download them (a free Kaggle login is required) into `backend/ml/da
 | `Loan_default.csv` | [nikhil1e9/loan-default](https://www.kaggle.com/datasets/nikhil1e9/loan-default) | 255,347 | `1d7556a9071e7f9e872dc05a0cad174229fb1164b1cf3470ad35eed195c24278` |
 | `cs-training.csv` | [Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit) (experiment only, `ml.auc_ladder_gmsc`) | 150,000 | — |
 
-With the pinned `scikit-learn==1.8.0` / xgboost 3.4.0 (`xgboost-cpu` on Linux and Windows) on Python 3.12, both
-the full run and `--dataset credit_risk_shared` reproduce the published
-figures: 5-fold CV AUC-ROC 0.7752 ± 0.0073, hold-out 0.7731.
-
-The pipeline explores both CSVs, maps them onto the ForiFlow feature space,
-compares candidate training sets by 5-fold cross-validation, then fits a
-`StandardScaler` → `SMOTE` → soft-voting `XGBoost + RandomForest` ensemble on the
-winner. SMOTE runs **inside** each CV fold (via an `imblearn` pipeline) so
-synthetic minority rows never leak into a validation fold. It writes:
+With the pinned `scikit-learn==1.8.0` / xgboost 3.4.0 (`xgboost-cpu` on Linux and Windows) on Python 3.12,
+the 2.2 run reproduces: CV AUC-ROC 0.7743 ± 0.0073 on the training split,
+validation 0.7798, final test 0.7748. Training writes:
 
 | Artefact                 | Contents                                            |
 | ------------------------ | --------------------------------------------------- |
 | `ml/foriflow_model.pkl`  | Fitted soft-voting ensemble                          |
 | `ml/scaler.pkl`          | `StandardScaler` fitted on the training split        |
 | `ml/shap_explainer.pkl`  | One TreeExplainer per member, plus voting weights    |
-| `ml/feature_names.json`  | Feature order, learned clip bounds, metrics, lineage |
+| `ml/feature_names.json`  | Feature order, training-split clip bounds and medians, split fingerprints, dataset hash, calibrator, CV and validation metrics, lineage |
+| `ml/data_quality_report.json` | Data-quality report of the training file |
+| `ml/model_comparison.json` | Ensemble against the three baselines (CV, validation; final test added by `ml.evaluate_model`) |
 
 ### Which dataset was used, and why
 
@@ -203,9 +217,10 @@ stratified 60,000-row subsample; full run of 25 September 2026):
 | `loan_default_full`  | 6        | 255,347 | 0.644   | 0.263 |
 | `combined_shared`    | 3        | 287,928 | 0.635   | 0.275 |
 
-The served `credit_risk_shared` figure is 5-fold CV 0.7752 ± 0.0073, hold-out
-0.7731 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME
-portfolio). The other two rows are rejected candidates, not production.
+These are the 1.x selection figures, from cross-validation over each whole
+file. The served model's 2.2 figures are CV 0.7743 ± 0.0073 on the training
+split and final test 0.7748 (3 features, trained on a public/proxy dataset —
+not a real SME portfolio). The other two rows are rejected candidates.
 
 `credit_risk_dataset.csv` wins decisively despite being the smallest.
 `Loan_default.csv` is largely synthetic — `CreditScore`, `DTIRatio` and
@@ -231,8 +246,9 @@ adding to it.
   cash-heavy businesses, which also lets ForiFlow's flagship alternative-data
   signal reach the model.
 - **Learned clip bounds.** Training persists each feature's 1st/99th percentile
-  and serving clips to those saved bounds, keeping live applicants inside the
-  range the trees were split on.
+  **of the training split** (since 2.2; before, of the whole file) and serving
+  clips to those saved bounds, keeping live applicants inside the range the
+  trees were split on.
 - **Age is excluded** even though both datasets carry it and it is predictive:
   the intake form never collects it, so training on it would force a fabricated
   constant at inference.
@@ -265,11 +281,12 @@ adding to it.
 
 ### Accuracy, and an important limitation
 
-5-fold cross-validation gives **AUC-ROC 0.7752 ± 0.0073** and **F1 0.543**; the
-held-out 20% scores AUC 0.7731, F1 0.546, Brier 0.185 (n=32,581, 3 features,
-trained on a public/proxy dataset — not a real SME portfolio). Hold-out
-applicants spread across the policy bands at 18.6% Rejected, 63.5% Manual
-Review and 18.0% Approved (median score 61.3). The constrained forest is more
+On the untouched final test set (6,484 loans) the model scores **AUC-ROC
+0.7748**, PR-AUC 0.567, F1 0.551 at raw probability 0.5, raw Brier 0.185;
+5-fold CV on the training split gives 0.7743 ± 0.0073 (3 features, trained on a
+public/proxy dataset — not a real SME portfolio). At the demo cut-offs used as
+evaluation bands (40 / 70) the final-test applicants spread 18.4% / 63.4% /
+18.2%. The constrained forest is more
 conservative than the unconstrained one it replaced (19.5% / 41.7% / 38.8%), so
 more applicants now go to an officer instead of being approved outright.
 
@@ -338,61 +355,42 @@ does not fully hold: an account that was Current last month returns to Current
 term loans. A bank would refit the chain on its own monthly records with the
 same script.
 
-### Calibrated probability of default and hold-out evaluation
+### Calibrated probability of default (display only)
 
-`python -m ml.evaluate_model` leaves the served model untouched. It rebuilds the
-training 80/20 split, fits an isotonic regression on 5-fold out-of-fold
-predictions of the 80% part (averaged in bins of 250 loans, so no reported
-probability rests on a handful of loans), and measures the served model plus that calibrator
-on the 20% hold-out (6,517 loans). Results and the calibrator's breakpoints are
-in `ml/model_evaluation.json`; the API serves them at `GET /model/evaluation`.
-It needs the raw CSV in `ml/data/`, and must be re-run after every retrain: a
-calibrator from another training run is ignored at start-up.
+The calibrator is chosen and fitted on the **validation** split: isotonic
+regression over bins of 250 loans against Platt (sigmoid) scaling, by 5-fold
+out-of-fold Brier within that split (0.13033 against 0.13034, practically
+equal; uncalibrated 0.18654). It is stored with the model in
+`feature_names.json`. On the final test set:
 
-| Hold-out | AUC-ROC | Brier | ECE | Mean predicted PD |
-| -------- | ------: | ----: | --: | ----------------: |
-| Raw ensemble | 0.7731 | 0.1852 | 0.2261 | 44.4% |
-| After isotonic calibration | 0.7725 | 0.1302 | 0.0091 | 21.8% |
-| Always predict the base rate | 0.5 | 0.1706 | - | 21.8% |
+| Final test (6,484) | AUC-ROC | Brier | ECE | Mean predicted PD |
+| ------------------ | ------: | ----: | --: | ----------------: |
+| Raw ensemble | 0.7748 | 0.1845 | 0.225 | 44.3% |
+| Calibrated (isotonic) | 0.7746 | 0.1304 | 0.014 | 21.4% |
+| Always predict the base rate | 0.5 | 0.1709 | - | 21.9% |
 
 The raw probabilities score worse than predicting the base rate for everyone,
 which is why the 0-100 score is described as a ranking. The calibrated
-`probability_of_default` is returned beside the score; the score, the bands and
-the SHAP values stay on the raw model. Observed default rate by band: Rejected
-59.5%, Manual Review 14.6%, Approved 8.4%. Flagging every score of 50 or below
-catches 61.1% of defaulters and passes 82.5% of good payers. The calibration
-reflects the public file's 21.8% default rate, not a Pakistani SME portfolio.
+`probability_of_default` is shown beside the score as **display only**; the
+score, the bands and SHAP stay on the raw model. Observed default rate by
+evaluation band: 60.3% (score ≤ 40), 14.6% (40-70), 8.1% (> 70).
 
-### Why XGBoost + Random Forest: measured alternatives
+### Baselines: does the ensemble add anything?
 
-`python -m ml.compare_models` (LightGBM optional) scores each learner on the
-served training set with the production protocol: same 5 stratified folds,
-StandardScaler + SMOTE fitted inside each training fold, production monotone
-constraints on every tree model. Results are in `ml/model_comparison.json`.
+Same split and train-only preprocessing for every model (`ml/model_comparison.json`):
 
-| Learner | CV AUC-ROC | PR-AUC | F1 | Predict, one row | Explanation |
-| ------- | ---------: | -----: | -: | ---------------: | ----------- |
-| Logistic regression | 0.7638 ± 0.0067 | 0.535 | 0.510 | 0.05 ms | exact (linear) |
-| MLP (32-16) | 0.7711 ± 0.0063 | 0.555 | 0.533 | 0.06 ms | KernelSHAP only, not monotone |
-| Random Forest alone | 0.7723 ± 0.0080 | 0.561 | 0.526 | 10.7 ms | exact TreeSHAP |
-| LightGBM | 0.7750 ± 0.0072 | 0.564 | 0.540 | 0.4 ms | exact TreeSHAP |
-| XGBoost alone | 0.7753 ± 0.0072 | 0.566 | 0.542 | 0.3 ms | exact TreeSHAP |
-| **Served XGBoost + RF** | **0.7752 ± 0.0073** | **0.567** | **0.543** | 12.1 ms | exact TreeSHAP |
+| Model | Final-test AUC | PR-AUC | F1 | Brier (raw) | CV AUC (training split) | CV paired p vs ensemble |
+| ----- | -------------: | -----: | -: | ----------: | ----------------------: | ----------------------: |
+| Logistic regression | 0.7630 | 0.533 | 0.515 | 0.190 | 0.7619 ± 0.0059 | 0.001 |
+| XGBoost alone | 0.7744 | 0.565 | 0.549 | 0.177 | 0.7737 ± 0.0068 | 0.14 |
+| Random forest alone | 0.7732 | 0.564 | 0.534 | 0.206 | 0.7719 ± 0.0083 | 0.03 |
+| **Served ensemble** | **0.7748** | **0.567** | **0.551** | 0.185 | **0.7743 ± 0.0073** | — |
 
-Timings are from a cloud CI-class machine (2 vCPUs), vary between runs, and are
-only comparable with each other. Random Forest, the MLP and logistic regression
-are significantly below the served ensemble (paired t-test p < 0.01); with five
-folds that share training rows the test is approximate. The honest reading: on
-three features the boosted trees, LightGBM and the ensemble are statistically
-tied (at most 0.0003 AUC apart, far inside the ±0.0073 spread across folds; a
-paired t-test on the five fold AUCs gives p = 0.87 against XGBoost and p = 0.51
-against LightGBM), and the tree models beat logistic regression by about 0.011
-AUC because the facility-to-turnover effect is a threshold, not a line. The
-forest does not add discrimination here. It is kept because the `confidence`
-indicator needs two differently-built learners to disagree (boosting versus
-bagging), and its extra ~12 ms is small next to the ~150 ms SHAP step. On richer
-bank data this comparison should be re-run, and the forest dropped if it still
-adds nothing.
+The honest reading: the trees beat logistic regression by about 0.012 AUC; the
+ensemble adds **nothing meaningful over XGBoost alone** (0.0004 on the final
+test set, not significant in CV). It stays the served model in 2.2 because
+replacing it is out of scope; on lender data this should be re-run and the
+simpler model kept if it still ties.
 
 ### Model limitations (measured on the shipped artefacts)
 

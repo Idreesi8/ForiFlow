@@ -72,7 +72,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts",
@@ -90,7 +90,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "database": "connected",
   "scoring_engine": "ml",
   "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26",
@@ -187,7 +187,7 @@ Query: `include_explanation` (default `true`).
     ],
     "top_negative_factors": [],
     "narrative": "Score 67.2/100 (Medium Risk) resulted in a 'Manual Review' outcome. Supporting factors: facility size vs annual turnover (+10.8), years in operation (+5.1), repayment history (officer-entered) (+4.2). Referred to a credit officer for manual verification of cash flow evidence.",
-    "compliance_note": "SHAP values are stored on-premise so a bank can support an SBP-oriented adverse-action file. Payment-history and bureau-balance fields are officer-entered; there is no live ECIB or other bureau connector. All amounts are in PKR. ForiFlow is not SBP-certified. Scored by the trained XGBoost + RandomForest ensemble (credit_risk_shared dataset, 5-fold CV 0.7752 ± 0.0073, hold-out 0.7731 (n=32,581, 3 features, trained on a public/proxy dataset — not a real SME portfolio) with TreeSHAP attributions. Payment history is read as a clean (above 52.5) or adverse (52.5 and below) record, not as a fine scale. Collected but not used by this model version: Business size (employees), Existing debt burden, Installment affordability vs cash flow, Inventory turnover, Order consistency.",
+    "compliance_note": "SHAP values are stored on-premise so a bank can support an SBP-oriented adverse-action file. Payment-history and bureau-balance fields are officer-entered; there is no live ECIB or other bureau connector. All amounts are in PKR. ForiFlow is not SBP-certified. Scored by the trained XGBoost + RandomForest ensemble (credit_risk_shared dataset, 5-fold CV on the training split 0.7743 ± 0.0073, final test 0.7748 (n=32,416, 3 features, trained on a public/proxy dataset — not a real SME portfolio) with TreeSHAP attributions. This is a demonstration model trained on public consumer credit data; it is not validated for Pakistani SME lending and must not be used for autonomous credit decisions. Payment history is read as a clean (above 52.5) or adverse (52.5 and below) record, not as a fine scale. The probability of default shown is calibrated (display only) to the 21.9% default rate of that public file, not to a Pakistani SME portfolio; the score and SHAP use the raw model probability. Collected but not used by this model version: Business size (employees), Existing debt burden, Installment affordability vs cash flow, Inventory turnover, Order consistency.",
     "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26"
   },
   "created_at": "2026-09-25T10:47:02.821460+05:00",
@@ -582,18 +582,54 @@ against turnover, so each threshold is unique. It is `null` for Approved
 outcomes, the surrogate engine and explanations stored before 1.5.0. These are
 model outputs, not an offer.
 
+## GET `/model/card` (2.2.0)
+
+What the Model page shows first: `serving_engine`, `serving_model_version`,
+`serving_artifact_sha256`; `status` (model version, training date, dataset
+identifier and type, dataset SHA-256, seed, split with row-id fingerprints,
+features, preprocessing); `performance` (final-test metrics raw and
+calibrated, CV on the training split, validation, and the pre-2.2 model's
+figures under `previous_model`); `evaluation_thresholds` (model evaluation
+thresholds) beside `policy_note` (the credit policy is separate);
+`baselines` and `baseline_cross_validation`; `calibration` (method, how it was
+chosen, Brier and ECE raw against calibrated, `display_only: true`); `shap`
+(including the model reference baseline); `data_quality`; `limitations`.
+Any signed-in officer.
+
+## GET `/model/data-quality` (2.2.0)
+
+The data-quality report of the training file (`ml/data_quality_report.json`):
+rows, columns, target balance, missing, duplicate and out-of-range values,
+distributions, excluded rows, preprocessing actions and the parameters
+learned on the training split. States that the file is public consumer
+credit data, not Pakistani SME banking data.
+
+## GET `/model/feature-contract` (2.2.0)
+
+For the engine scoring now: `model_features` (each with the intake fields it
+is built from), `used_intake_fields`, `collected_unused` (recorded, does not
+change the score), `identity_and_reporting_fields` and `future_sme_features`
+(data needs, not collected or used). The dashboard form marks unused fields
+from this.
+
 ## GET `/model/evaluation`
 
-Hold-out evaluation of the served model, recorded by `python -m
-ml.evaluate_model`. Any signed-in officer. `404` if the script has not run.
+The served model on the **final test set**, measured once by `python -m
+ml.evaluate_model` (2.2 protocol: train 60% / validation 20% / final test 20%,
+seed 42; a second run for the same model is refused). Any signed-in officer.
+`404` if the script has not run.
 
-Returns `rows`, `default_rate`, `protocol`, the isotonic `calibrator`
-breakpoints, and under `holdout`: `raw` and `calibrated` (AUC-ROC, Brier,
-expected calibration error, mean prediction), `brier_no_skill`, `roc_curve`,
-`confusion_at_half`, `thresholds` (score 30 to 70), `bands` (observed default
-rate and calibrated PD per policy band), `reliability_raw` and
-`reliability_calibrated`. These describe the public training file, not the
-live portfolio.
+Returns `split`, `rows` and `default_rate` per set, `protocol`,
+`evaluation_thresholds` (raw probability 0.5; evaluation score bands 40 / 70,
+not the policy in force), `calibrator` (breakpoints, chosen and fitted on the
+validation split, display only), `validation`, `baselines` (each model's
+final-test metrics), `previous_model`, and under `final_test`: `metrics_raw`
+and `metrics_calibrated` (ROC-AUC, PR-AUC, precision, recall, F1, Brier,
+confusion), `raw` and `calibrated` (AUC, Brier, ECE, mean prediction),
+`brier_no_skill`, `roc_curve`, `confusion_at_half`, `thresholds`, `bands`,
+`reliability_raw`, `reliability_calibrated`. `holdout` is the pre-2.2 name for
+the same object. These describe the public training file, not the live
+portfolio.
 
 ## GET `/model/early-warning`
 
@@ -606,8 +642,10 @@ bootstrap interval of each AUC gap). Any signed-in officer.
 
 ## GET `/model/drift`
 
-Population drift of the stored applications against the training reference
-recorded by `ml.evaluate_model`. Per quantity (`risk_score` and each model
+Population drift of the stored applications against the **reference / demo
+distribution** recorded by `ml.evaluate_model` (training-split inputs and
+validation-split scores of the public file, not a bank portfolio; this is not
+production drift monitoring). `reference_label` and `reference_note` say so. Per quantity (`risk_score` and each model
 input): `bins`, `reference_shares`, `live_shares`, `psi`, `noise_floor` (the
 PSI chance alone gives, about (bins - 1) / rows) and `verdict`: `stable`,
 `watch` (above 0.10), `shifted` (above 0.25), or `too few applications` below
@@ -616,20 +654,23 @@ Any signed-in officer.
 
 ## GET `/model/fairness`
 
-The group audit recorded by `python -m ml.fairness_audit` on the evaluation
-hold-out. Per attribute (`Age`, `Income`, `Housing`, `Loan purpose`) and group:
-`rows`, `approval_rate`, `approval_ratio` to the `reference_group`,
-`below_four_fifths`, `predicted_default_rate` (calibrated) against
-`observed_default_rate`, `gap_beyond_noise`, `good_payers_rejected` and
-`defaulters_approved`. Groups under 100 loans carry `small_group` and take no
-part in a verdict. `not_audited` lists what the file cannot show, including
-gender. Any signed-in officer.
+The **Subgroup Performance Analysis**, recorded by `python -m ml.evaluate_model`
+on the final test set. Per attribute (`Age`, `Income`, `Housing`, `Loan
+purpose`, none of which the model reads) and group: `rows`, `defaults`,
+`observed_default_rate`, `auc_roc`, `precision` and `recall` at the evaluation
+threshold, `predicted_default_rate` (calibrated), `sample_status`
+(`Sufficient` or `Insufficient sample size`: under 100 loans or under 10
+defaults or non-defaults, with no AUC reported), and the demo policy's
+approval and rejection shares. `interpretation` says the analysis is
+descriptive and does not establish fairness; `not_audited` lists what the file
+cannot show, including gender. Any signed-in officer.
 
 ## GET `/model/comparison`
 
-The alternatives benchmark recorded by `python -m ml.compare_models`: per model
-the cross-validated AUC-ROC, PR-AUC, F1, Brier, single-row latency, and a
-paired t-test against the served ensemble. Any signed-in officer.
+The served ensemble against logistic regression, XGBoost alone and random
+forest alone, under the same split and train-only preprocessing: per model
+`cross_validation` (5 folds on the training split, with a paired t-test against
+the ensemble), `validation` and `final_test` metrics. Any signed-in officer.
 
 ## Borrowers (1.10.0)
 

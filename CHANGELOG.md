@@ -6,6 +6,91 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-08
+
+Phase 4: ML and data credibility. The model is made more defensible and more
+transparent, not more impressive. It remains a **demonstration model trained
+on public consumer credit data; it is not validated for Pakistani SME lending
+and must not be used for autonomous credit decisions** (see
+[docs/model_card.md](docs/model_card.md)). No change to the EWS, the alert
+lifecycle, the policy engine, the human decision workflow, borrower history,
+the audit trail or the scoring API contracts. The score is still
+`100 × (1 − raw ensemble probability)`.
+
+### Fixed
+
+- **Preprocessing leakage.** Imputation medians and 1st/99th percentile clip
+  bounds were learned on the whole file before the split. They are now learned
+  on the training split only (and per fold in cross-validation), with the
+  scaler; SMOTE runs on training rows only. Exact duplicate rows (165) are
+  dropped before the split so a copy cannot sit on both sides.
+- **Reused hold-out.** Training now splits train 60% / validation 20% / final
+  test 20% (stratified, seed 42, row-id fingerprints recorded). The calibrator
+  and the baseline comparison use the validation split; the final test set is
+  measured once by `ml.evaluate_model`, which refuses a second run for the
+  same model and refuses a split that differs from training's.
+- **SHAP at split ties.** An input exactly on a split threshold (for example
+  0.5 years in operation) could be explained against the neighbouring leaf of
+  the random forest, so the contributions missed the score by up to about 0.1
+  points. Each member's attributions are now checked to add up to its own
+  prediction (to 1e-6) and, at a tie, computed one float32 step away, where
+  the model scores identically.
+- **Wording.** The SHAP base value is the "model reference baseline" (the score
+  of a SMOTE-balanced reference sample), not a portfolio average. The
+  calibrated probability is labelled "Calibrated PD (display only)".
+
+### Added
+
+- `ml/pipeline.py` (the protocol), `ml/data_quality.py` and
+  `ml/data_quality_report.json`.
+- Baselines under the same protocol: logistic regression, XGBoost alone,
+  random forest alone, the ensemble (CV on the training split, validation,
+  final test).
+- Calibration analysis: isotonic and Platt compared by out-of-fold Brier on the
+  validation split; raw against calibrated Brier and ECE on the final test set.
+- Model metadata: dataset identifier and SHA-256, dataset type, split and
+  fingerprints, seed, preprocessing version, model configuration, calibration,
+  validation metrics and the previous model's figures.
+- Migration `0009_model_provenance`: `model_versions.provenance` (nullable
+  JSON). Earlier rows keep it NULL; nothing is invented.
+- `GET /model/card`, `GET /model/data-quality`, `GET /model/feature-contract`.
+- Model page: model status, final-test performance, "Model Evaluation
+  Thresholds" beside "Current Credit Policy Thresholds", baseline comparison
+  with an explicit verdict, calibration, data quality, limitations; evaluation
+  detail collapsed. "Subgroup Performance Analysis" replaces the group audit
+  (count, default rate, ROC-AUC, precision, recall; "Insufficient sample size"
+  for small groups). Drift is labelled "Reference / Demo Distribution".
+- The application form marks unused fields from the serving model's feature
+  contract.
+- Docs: [model card](docs/model_card.md),
+  [SME data requirements](docs/sme_data_requirements.md).
+
+### Results (honest, including where they do not flatter the model)
+
+| | 2.1 (leaky protocol) | 2.2 |
+|---|---|---|
+| CV ROC-AUC | 0.7752 ± 0.0073 (whole file) | 0.7743 ± 0.0073 (training split) |
+| Hold-out / final-test ROC-AUC | 0.7731 (reused hold-out) | **0.7748** (final test, once) |
+| PR-AUC | 0.5645 | 0.5671 |
+| F1 at raw PD 0.5 | 0.5464 | 0.5506 |
+| Brier raw / calibrated | 0.1852 / 0.1302 | 0.1845 / 0.1304 |
+
+The figures moved by less than their spread; the leak did not inflate them
+materially. Logistic regression reaches 0.7630 and XGBoost alone 0.7744: the
+ensemble adds nothing meaningful over XGBoost alone.
+
+### Model
+
+- New model version `ensemble-xgb-rf-credit_risk_shared-2026-10-08T17:36:16`,
+  registered beside the 2.1 model. Existing applications keep their scores,
+  model versions, SHAP reports and policy snapshots; nothing is re-scored.
+
+### Known limits
+
+- Consumer data, three features, mapped proxies; no SME or Pakistani data.
+- The dataset choice made in release 1.x (by CV over whole files) is not re-run.
+- No time-based validation; the file has no dates.
+
 ## [2.1.0] - 2026-10-08
 
 Phase 3: the Early Warning System becomes historical, explainable, auditable

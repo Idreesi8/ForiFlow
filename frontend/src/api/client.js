@@ -189,6 +189,14 @@ export const fetchFairness = () =>
 export const fetchEarlyWarningModel = () =>
   client.get("/model/early-warning").then((response) => response.data);
 
+export const fetchModelCard = () => client.get("/model/card").then((response) => response.data);
+
+export const fetchFeatureContract = () =>
+  client.get("/model/feature-contract").then((response) => response.data);
+
+export const fetchDataQuality = () =>
+  client.get("/model/data-quality").then((response) => response.data);
+
 export const fetchModelComparison = () =>
   client.get("/model/comparison").then((response) => response.data);
 

@@ -101,5 +101,14 @@ def test_a_calibrator_from_another_training_run_is_ignored(ml_service) -> None:
     stale = {"model_trained_at": "1999-01-01T00:00:00", "calibrator": {
         "raw_probability": [0.0, 1.0], "calibrated_probability": [0.0, 1.0]}}
 
-    assert ml_service._calibration_breakpoints(stale) is None
-    assert ml_service._calibration_breakpoints(None) is None
+    own = ml_service.metadata.get("calibration") or {}
+    if own.get("raw_probability"):
+        # 2.2: the calibrator travels with the model, so a stale evaluation file
+        # can neither replace it nor switch it off.
+        expected = (own["raw_probability"], own["calibrated_probability"])
+        assert ml_service._calibration_breakpoints(stale) == expected
+        assert ml_service._calibration_breakpoints(None) == expected
+        assert ml_service._calibration_breakpoints(stale) != ([0.0, 1.0], [0.0, 1.0])
+    else:
+        assert ml_service._calibration_breakpoints(stale) is None
+        assert ml_service._calibration_breakpoints(None) is None

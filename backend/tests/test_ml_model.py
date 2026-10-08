@@ -189,13 +189,22 @@ def test_payment_history_reads_as_clean_or_adverse(ml_service) -> None:
 
 
 def test_compliance_note_quotes_the_served_model_metrics(ml_service) -> None:
-    """The published AUC comes from the artefact metadata, never a literal."""
+    """The published AUC comes from the artefact's own records, never a literal.
+
+    Since 2.2 the hold-out figure is the final test set's, read from the
+    evaluation that belongs to this model; the note also says what the model is.
+    """
     cv = ml_service.metadata["cross_validation"]
-    holdout = ml_service.metadata["holdout"]
     note = ml_service.compliance_note
-    assert f"5-fold CV {cv['auc_roc_mean']:.4f} ± {cv['auc_roc_std']:.4f}" in note
-    assert f"hold-out {holdout['auc']:.4f}" in note
+    assert f"{cv['auc_roc_mean']:.4f} ± {cv['auc_roc_std']:.4f}" in note
+    if ml_service.evaluation is not None:
+        final = ml_service.evaluation["final_test"]["raw"]["auc_roc"]
+        assert f"final test {final:.4f}" in note
+    else:
+        assert f"hold-out {ml_service.metadata['holdout']['auc']:.4f}" in note
     assert f"n={ml_service.metadata['rows']:,}" in note
+    assert "not validated for Pakistani SME lending" in note
+    assert "must not be used for autonomous credit decisions" in note
 
 
 def test_ensemble_is_monotone_in_every_constrained_feature(ml_service) -> None:

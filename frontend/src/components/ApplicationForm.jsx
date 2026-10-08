@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { apiErrorMessage, scoreApplication, summariseStatement } from "../api/client.js";
+import {
+  apiErrorMessage,
+  fetchFeatureContract,
+  scoreApplication,
+  summariseStatement,
+} from "../api/client.js";
+import { contractSummary, unusedFieldNames } from "../lib/featureContract.js";
 import { formatPKR, formatPKRCompact, formatPercent } from "../lib/format.js";
 import PathToApproval from "./PathToApproval.jsx";
 import ScoreDial from "./ScoreDial.jsx";
@@ -211,6 +217,11 @@ const FIELD_GROUPS = [
 
 const ALL_FIELDS = FIELD_GROUPS.flatMap((group) => group.fields);
 
+// The trained 3-feature model's unused fields, used until the contract loads.
+const STATIC_UNUSED_FIELDS = ALL_FIELDS.filter((field) => field.unusedByModel).map(
+  (field) => field.name,
+);
+
 /**
  * In the training data the default rate jumps from 22% to 67% once a loan
  * exceeds 30% of gross annual income, and the model inherits that cliff
@@ -374,6 +385,19 @@ export default function ApplicationForm({ onScored }) {
   const [result, setResult] = useState(null);
   const [statement, setStatement] = useState(null);
   const [statementError, setStatementError] = useState(null);
+  // Which fields the model serving now actually reads (GET /model/feature-contract).
+  const [contract, setContract] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetchFeatureContract()
+      .then((value) => alive && setContract(value))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const unusedFields = unusedFieldNames(contract, STATIC_UNUSED_FIELDS);
+  const contractLine = contractSummary(contract);
   const turnoverRatio = facilityToTurnover(values);
   const fieldNotes = {
     loan_amount_pkr:
@@ -492,6 +516,11 @@ export default function ApplicationForm({ onScored }) {
             onPick={handleStatement}
             onRemove={() => setStatement(null)}
           />
+          {contractLine ? (
+            <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600" data-testid="feature-contract">
+              {contractLine}
+            </p>
+          ) : null}
           {FIELD_GROUPS.map((group) => (
             <fieldset key={group.title} className="space-y-4">
               <legend className="text-sm font-semibold text-slate-900">
@@ -506,6 +535,7 @@ export default function ApplicationForm({ onScored }) {
                     value={values[field.name]}
                     error={errors[field.name]}
                     note={fieldNotes[field.name]}
+                    unused={unusedFields.has(field.name)}
                     onChange={handleChange}
                   />
                 ))}
@@ -578,7 +608,7 @@ export default function ApplicationForm({ onScored }) {
                 {result.probability_of_default !== null &&
                 result.probability_of_default !== undefined ? (
                   <ResultRow
-                    label="Probability of default"
+                    label="Calibrated PD (display only)"
                     value={formatPercent(result.probability_of_default)}
                   />
                 ) : null}
@@ -686,7 +716,7 @@ function StatementBox({ statement, error, values, onPick, onRemove }) {
   );
 }
 
-function FormField({ field, value, error, note, onChange }) {
+function FormField({ field, value, error, note, unused, onChange }) {
   const showCurrencyHint = field.currency && value !== "" && !Number.isNaN(Number(value));
 
   return (
@@ -742,12 +772,13 @@ function FormField({ field, value, error, note, onChange }) {
           {note}
         </p>
       ) : null}
-      {field.unusedByModel ? (
+      {unused ? (
         <p
           className="mt-1 text-xs font-semibold text-amber-800"
-          title="Collected for future scoring versions — not currently used in this risk score."
+          title="Recorded on the credit file. The model serving now does not read it, so it does not change the score."
+          data-unused-field={field.name}
         >
-          Collected for future scoring versions — not currently used in this risk score.
+          Recorded, not used by the current model — does not change this score.
         </p>
       ) : null}
     </div>

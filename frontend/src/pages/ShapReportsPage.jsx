@@ -52,9 +52,12 @@ export default function ShapReportsPage() {
       <header>
         <h2 className="text-xl font-bold text-slate-900">SHAP Reports</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Feature attributions are additive: the base value plus every contribution
-          reconstructs the score, so a bank can file an SBP-oriented adverse-action
-          note. ForiFlow is not SBP-certified.
+          Feature attributions are additive: the model reference baseline plus every
+          contribution reconstructs the score, so a bank can file an SBP-oriented
+          adverse-action note. The baseline is the score the model gives its reference
+          sample (SMOTE-balanced training rows), not the average of a bank portfolio.
+          SHAP explains the raw model probability; any calibrated probability shown is
+          display only. ForiFlow is not SBP-certified.
         </p>
       </header>
 

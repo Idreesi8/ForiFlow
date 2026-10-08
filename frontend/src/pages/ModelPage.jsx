@@ -18,9 +18,21 @@ import {
   fetchDrift,
   fetchEarlyWarningModel,
   fetchFairness,
-  fetchModelComparison,
+  fetchModelCard,
   fetchModelEvaluation,
 } from "../api/client.js";
+import {
+  BaselineSection,
+  CalibrationSummary,
+  DataQualityCard,
+  DemoModelNotice,
+  LimitationsCard,
+  ModelStatusCard,
+  PerformanceTiles,
+  SubgroupSection,
+  ThresholdsSection,
+} from "../components/ModelOverview.jsx";
+import { useActivePolicy } from "../lib/useActivePolicy.js";
 import { bandForDecision } from "../lib/decisions.js";
 import { formatCount, formatPercent, formatSigned } from "../lib/format.js";
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
@@ -32,23 +44,17 @@ const RAW_COLOR = "#7c3aed";
 const AXIS_TICK = { fontSize: 11, fill: "#64748b" };
 const TOOLTIP_STYLE = { fontSize: 12, borderRadius: 8 };
 
-const MODEL_LABELS = {
-  served_ensemble_xgb_rf: "XGBoost + Random Forest (served)",
-  xgboost_only: "XGBoost alone",
-  lightgbm: "LightGBM",
-  random_forest_only: "Random Forest alone",
-  mlp_neural_network: "Neural network (MLP)",
-  logistic_regression: "Logistic regression",
-};
-
 /**
- * How the served model performs on loans it never saw, and against the models
- * it was chosen over. Every figure comes from `ml.evaluate_model` and
- * `ml.compare_models`; nothing here is computed from the live portfolio.
+ * The demonstration model: status, final-test performance, baselines,
+ * calibration, data quality and limits first; the detail charts after. Every
+ * figure comes from `ml.train_real_model` and `ml.evaluate_model` (via
+ * `/model/card` and `/model/evaluation`); nothing is computed from the live
+ * portfolio. Model evaluation thresholds are shown apart from the credit policy.
  */
 export default function ModelPage() {
   const [evaluation, setEvaluation] = useState(null);
-  const [comparison, setComparison] = useState(null);
+  const [card, setCard] = useState(null);
+  const policy = useActivePolicy();
   const [earlyWarning, setEarlyWarning] = useState(null);
   const [drift, setDrift] = useState(null);
   const [fairness, setFairness] = useState(null);
@@ -61,14 +67,14 @@ export default function ModelPage() {
     try {
       const [
         evaluationData,
-        comparisonData,
+        cardData,
         earlyWarningData,
         driftData,
         fairnessData,
       ] = await Promise.all([
         fetchModelEvaluation(),
         // The rest are optional: the page still works without them.
-        fetchModelComparison().catch(() => null),
+        fetchModelCard().catch(() => null),
         fetchEarlyWarningModel().catch(() => null),
         fetchDrift().catch(() => null),
         fetchFairness().catch(() => null),
@@ -76,7 +82,7 @@ export default function ModelPage() {
       setFairness(fairnessData);
       setDrift(driftData);
       setEvaluation(evaluationData);
-      setComparison(comparisonData);
+      setCard(cardData);
       setEarlyWarning(earlyWarningData);
     } catch (requestError) {
       setError(apiErrorMessage(requestError, "Could not load the model evaluation."));
@@ -92,47 +98,37 @@ export default function ModelPage() {
   if (isLoading) return <LoadingState label="Loading model evaluation…" />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
-  const hold = evaluation.holdout;
+  const hold = evaluation.final_test ?? evaluation.holdout;
   const matrix = hold.confusion_at_half;
+  const testRate = evaluation.default_rate.final_test ?? evaluation.default_rate.holdout;
+  const testRows = evaluation.rows.final_test ?? evaluation.rows.holdout;
 
   return (
     <div className="min-w-0 space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-900">Model performance</h2>
+        <h2 className="text-xl font-bold text-slate-900">Model</h2>
         <p className="mt-1 max-w-3xl text-sm text-slate-600">
-          The served model on the {formatCount(evaluation.rows.holdout)} hold-out loans it
-          never saw during training ({formatPercent(evaluation.default_rate.holdout)} of
-          them defaulted). This is the public training file, not a Pakistani SME
-          portfolio, so a bank must re-measure on its own loans.
+          What the credit model is, how it performs on {formatCount(testRows)} loans it never
+          saw ({formatPercent(testRate)} of them defaulted), against what baselines, and what
+          it must not be used for.
         </p>
       </div>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile
-          label="AUC-ROC"
-          value={hold.raw.auc_roc.toFixed(4)}
-          hint="0.5 is a coin toss, 1.0 is perfect"
-        />
-        <StatTile
-          label="Defaulters caught"
-          value={formatPercent(matrix.recall_default)}
-          hint={`${formatCount(matrix.true_positive)} of ${formatCount(
-            matrix.true_positive + matrix.false_negative,
-          )} at score 50 or below`}
-        />
-        <StatTile
-          label="Good payers passed"
-          value={formatPercent(matrix.recall_non_default)}
-          hint={`${formatCount(matrix.true_negative)} of ${formatCount(
-            matrix.true_negative + matrix.false_positive,
-          )} above score 50`}
-        />
-        <StatTile
-          label="Brier score, calibrated"
-          value={hold.calibrated.brier.toFixed(4)}
-          hint={`raw ${hold.raw.brier.toFixed(4)} · no-skill ${hold.brier_no_skill.toFixed(4)} · lower is better`}
-        />
-      </section>
+      <DemoModelNotice card={card} />
+
+      {card ? (
+        <>
+          <ModelStatusCard card={card} />
+          <PerformanceTiles card={card} />
+          <ThresholdsSection card={card} policy={policy} />
+          <BaselineSection card={card} />
+          <section className="grid gap-4 xl:grid-cols-2">
+            <CalibrationSummary card={card} />
+            <DataQualityCard card={card} />
+          </section>
+          <LimitationsCard card={card} />
+        </>
+      ) : null}
 
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="card min-w-0">
@@ -297,16 +293,22 @@ export default function ModelPage() {
             {formatPercent(hold.raw.mean_predicted)} on average because SMOTE trains it on
             balanced data; after calibration it predicts{" "}
             {formatPercent(hold.calibrated.mean_predicted)}, against{" "}
-            {formatPercent(evaluation.default_rate.holdout)} that really defaulted.
+            {formatPercent(testRate)} that really defaulted. The calibrated probability is
+            display only: the score uses the raw probability.
           </p>
         </div>
       </section>
 
+      <details className="card min-w-0 px-5 py-4" data-testid="evaluation-detail">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+          Evaluation detail: confusion matrix, evaluation bands and threshold trade-offs
+        </summary>
+        <div className="mt-4 space-y-6">
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="card min-w-0">
           <div className="card-header">
             <h3 className="card-title">Confusion matrix</h3>
-            <span className="text-xs text-slate-500">flagging score 50 or below</span>
+            <span className="text-xs text-slate-500">model evaluation threshold: raw probability ≥ 0.5</span>
           </div>
           <div className="px-5 py-5">
             <ConfusionMatrix matrix={matrix} />
@@ -315,7 +317,7 @@ export default function ModelPage() {
 
         <div className="card min-w-0">
           <div className="card-header">
-            <h3 className="card-title">Default rate by band</h3>
+            <h3 className="card-title">Default rate by evaluation band</h3>
             <span className="text-xs text-slate-500">
               model evaluation cut-offs 40 / 70, not the credit policy in force
             </span>
@@ -353,8 +355,8 @@ export default function ModelPage() {
             </table>
           </div>
           <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
-            "Defaulted" is what happened in the hold-out. "Calibrated PD" is what the
-            model predicted for the same loans.
+            "Defaulted" is what happened in the final test set. "Calibrated PD" is what
+            the model predicted for the same loans.
           </p>
         </div>
       </section>
@@ -411,138 +413,22 @@ export default function ModelPage() {
         <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
           A lower threshold misses more defaulters; a higher one turns away more good
           payers. Accuracy alone misleads here, because{" "}
-          {formatPercent(1 - evaluation.default_rate.holdout)} of loans are good: a model
+          {formatPercent(1 - testRate)} of loans are good: a model
           that flags nobody would already be that accurate.
         </p>
       </section>
 
-      {comparison ? <ComparisonTable comparison={comparison} /> : null}
+        </div>
+      </details>
+
 
       <p className="text-xs text-slate-500">{evaluation.protocol}</p>
 
-      {fairness ? <FairnessSection audit={fairness} /> : null}
+      {fairness ? <SubgroupSection audit={fairness} /> : null}
 
       {drift ? <DriftSection drift={drift} /> : null}
 
       {earlyWarning ? <EarlyWarningSection chain={earlyWarning} /> : null}
-    </div>
-  );
-}
-
-/** How the model's default probability for a group compares with what happened. */
-function pricingOf(row) {
-  if (row.small_group) return { label: "too few loans", tone: "bg-slate-100 text-slate-600 ring-1 ring-slate-200" };
-  if (!row.gap_beyond_noise) return { label: "in line", tone: "bg-slate-100 text-slate-700 ring-1 ring-slate-200" };
-  return row.calibration_gap > 0
-    ? { label: "too harsh", tone: "bg-amber-50 text-amber-900 ring-1 ring-amber-200" }
-    : { label: "too lenient", tone: "bg-violet-50 text-violet-900 ring-1 ring-violet-200" };
-}
-
-function FairnessSection({ audit }) {
-  const worst = audit.attributes.reduce((a, b) => (b.largest_gap > a.largest_gap ? b : a));
-  return (
-    <div className="space-y-4 border-t border-slate-200 pt-6">
-      <div>
-        <h2 className="text-xl font-bold text-slate-900">Group audit</h2>
-        <p className="mt-1 max-w-3xl text-sm text-slate-600">
-          The model never reads age, income, housing or loan purpose. This checks whether
-          it still treats those groups differently, on the same{" "}
-          {formatCount(audit.rows)} hold-out loans. Two tests: is a group approved at under{" "}
-          {formatPercent(audit.four_fifths, 0)} of the best group's rate, and does the
-          default probability the model gives a group match the default rate the group
-          really had? The second is the one that shows unfair treatment. "Too harsh"
-          means the model overstates the group's risk; "too lenient" means it understates
-          it.
-        </p>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        {audit.attributes.map((block) => (
-          <div key={block.attribute} className="card min-w-0">
-            <div className="card-header">
-              <h3 className="card-title">{block.attribute}</h3>
-              <span className="text-xs text-slate-500">
-                approval compared with: {block.reference_group}
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[520px] text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-[11px] tracking-wide text-slate-500 uppercase">
-                    <th className="px-4 py-2 font-medium">Group</th>
-                    <th className="px-2 py-2 text-right font-medium">Loans</th>
-                    <th className="px-2 py-2 text-right font-medium">Approved</th>
-                    <th className="px-2 py-2 text-right font-medium">Model PD</th>
-                    <th className="px-2 py-2 text-right font-medium">Defaulted</th>
-                    <th className="px-4 py-2 font-medium">Pricing</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {block.groups.map((row) => {
-                    const pricing = pricingOf(row);
-                    return (
-                      <tr key={row.group} className="border-b border-slate-100 last:border-0">
-                        <td className="px-4 py-2 font-medium text-slate-900">{row.group}</td>
-                        <td className="tabular px-2 py-2 text-right text-slate-600">
-                          {formatCount(row.rows)}
-                        </td>
-                        <td className="tabular px-2 py-2 text-right whitespace-nowrap">
-                          {formatPercent(row.approval_rate)}
-                          <span
-                            className={`ml-1 ${
-                              row.below_four_fifths ? "font-semibold text-rose-700" : "text-slate-500"
-                            }`}
-                          >
-                            ({row.approval_ratio.toFixed(2)})
-                          </span>
-                        </td>
-                        <td className="tabular px-2 py-2 text-right">
-                          {formatPercent(row.predicted_default_rate)}
-                        </td>
-                        <td className="tabular px-2 py-2 text-right font-semibold text-slate-900">
-                          {formatPercent(row.observed_default_rate)}
-                        </td>
-                        <td className="px-4 py-2">
-                          <span className={`badge ${pricing.tone}`}>{pricing.label}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
-              {block.note}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div className="card px-5 py-4 text-sm text-slate-700">
-        <p className="font-semibold text-slate-900">How to read this</p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>
-            The figure in brackets is the group's approval rate divided by the best group's.
-            Below {audit.four_fifths.toFixed(2)} it is shown in red. A low ratio is a reason
-            to look, not proof of unfairness: a group that defaults more should be approved
-            less.
-          </li>
-          <li>
-            Where "Model PD" and "Defaulted" differ by more than the group's size explains,
-            the model is missing something that matters for that group. {worst.attribute}{" "}
-            shows it most, with a gap of up to {formatPercent(worst.largest_gap)}.
-          </li>
-          <li>
-            A group under {audit.min_group_rows} loans gets no verdict.
-          </li>
-        </ul>
-        <p className="mt-3 font-semibold text-slate-900">Not audited</p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          {audit.not_audited.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      </div>
     </div>
   );
 }
@@ -563,6 +449,9 @@ function DriftSection({ drift }) {
     <div className="space-y-4 border-t border-slate-200 pt-6">
       <div>
         <h2 className="text-xl font-bold text-slate-900">Population drift</h2>
+        <p className="mt-1 text-xs font-semibold tracking-wide text-amber-800 uppercase">
+          {drift.reference_label ?? "Reference / Demo Distribution"}
+        </p>
         <p className="mt-1 max-w-3xl text-sm text-slate-600">
           Are the {formatCount(drift.live_applications)} applications scored here still like
           the loans the model learned from? PSI below {drift.thresholds.watch.toFixed(2)} is
@@ -571,6 +460,9 @@ function DriftSection({ drift }) {
           {drift.min_rows_for_verdict} applications no verdict is given, because chance alone
           moves PSI that much.
         </p>
+        {drift.reference_note ? (
+          <p className="mt-1 max-w-3xl text-xs text-slate-500">{drift.reference_note}</p>
+        ) : null}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -618,7 +510,8 @@ function DriftSection({ drift }) {
       </div>
       <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
         <span className="flex items-center gap-1.5">
-          <span className="h-2 w-4 rounded-sm" style={{ background: MODEL_COLOR }} /> Training data
+          <span className="h-2 w-4 rounded-sm" style={{ background: MODEL_COLOR }} /> Reference / demo
+          distribution (public training file)
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-2 w-4 rounded-sm" style={{ background: RAW_COLOR }} /> Applications
@@ -917,78 +810,3 @@ function ConfusionMatrix({ matrix }) {
   );
 }
 
-function ComparisonTable({ comparison }) {
-  const rows = Object.entries(comparison.models)
-    .map(([key, model]) => ({ key, ...model }))
-    .sort((a, b) => b.auc_roc_mean - a.auc_roc_mean);
-
-  return (
-    <section className="card min-w-0">
-      <div className="card-header">
-        <h3 className="card-title">Alternatives we tested</h3>
-        <span className="text-xs text-slate-500">
-          same {formatCount(comparison.rows)} loans, same 5 folds, same pipeline
-        </span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
-              <th className="px-5 py-3 font-medium">Model</th>
-              <th className="px-3 py-3 text-right font-medium">AUC-ROC</th>
-              <th className="px-3 py-3 text-right font-medium">PR-AUC</th>
-              <th className="px-3 py-3 text-right font-medium">F1</th>
-              <th className="px-3 py-3 text-right font-medium">Gap to served</th>
-              <th className="px-3 py-3 text-right font-medium">p-value</th>
-              <th className="px-3 py-3 text-right font-medium">ms / score</th>
-              <th className="px-5 py-3 font-medium">Monotone</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((row) => {
-              const isServed = row.key === "served_ensemble_xgb_rf";
-              const versus = row.vs_served;
-              return (
-                <tr key={row.key} className={isServed ? "bg-brand-50" : undefined}>
-                  <td className="px-5 py-3 font-medium whitespace-nowrap text-slate-900">
-                    {MODEL_LABELS[row.key] ?? row.key}
-                  </td>
-                  <td className="tabular px-3 py-3 text-right whitespace-nowrap">
-                    {row.auc_roc_mean.toFixed(4)}
-                    <span className="text-slate-400"> ± {row.auc_roc_std.toFixed(4)}</span>
-                  </td>
-                  <td className="tabular px-3 py-3 text-right">{row.pr_auc_mean.toFixed(3)}</td>
-                  <td className="tabular px-3 py-3 text-right">{row.f1_mean.toFixed(3)}</td>
-                  <td className="tabular px-3 py-3 text-right">
-                    {versus ? formatSigned(-versus.mean_auc_difference, 4) : "—"}
-                  </td>
-                  <td className="tabular px-3 py-3 text-right whitespace-nowrap">
-                    {versus ? (
-                      <>
-                        {versus.paired_t_test_p.toFixed(4)}
-                        <span className="ml-1 text-xs text-slate-500">
-                          {versus.paired_t_test_p < 0.05 ? "real gap" : "tie"}
-                        </span>
-                      </>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="tabular px-3 py-3 text-right">
-                    {row.single_row_predict_ms_median.toFixed(2)}
-                  </td>
-                  <td className="px-5 py-3 text-xs text-slate-600">{row.monotone}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
-        "Gap to served" is that model's AUC minus the served model's. The p-value is a
-        paired t-test over the 5 folds: below 0.05 the gap is real, above it the two
-        models tie. The folds share training rows, so treat the test as approximate.
-      </p>
-    </section>
-  );
-}

@@ -1,33 +1,24 @@
-"""Train the ForiFlow SME credit model on real loan performance data.
+"""Train the ForiFlow demonstration credit model on public consumer loan data.
 
-Run from the ``backend`` directory::
+Run from the ``backend`` directory, then evaluate once::
 
     python -m ml.train_real_model
+    python -m ml.evaluate_model
 
-Pipeline
---------
-1. Load ``credit_risk_dataset.csv`` and ``Loan_default.csv`` and print an
-   exploration report (shape, dtypes, missing values, target balance, and the
-   default rate behind every categorical level).
-2. Map each dataset onto the ForiFlow feature space defined in :mod:`ml.features`.
-3. Build three candidate training sets and let 5-fold cross-validation decide
-   which to keep: each dataset on its own, plus the two combined over the
-   features they genuinely share.
-4. Fit a StandardScaler + SMOTE + (XGBoost, RandomForest) soft-voting ensemble
-   on the winning candidate, with SMOTE applied inside every fold.
-5. Build SHAP TreeExplainers in probability space so contributions convert
-   directly into ForiFlow score points, and assert additivity.
-6. Persist the model, scaler, explainers, feature names and clip bounds.
+Since 2.2 :func:`main` follows the leakage-free protocol in :mod:`ml.pipeline`:
+split first (train 60% / validation 20% / final test 20%, stratified, seed 42),
+learn imputation medians, clip bounds and the scaler on the training split only,
+apply SMOTE to the training rows only, choose and fit the calibrator on the
+validation split, and leave the final test set to ``ml.evaluate_model``.
 
-Why candidates are compared rather than blindly merged
-------------------------------------------------------
-The two files describe different populations and do not carry the same columns:
-``credit_risk_dataset.csv`` has no tenure and no existing-debt column at all.
-Merging on the union would leave those columns wholly imputed for 32k rows,
-which lets the model recover *which dataset a row came from* and exploit the gap
-between their default rates (roughly 22% versus 12%). That inflates
-cross-validation without improving live accuracy, so the combined candidate is
-restricted to the true column intersection and has to win on merit.
+The data is ``credit_risk_dataset.csv``: public consumer loans, not Pakistani
+SME lending data. The model is a demonstration model and is not validated for
+SME credit decisions.
+
+The candidate functions below (:func:`build_candidates`, :func:`cross_validate`)
+are the pre-2.2 dataset-selection path. They impute and clip on a whole file
+and are kept only for the research scripts (``ml.auc_ladder*``); the served
+model is not built with them.
 """
 
 from __future__ import annotations
@@ -45,7 +36,6 @@ from imblearn.pipeline import Pipeline as ImbPipeline
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import (
     average_precision_score,
-    brier_score_loss,
     f1_score,
     roc_auc_score,
 )
@@ -711,18 +701,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dataset",
-        choices=("credit_risk_shared", "loan_default_full", "combined_shared"),
+        choices=("credit_risk_shared",),
+        default="credit_risk_shared",
         help=(
-            "Skip candidate selection and retrain on this dataset. Use for routine "
-            "retrains once the comparison has been run; the previous comparison is "
-            "carried into the new metadata for traceability."
+            "The training set. Since 2.2 only credit_risk_shared is trained, under the "
+            "leakage-free protocol of ml.pipeline. The dataset was chosen over "
+            "loan_default_full and combined_shared in an earlier release (see "
+            "'dataset_selection' in the metadata)."
         ),
     )
     return parser.parse_args(argv)
 
 
 def inherited_comparison() -> list[dict] | None:
-    """Read the candidate comparison recorded by a previous full run."""
+    """Read the candidate comparison recorded by a previous run."""
     if not FEATURE_NAMES_PATH.exists():
         return None
     try:
@@ -732,140 +724,131 @@ def inherited_comparison() -> list[dict] | None:
         return None
 
 
+def previous_metrics() -> dict | None:
+    """The served model's own figures before this run, for a before/after record."""
+    if not FEATURE_NAMES_PATH.exists():
+        return None
+    try:
+        previous = json.loads(FEATURE_NAMES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if "training_protocol_version" in previous:
+        return previous.get("previous_model")
+    cv = previous.get("cross_validation", {})
+    holdout = previous.get("holdout", {})
+    return {
+        "trained_at": previous.get("trained_at"),
+        "protocol": (
+            "pre-2.2: medians and clip bounds learned on the whole file before an "
+            "80/20 split; the same 20% hold-out reused for evaluation, fairness and "
+            "band reports"
+        ),
+        "cv_auc_roc_mean": cv.get("auc_roc_mean"),
+        "cv_auc_roc_std": cv.get("auc_roc_std"),
+        "holdout_auc_roc": holdout.get("auc"),
+        "holdout_pr_auc": holdout.get("pr_auc"),
+        "holdout_f1": holdout.get("f1"),
+        "holdout_brier_raw": holdout.get("brier"),
+        "rows": previous.get("rows"),
+    }
+
+
+def model_config(features: list[str]) -> dict:
+    """The exact learner settings, for the metadata."""
+    ensemble = build_ensemble(features)
+    members = dict(ensemble.estimators)
+
+    def plain(params: dict) -> dict:
+        return {
+            key: (list(value) if isinstance(value, tuple) else value)
+            for key, value in params.items()
+            if isinstance(value, (int, float, str, bool, list, tuple, type(None)))
+        }
+
+    return {
+        "ensemble": "soft voting, weights xgb 0.6 / rf 0.4",
+        "xgboost": plain(members["xgb"].get_params()),
+        "random_forest": plain(members["rf"].get_params()),
+        "smote": {"k_neighbors": 5, "random_state": RANDOM_STATE, "applied_to": "scaled training rows only"},
+        "scaler": "StandardScaler fitted on the training split",
+        "logistic_regression_baseline": {"max_iter": 1000, "random_state": RANDOM_STATE},
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Run the full training pipeline and persist the artefacts."""
+    """Train under the 2.2 protocol and persist the served artefacts.
+
+    The final test set is split off but never read here; ``ml.evaluate_model``
+    scores it once, afterwards.
+    """
+    from ml import pipeline
+    from ml.data_quality import CREDIT_RISK_VALID_RANGES, data_quality_report, write_report
+
     args = parse_args(argv)
     started = time.perf_counter()
-    banner("FORIFLOW MODEL TRAINING — real loan performance data")
+    banner("FORIFLOW MODEL TRAINING — leakage-free protocol (2.2)")
+    before = previous_metrics()
+    selection = inherited_comparison() or []
 
-    raw = load_datasets(DATASETS_NEEDED[args.dataset])
+    prepared = pipeline.load_prepared()
+    explore("credit_risk_dataset.csv", prepared.raw, "loan_status")
+    print(f"\nExcluded before the split: {prepared.excluded}")
 
-    if "credit_risk" in raw:
-        explore("credit_risk_dataset.csv", raw["credit_risk"], "loan_status")
-        report_categorical_encodings("credit_risk_dataset.csv", raw["credit_risk"], "loan_status")
+    features = list(pipeline.MODEL_FEATURES)
+    frame = prepared.frame
+    split = pipeline.split_rows(frame)
+    split_info = split.describe(frame)
+    print(f"\nSplit (seed {split.seed}): {split_info['rows']}")
+    X_train, y_train = frame.loc[split.train, features], frame.loc[split.train, TARGET]
+    X_val, y_val = frame.loc[split.validation, features], frame.loc[split.validation, TARGET]
 
-    if "loan_default" in raw:
-        explore("Loan_default.csv", raw["loan_default"], "Default")
-        report_categorical_encodings("Loan_default.csv", raw["loan_default"], "Default")
-
-    banner("FEATURE MAPPING")
-    mappers = {"credit_risk": map_credit_risk, "loan_default": map_loan_default}
-    mapped = {name: mappers[name](frame) for name, frame in raw.items()}
-    for name, frame in mapped.items():
-        built = [column for column in FEATURE_NAMES if column in frame.columns]
-        missing = [column for column in FEATURE_NAMES if column not in frame.columns]
-        print(f"\n{name}: built {len(built)}/{len(FEATURE_NAMES)} features -> {built}")
-        if missing:
-            print(f"  no source column for -> {missing}")
-
-    banner("CANDIDATE TRAINING SETS")
-    candidates = build_candidates(mapped)
-
-    by_name = {candidate.name: candidate for candidate in candidates}
-    comparison: list[dict] = []
-
-    if args.dataset:
-        banner("CANDIDATE SELECTION SKIPPED")
-        winner = by_name[args.dataset]
-        print(f"--dataset {args.dataset}: reusing a previously selected training set.")
-        comparison = inherited_comparison() or []
-        if comparison:
-            print("Carrying the recorded comparison into the new metadata.")
-        else:
-            print("No previous comparison found; metadata will record none.")
-    else:
-        banner("CANDIDATE SELECTION (5-fold CV on a stratified subsample)")
-        print(f"Subsample cap: {MAX_SELECTION_ROWS:,} rows per candidate")
-        for candidate in candidates:
-            sample = stratified_sample(candidate.frame, MAX_SELECTION_ROWS)
-            auc, std, f1, folds = cross_validate(
-                sample[candidate.features], sample[TARGET], candidate.name
+    banner("5-FOLD CROSS-VALIDATION ON THE TRAINING SPLIT (everything refit per fold)")
+    cv = {name: pipeline.cross_validate_training(name, X_train, y_train) for name in pipeline.MODEL_NAMES}
+    for name in pipeline.MODEL_NAMES:
+        if name != "ensemble":
+            cv[name]["vs_ensemble"] = pipeline.paired_auc_test(
+                [f["auc_roc"] for f in cv[name]["per_fold"]],
+                [f["auc_roc"] for f in cv["ensemble"]["per_fold"]],
             )
-            candidate.cv_auc, candidate.cv_auc_std, candidate.cv_f1 = auc, std, f1
-            candidate.fold_scores = folds
+        print(f"  {name:<20} AUC {cv[name]['auc_roc_mean']:.4f} ± {cv[name]['auc_roc_std']:.4f}")
 
-        ranked = sorted(candidates, key=lambda item: item.cv_auc, reverse=True)
-        banner("CANDIDATE RANKING")
-        print(f"{'candidate':<22}{'features':>10}{'rows':>10}{'AUC-ROC':>10}{'F1':>10}")
-        for candidate in ranked:
-            print(
-                f"{candidate.name:<22}{len(candidate.features):>10}"
-                f"{len(candidate.frame):>10,}{candidate.cv_auc:>10.4f}"
-                f"{candidate.cv_f1:>10.4f}"
-            )
-        winner = ranked[0]
-        comparison = [
-            {
-                "name": candidate.name,
-                "features": candidate.features,
-                "rows": int(len(candidate.frame)),
-                "auc_roc": candidate.cv_auc,
-                "f1": candidate.cv_f1,
-                "note": candidate.note,
-            }
-            for candidate in ranked
-        ]
+    banner("FIT ON TRAINING, MEASURE ON VALIDATION")
+    fitted = {}
+    validation = {}
+    for name in pipeline.MODEL_NAMES:
+        fitted[name] = pipeline.build_training_pipeline(name, features).fit(X_train, y_train)
+        probability = fitted[name].predict_proba(X_val)[:, 1]
+        validation[name] = pipeline.classification_metrics(y_val.to_numpy(), probability)
+        print(f"  {name:<20} AUC {validation[name]['auc_roc']:.4f}  Brier {validation[name]['brier']:.4f}")
 
-    print(f"\nSelected: {winner.name} ({winner.note})")
+    served = fitted["ensemble"]
+    preprocess = served.named_steps["preprocess"]
+    scaler = served.named_steps["scaler"]
+    model = served.named_steps["model"]
+    raw_val = served.predict_proba(X_val)[:, 1]
 
-    banner(f"DEFINITIVE 5-FOLD CROSS-VALIDATION — {winner.name} (full data)")
-    X_all = winner.frame[winner.features]
-    y_all = winner.frame[TARGET]
-    final_auc, final_auc_std, final_f1, final_folds = cross_validate(
-        X_all, y_all, f"{winner.name} (full)"
+    banner("CALIBRATION (chosen and fitted on validation; display only)")
+    calibration = pipeline.select_calibration(raw_val, y_val.to_numpy())
+    oof = calibration.pop("out_of_fold_calibrated")
+    print(f"  out-of-fold Brier: {calibration['selection']['brier_out_of_fold']}")
+    print(f"  chosen: {calibration['method_label']}")
+    validation_calibrated = (
+        pipeline.classification_metrics(y_val.to_numpy(), oof) if oof is not None else None
     )
-
-    banner("FINAL FIT AND HOLD-OUT EVALUATION")
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_all, y_all, test_size=0.2, stratify=y_all, random_state=RANDOM_STATE
-    )
-    print(f"Train {len(X_train):,} rows | Hold-out {len(X_test):,} rows")
-
-    # Fitted on a plain array: serving builds feature vectors positionally from
-    # feature_names.json, and a scaler that remembers DataFrame column names would
-    # warn on every request.
-    scaler = StandardScaler().fit(X_train.to_numpy())
-    X_train_scaled = scaler.transform(X_train.to_numpy())
-    X_test_scaled = scaler.transform(X_test.to_numpy())
-
-    smote = SMOTE(random_state=RANDOM_STATE, k_neighbors=5)
-    X_resampled, y_resampled = smote.fit_resample(X_train_scaled, y_train)
-    print(
-        f"SMOTE: {len(X_train_scaled):,} -> {len(X_resampled):,} rows "
-        f"(positives {int(y_train.sum()):,} -> {int(y_resampled.sum()):,})"
-    )
-
-    model = build_ensemble(winner.features)
-    model.fit(X_resampled, y_resampled)
-
-    holdout_probabilities = model.predict_proba(X_test_scaled)[:, 1]
-    holdout_predictions = (holdout_probabilities >= 0.5).astype(int)
-    holdout = {
-        "auc": float(roc_auc_score(y_test, holdout_probabilities)),
-        "f1": float(f1_score(y_test, holdout_predictions, zero_division=0)),
-        "pr_auc": float(average_precision_score(y_test, holdout_probabilities)),
-        "brier": float(brier_score_loss(y_test, holdout_probabilities)),
-    }
-    print(
-        f"Hold-out AUC-ROC {holdout['auc']:.4f} | F1 {holdout['f1']:.4f} | "
-        f"PR-AUC {holdout['pr_auc']:.4f} | Brier {holdout['brier']:.4f}"
-    )
-    holdout.update(report_score_distribution(holdout_probabilities))
 
     banner("SHAP EXPLAINERS")
+    X_train_scaled = scaler.transform(preprocess.transform(X_train))
+    X_resampled, _ = SMOTE(random_state=RANDOM_STATE, k_neighbors=5).fit_resample(
+        X_train_scaled, y_train
+    )
     rng = np.random.default_rng(RANDOM_STATE)
     background_index = rng.choice(
         len(X_resampled), size=min(SHAP_BACKGROUND_ROWS, len(X_resampled)), replace=False
     )
-    background = np.asarray(X_resampled)[background_index]
-    bundle = build_shap_explainers(model, background, winner.features)
-    print(f"  output space: {bundle['output_space']}")
-
-    check_sample = X_test_scaled[:25]
+    bundle = build_shap_explainers(model, np.asarray(X_resampled)[background_index], features)
+    check = scaler.transform(preprocess.transform(X_val.iloc[:25]))
     additivity_error = (
-        verify_additivity(bundle, model, check_sample)
-        if bundle["output_space"] == "probability"
-        else float("nan")
+        verify_additivity(bundle, model, check) if bundle["output_space"] == "probability" else float("nan")
     )
 
     banner("SAVING ARTEFACTS")
@@ -874,40 +857,149 @@ def main(argv: list[str] | None = None) -> int:
     joblib.dump(model, MODEL_PATH)
     joblib.dump(scaler, SCALER_PATH)
     joblib.dump(bundle, SHAP_EXPLAINER_PATH)
+    trained_at = time.strftime("%Y-%m-%dT%H:%M:%S")
+    train_frame = frame.loc[split.train]
+    levels = sorted(float(v) for v in train_frame["payment_history_score"].dropna().unique())
 
     metadata = {
-        "feature_names": winner.features,
-        "feature_clips": learn_clips(winner.frame, winner.features),
-        "dataset": winner.name,
-        "dataset_note": winner.note,
-        "rows": int(len(winner.frame)),
-        "default_rate": float(y_all.mean()),
+        "feature_names": features,
+        "feature_clips": preprocess.clips_,
+        "feature_medians": preprocess.medians_,
+        "dataset": args.dataset,
+        "dataset_note": "public consumer loans, limited to the 3 features ForiFlow can supply",
+        "dataset_identifier": pipeline.DATASET_IDENTIFIER,
+        "dataset_type": pipeline.DATASET_TYPE,
+        "dataset_type_label": pipeline.DATASET_TYPE_LABEL,
+        "dataset_file": pipeline.DATASET_FILE,
+        "dataset_sha256": prepared.dataset_sha256,
+        "rows": int(len(frame)),
+        "rows_in_file": prepared.rows_in_file,
+        "excluded_rows": prepared.excluded,
+        # The training split's default rate: what the calibrator maps towards.
+        "default_rate": float(y_train.mean()),
+        "random_seed": RANDOM_STATE,
+        "split": split_info,
+        "preprocessing": {
+            "version": pipeline.PREPROCESSING_VERSION,
+            "steps": [
+                "drop exact duplicate rows of the raw file (before the split)",
+                "map onto loan_to_income, payment_history_score, years_in_operation",
+                "median imputation, medians learned on the training split",
+                "clip to the training split's 1st/99th percentiles",
+                "StandardScaler fitted on the training split",
+                "SMOTE (k=5) on the scaled training rows only",
+            ],
+            "fitted_on": "training split only",
+            "clip_quantiles": list(pipeline.CLIP_QUANTILES),
+        },
+        "model_config": model_config(features),
         "shap_output_space": bundle["output_space"],
         "shap_additivity_max_error": additivity_error,
+        "shap_reference": {
+            "rows": int(len(background_index)),
+            "source": "random sample of the SMOTE-balanced (50/50) training rows",
+            "description": (
+                "Model reference baseline: the ensemble's expected score over this "
+                "reference sample. It is not the average of a bank portfolio or of the "
+                "public file, whose default rate is about 22%."
+            ),
+        },
         "ensemble_weights": {"xgb": ENSEMBLE_WEIGHTS[0], "rf": ENSEMBLE_WEIGHTS[1]},
-        "monotone_constraints": {
-            name: FEATURE_MONOTONE_CONSTRAINTS[name] for name in winner.features
-        },
-        **_history_levels(winner),
+        "monotone_constraints": {name: FEATURE_MONOTONE_CONSTRAINTS[name] for name in features},
+        **({"payment_history_levels": levels} if len(levels) == 2 else {}),
         "cross_validation": {
-            "folds": N_SPLITS,
-            "auc_roc_mean": final_auc,
-            "auc_roc_std": final_auc_std,
-            "f1_mean": final_f1,
-            "per_fold": final_folds,
+            "scope": "training split only",
+            "folds": pipeline.CV_FOLDS,
+            "auc_roc_mean": cv["ensemble"]["auc_roc_mean"],
+            "auc_roc_std": cv["ensemble"]["auc_roc_std"],
+            "f1_mean": cv["ensemble"]["f1_mean"],
+            "pr_auc_mean": cv["ensemble"]["pr_auc_mean"],
+            "per_fold": cv["ensemble"]["per_fold"],
         },
-        "holdout": holdout,
-        "candidates": comparison,
-        "selection_skipped": bool(args.dataset),
-        "trained_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "validation": {
+            "rows": int(len(y_val)),
+            "evaluation_threshold": pipeline.EVALUATION_THRESHOLD,
+            "ensemble_raw": validation["ensemble"],
+            "ensemble_calibrated_out_of_fold": validation_calibrated,
+            "baselines": {name: validation[name] for name in pipeline.MODEL_NAMES},
+        },
+        "calibration": calibration,
+        "evaluation_threshold": {
+            "raw_probability": pipeline.EVALUATION_THRESHOLD,
+            "note": (
+                "Model evaluation threshold, fixed before any result was seen and never "
+                "tuned. Credit policy thresholds are separate and configurable."
+            ),
+        },
+        "dataset_selection": {
+            "note": (
+                "credit_risk_shared was chosen over loan_default_full and combined_shared "
+                "in release 1.x by 5-fold CV over each whole file, before this protocol "
+                "existed. That choice between datasets is not re-run; no hyperparameter, "
+                "threshold or calibrator of this model was chosen on the final test set."
+            ),
+            "candidates": selection,
+        },
+        "candidates": selection,
+        "selection_skipped": True,
+        "previous_model": before,
+        "training_protocol_version": pipeline.TRAINING_PROTOCOL_VERSION,
+        "trained_at": trained_at,
     }
     with FEATURE_NAMES_PATH.open("w", encoding="utf-8") as handle:
         json.dump(metadata, handle, indent=2)
 
+    report = data_quality_report(
+        pd.read_csv(pipeline.DATA_DIR / pipeline.DATASET_FILE),
+        "loan_status",
+        dataset_identifier=pipeline.DATASET_IDENTIFIER,
+        dataset_type_label=pipeline.DATASET_TYPE_LABEL,
+        dataset_sha256=prepared.dataset_sha256,
+        valid_ranges=CREDIT_RISK_VALID_RANGES,
+        excluded=prepared.excluded,
+        preprocessing=metadata["preprocessing"]["steps"],
+        learned_parameters={"medians": preprocess.medians_, "clip_bounds": preprocess.clips_},
+        model_features=features,
+        mapped=frame,
+    )
+    report["model_trained_at"] = trained_at
+    write_report(report)
+
+    comparison = {
+        "dataset": args.dataset,
+        "model_trained_at": trained_at,
+        "rows": {"train": int(len(y_train)), "validation": int(len(y_val))},
+        "features": features,
+        "protocol": (
+            "Same split, same train-only preprocessing (median, clip, scaler) and SMOTE "
+            "on the training rows for every model. Cross-validation: 5 folds on the "
+            "training split. Validation: models fitted on the training split. The final "
+            "test figures are added once by ml.evaluate_model."
+        ),
+        "labels": pipeline.MODEL_LABELS,
+        "models": {
+            # Pre-2.2 key kept for the served model.
+            ("served_ensemble_xgb_rf" if name == "ensemble" else name): {
+                "cross_validation": cv[name],
+                "validation": validation[name],
+                # Flat CV figures for older clients.
+                "auc_roc_mean": cv[name]["auc_roc_mean"],
+                "auc_roc_std": cv[name]["auc_roc_std"],
+                "pr_auc_mean": cv[name]["pr_auc_mean"],
+                "f1_mean": cv[name]["f1_mean"],
+                "brier_mean": cv[name]["brier_mean"],
+                "vs_served": cv[name].get("vs_ensemble"),
+            }
+            for name in pipeline.MODEL_NAMES
+        },
+    }
+    from ml.features import COMPARISON_PATH
+
+    COMPARISON_PATH.write_text(json.dumps(comparison, indent=2), encoding="utf-8")
+
     for path in (MODEL_PATH, SCALER_PATH, SHAP_EXPLAINER_PATH, FEATURE_NAMES_PATH):
         print(f"  saved {path.name:<24} {path.stat().st_size / 1024:>8.1f} KB")
-
-    print(f"\nCompleted in {time.perf_counter() - started:.1f}s")
+    print(f"\nCompleted in {time.perf_counter() - started:.1f}s. Now run: python -m ml.evaluate_model")
     return 0
 
 
