@@ -5,6 +5,7 @@ import { apiErrorMessage, scoreApplication, summariseStatement } from "../api/cl
 import { formatPKR, formatPKRCompact, formatPercent } from "../lib/format.js";
 import PathToApproval from "./PathToApproval.jsx";
 import ScoreDial from "./ScoreDial.jsx";
+import { useActivePolicy } from "../lib/useActivePolicy.js";
 import { Spinner } from "./common/States.jsx";
 
 /** Mirrors `BusinessSector` in backend/schemas.py. */
@@ -363,6 +364,9 @@ function toPayload(values) {
  */
 export default function ApplicationForm({ onScored }) {
   const navigate = useNavigate();
+  // Before an assessment the dial shows the policy in force; afterwards the
+  // assessment's own policy snapshot, which is what its recommendation used.
+  const activePolicy = useActivePolicy();
   const [values, setValues] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState(null);
@@ -554,6 +558,7 @@ export default function ApplicationForm({ onScored }) {
             score={result ? result.risk_score : null}
             decision={result?.decision}
             riskBand={result?.risk_band}
+            bands={result ? result.policy?.bands : activePolicy}
             size={260}
           />
 
@@ -602,8 +607,8 @@ export default function ApplicationForm({ onScored }) {
             </div>
           ) : (
             <p className="mt-6 text-center text-sm text-slate-500">
-              Complete the form to generate a score, a decision and an explainable
-              rationale.
+              Complete the form to get a Risk Assessment, a ForiFlow Recommendation and an
+              explainable rationale. The Credit Officer Decision comes after.
             </p>
           )}
         </div>

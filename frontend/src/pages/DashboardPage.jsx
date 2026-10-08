@@ -20,6 +20,7 @@ import PortfolioPanel from "../components/PortfolioPanel.jsx";
 import ScoreDial from "../components/ScoreDial.jsx";
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
 import { SCORE_BANDS, bandForDecision } from "../lib/decisions.js";
+import { bandIndexForRiskBand, describeBands } from "../lib/policyBands.js";
 import { formatPKRCompact } from "../lib/format.js";
 
 /** Portfolio overview: origination quality on the left, surveillance below. */
@@ -69,15 +70,18 @@ export default function DashboardPage() {
     [portfolio],
   );
 
-  // Bars are (lower, upper], with edges on the policy boundaries 40 and 70,
-  // so every score is counted once and no bar mixes decisions.
+  // Bars are (lower, upper] with edges on the ACTIVE policy's cut-offs, and
+  // the API says which band each bar is in, so the colours follow the policy.
   const histogramData = useMemo(
     () =>
-      (portfolio?.score_histogram ?? []).map((bucket) => ({
-        label: bucket.label,
-        count: bucket.count,
-        color: bucket.upper <= 40 ? "#e11d48" : bucket.upper <= 70 ? "#f59e0b" : "#059669",
-      })),
+      (portfolio?.score_histogram ?? []).map((bucket) => {
+        const index = bandIndexForRiskBand(bucket.risk_band);
+        return {
+          label: bucket.label,
+          count: bucket.count,
+          color: index === null ? "#94a3b8" : SCORE_BANDS[index].color,
+        };
+      }),
     [portfolio],
   );
 
@@ -171,13 +175,20 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-header">
             <h2 className="card-title">Score distribution</h2>
+            {portfolio?.histogram_policy_version ? (
+              <span className="text-xs text-slate-500" data-testid="histogram-policy">
+                Colours: current policy v{portfolio.histogram_policy_version} ·{" "}
+                {describeBands(portfolio.histogram_bands)}
+              </span>
+            ) : null}
           </div>
           <div className="px-5 py-4" style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={histogramData} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
                 <XAxis
                   dataKey="label"
-                  tick={{ fontSize: 11, fill: "#64748b" }}
+                  interval={0}
+                  tick={{ fontSize: 10, fill: "#64748b" }}
                   tickLine={false}
                   axisLine={{ stroke: "#cbd5e1" }}
                 />
@@ -215,7 +226,8 @@ export default function DashboardPage() {
             <ScoreDial
               score={latest ? latest.risk_score : null}
               decision={latest?.decision}
-              riskBand={latest ? bandForDecision(latest.decision).riskBand : null}
+              riskBand={latest ? (latest.risk_band ?? bandForDecision(latest.decision).riskBand) : null}
+              bands={latest ? latest.policy?.bands : portfolio?.histogram_bands}
               size={230}
               showLegend={false}
               caption={

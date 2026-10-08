@@ -1,3 +1,5 @@
+import { bandIndexForScore } from "./policyBands.js";
+
 /**
  * Bands shared by the dial, tables and charts.
  *
@@ -13,15 +15,15 @@ export const DECISION_APPROVED = "Approved";
 export const DECISION_MANUAL_REVIEW = "Manual Review";
 export const DECISION_REJECTED = "Rejected";
 
-/** Demo policy: 0-40 Decline, 41-70 Manual Review, 71-100 Approve (recommendations). */
+/**
+ * Colours and wording for the three bands, low score to high. The cut-offs are
+ * not here: they come from the policy (see lib/policyBands.js).
+ */
 export const SCORE_BANDS = [
   {
     decision: DECISION_REJECTED,
     recommendation: "Decline",
     riskBand: "High Risk",
-    min: 0,
-    max: 40,
-    range: "0 – 40",
     color: "#e11d48",
     softColor: "#ffe4e6",
     textClass: "text-rose-700",
@@ -34,9 +36,6 @@ export const SCORE_BANDS = [
     decision: DECISION_MANUAL_REVIEW,
     recommendation: "Manual Review",
     riskBand: "Medium Risk",
-    min: 41,
-    max: 70,
-    range: "41 – 70",
     color: "#f59e0b",
     softColor: "#fef3c7",
     textClass: "text-amber-700",
@@ -49,9 +48,6 @@ export const SCORE_BANDS = [
     decision: DECISION_APPROVED,
     recommendation: "Approve",
     riskBand: "Low Risk",
-    min: 71,
-    max: 100,
-    range: "71 – 100",
     color: "#059669",
     softColor: "#d1fae5",
     textClass: "text-emerald-700",
@@ -64,13 +60,13 @@ export const SCORE_BANDS = [
 
 const FALLBACK_BAND = SCORE_BANDS[1];
 
-/** Resolve the policy band for a 0-100 score. */
-export function bandForScore(score) {
-  const value = Number(score);
-  if (Number.isNaN(value)) return FALLBACK_BAND;
-  if (value <= 40) return SCORE_BANDS[0];
-  if (value <= 70) return SCORE_BANDS[1];
-  return SCORE_BANDS[2];
+/**
+ * The band style for a score under the given policy bands, or the neutral
+ * middle style when no bands are known yet.
+ */
+export function bandForScore(score, bands) {
+  const index = bandIndexForScore(score, bands);
+  return index === null ? FALLBACK_BAND : SCORE_BANDS[index];
 }
 
 /** Resolve the band from a decision string returned by the API. */

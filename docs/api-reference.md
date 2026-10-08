@@ -72,7 +72,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts",
@@ -90,7 +90,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "database": "connected",
   "scoring_engine": "ml",
   "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26",
@@ -740,3 +740,20 @@ Pakistani SME lending.
 New audit actions: `recommendation.generated`, `application.escalated`,
 `application.rescored`, `application.superseded`, `policy.created`,
 `policy.activated`, `policy.retired`.
+
+## Policy bands for drawing (2.0.1)
+
+Every application's `policy` object carries `bands`:
+
+```json
+"bands": { "decline_max_score": 45.0, "manual_review_max_score": 74.0,
+           "approve_above_score": 74.0, "source": "policy_snapshot" }
+```
+
+`source` is `policy_snapshot` (stored at scoring time) or `legacy_fixed_rule`
+(scored before 2.0, when the code used fixed 40 / 70). Draw an application with
+its own `bands`, never with today's policy. `/score/stats` returns
+`histogram_policy_version`, `histogram_bands` (`source: active_policy`) and,
+per bar, `risk_band` and `recommendation`: the bars are cut on the active
+policy, two per band. The recommendation shown for an application is always
+the API's `recommendation`; bands are for drawing only.

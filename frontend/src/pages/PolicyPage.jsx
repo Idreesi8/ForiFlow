@@ -9,6 +9,7 @@ import {
 } from "../api/client.js";
 import { ErrorState, LoadingState, Spinner } from "../components/common/States.jsx";
 import { formatCount, formatDateTime, formatPKR } from "../lib/format.js";
+import { refreshActivePolicy } from "../lib/useActivePolicy.js";
 
 const EMPTY = {
   version: "",
@@ -175,7 +176,10 @@ export default function PolicyPage() {
                         className="btn border border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
                         disabled={busy !== null}
                         onClick={() =>
-                          run(`activate-${version.id}`, () => activatePolicyVersion(version.id))
+                          run(`activate-${version.id}`, async () => {
+                            await activatePolicyVersion(version.id);
+                            refreshActivePolicy();
+                          })
                         }
                       >
                         {busy === `activate-${version.id}` ? <Spinner className="h-4 w-4" /> : null}

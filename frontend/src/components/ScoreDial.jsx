@@ -2,26 +2,33 @@ import { useMemo } from "react";
 import { Cell, Pie, PieChart } from "recharts";
 
 import { SCORE_BANDS, bandForDecision, bandForScore } from "../lib/decisions.js";
+import { bandSegments, describeBands } from "../lib/policyBands.js";
 
 /**
  * Semi-circular credit score gauge (0-100) drawn with Recharts.
  *
- * The outer ring shows the three policy bands (red 0-40 Rejected, yellow 41-70
- * Manual Review, green 71-100 Approve), the inner arc fills up to the score
- * and the needle points at the exact value. The needle and hub are drawn in an
- * overlay SVG so the geometry stays pixel-exact at any `size`.
+ * The outer ring shows the three bands of the policy passed in `bands` (red
+ * Decline, amber Manual Review, green Approve), sized by that policy's own
+ * cut-offs. Pass a stored application's `policy.bands` (its snapshot) or, for
+ * an empty dial, the active policy. Without bands the ring is drawn grey and
+ * no ranges are claimed. The highlighted band is the API's recommendation
+ * (`decision`) when given; the dial never decides one itself. The inner arc
+ * fills up to the score and the needle points at the exact value; needle and
+ * hub are drawn in an overlay SVG so the geometry stays pixel-exact at any size.
  */
 export default function ScoreDial({
   score,
   decision,
   riskBand,
+  bands,
   size = 280,
   caption,
   showLegend = true,
 }) {
   const hasScore = score !== null && score !== undefined && !Number.isNaN(Number(score));
   const value = hasScore ? Math.min(100, Math.max(0, Number(score))) : 0;
-  const band = decision ? bandForDecision(decision) : bandForScore(value);
+  const segments = bandSegments(bands);
+  const band = decision ? bandForDecision(decision) : bandForScore(value, bands);
 
   const geometry = useMemo(() => {
     const outerRadius = size / 2 - 6;
@@ -49,10 +56,9 @@ export default function ScoreDial({
   const baseX = Math.cos(needleAngle + Math.PI / 2) * baseOffset;
   const baseY = -Math.sin(needleAngle + Math.PI / 2) * baseOffset;
 
-  const bandData = SCORE_BANDS.map((item) => ({
-    name: item.decision,
-    value: item.max - item.min + (item.min === 0 ? 0 : 1),
-  }));
+  const bandData = segments
+    ? segments.map((segment) => ({ name: segment.key, value: segment.span }))
+    : [{ name: "unknown", value: 100 }];
   const progressData = [
     { name: "score", value },
     { name: "remainder", value: 100 - value },
@@ -64,6 +70,7 @@ export default function ScoreDial({
         className="relative"
         style={{ width: geometry.width, height: geometry.height }}
         role="img"
+        data-band-edges={segments ? `${segments[0].to},${segments[1].to}` : ""}
         aria-label={
           hasScore
             ? `Risk score ${value.toFixed(1)} out of 100, ${riskBand ?? band.riskBand}`
@@ -84,13 +91,17 @@ export default function ScoreDial({
             stroke="none"
             isAnimationActive={false}
           >
-            {SCORE_BANDS.map((item) => (
-              <Cell
-                key={item.decision}
-                fill={item.color}
-                fillOpacity={hasScore && item.decision !== band.decision ? 0.28 : 1}
-              />
-            ))}
+            {segments ? (
+              segments.map((segment) => (
+                <Cell
+                  key={segment.key}
+                  fill={bandForDecision(segment.key).color}
+                  fillOpacity={hasScore && segment.key !== band.decision ? 0.28 : 1}
+                />
+              ))
+            ) : (
+              <Cell fill="#e2e8f0" />
+            )}
           </Pie>
 
           <Pie
@@ -182,38 +193,44 @@ export default function ScoreDial({
       ) : null}
 
       {showLegend ? (
-        <ul className="mt-4 grid w-full max-w-sm grid-cols-3 gap-2 text-center">
-          {SCORE_BANDS.map((item) => {
-            const isActive = hasScore && item.decision === band.decision;
-            return (
-              <li
-                key={item.decision}
-                className={`rounded-lg border px-2 py-2 transition ${
-                  isActive
-                    ? `${item.bgClass} ${item.borderClass}`
-                    : "border-slate-200 bg-white"
-                }`}
-              >
-                <span className="flex items-center justify-center gap-1.5">
-                  <span
-                    className={`h-2 w-2 rounded-full ${item.dotClass}`}
-                    aria-hidden="true"
-                  />
-                  <span className="tabular text-xs font-semibold text-slate-700">
-                    {item.range}
-                  </span>
-                </span>
-                <span
-                  className={`mt-0.5 block text-[11px] font-medium ${
-                    isActive ? item.textClass : "text-slate-500"
+        <>
+          <ul className="mt-4 grid w-full max-w-sm grid-cols-3 gap-2 text-center">
+            {SCORE_BANDS.map((item, index) => {
+              const isActive = hasScore && item.decision === band.decision;
+              return (
+                <li
+                  key={item.decision}
+                  className={`rounded-lg border px-2 py-2 transition ${
+                    isActive
+                      ? `${item.bgClass} ${item.borderClass}`
+                      : "border-slate-200 bg-white"
                   }`}
                 >
-                  {item.riskBand}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+                  <span className="flex items-center justify-center gap-1.5">
+                    <span
+                      className={`h-2 w-2 rounded-full ${item.dotClass}`}
+                      aria-hidden="true"
+                    />
+                    <span className="tabular text-xs font-semibold text-slate-700">
+                      {segments ? segments[index].range : "—"}
+                    </span>
+                  </span>
+                  <span
+                    className={`mt-0.5 block text-[11px] font-medium ${
+                      isActive ? item.textClass : "text-slate-500"
+                    }`}
+                  >
+                    {item.riskBand}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-2 text-center text-[11px] text-slate-500">
+            {segments ? describeBands(bands) : "Policy cut-offs not loaded"}
+            {bands?.source === "legacy_fixed_rule" ? " (fixed rule before 2.0)" : ""}
+          </p>
+        </>
       ) : null}
     </div>
   );

@@ -6,6 +6,39 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-08
+
+Corrective release. No change to the model, the probability, the score, SHAP,
+the EWS, the borrower and audit records or the decision workflow.
+
+### Fixed
+
+- **Band drawings now follow the policy instead of fixed 40 / 70 values.**
+  In 2.0.0 the score dial and the dashboard histogram were still drawn with
+  cut-offs hard-coded in the dashboard, so under a policy such as 45 / 74 a
+  score of 72 was recommended Manual Review by the API while the dial drew it
+  in the Approve arc.
+  - Every application now returns `policy.bands`: the cut-offs it was assessed
+    under, from its stored policy snapshot (`source: policy_snapshot`). An
+    application scored before 2.0 reports the fixed rule of that time
+    (`legacy_fixed_rule`, 40 / 70). Activating a new policy never redraws an
+    old assessment.
+  - The dial draws its three arcs and legend from those bands; an empty dial
+    uses `GET /policy/active`. The highlighted band is always the API's
+    recommendation.
+  - `/score/stats` cuts the histogram on the active policy (two bars per band,
+    edges on the cut-offs) and returns each bar's `risk_band` and
+    `recommendation`, plus `histogram_policy_version` and `histogram_bands`.
+    For the demo policy the bars are unchanged (0-20 … 85-100).
+  - The dashboard no longer holds any cut-off. The Model Performance page now
+    labels its 40 / 70 figures as model evaluation cut-offs, not the credit
+    policy in force.
+
+### Added
+
+- Frontend unit tests (`npm test`, Node's built-in runner, no new package) for
+  the band arithmetic under policies 40 / 70 and 45 / 74; run in CI.
+
 ## [2.0.0] - 2026-10-07
 
 Phase 2: a human-in-the-loop decision workflow and a versioned credit policy.

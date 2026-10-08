@@ -20,6 +20,11 @@ DEMO_MANAGER_APPROVAL_LIMIT_PKR: float = 2_000_000.0
 DEMO_POLICY_VERSION: str = "1.0"
 DEMO_POLICY_NAME: str = "Demo Credit Policy"
 
+# The fixed cut-offs in the code before release 2.0, when no policy version was
+# recorded. Used only to describe applications scored then, never to score.
+LEGACY_DECLINE_MAX_SCORE: float = 40.0
+LEGACY_MANUAL_REVIEW_MAX_SCORE: float = 70.0
+
 
 @dataclass(frozen=True, slots=True)
 class ScoreBands:
@@ -110,3 +115,21 @@ def approval_authority(
     if loan_amount_pkr > manager_approval_limit_pkr:
         return "admin", "above_manager_limit"
     return "manager", "within_manager_limit"
+
+
+def histogram_buckets(bands: ScoreBands) -> list[tuple[str, float, float, RiskBand]]:
+    """Six score bars, two inside each band, with edges on the policy cut-offs.
+
+    Each bar is ``(label, lower, upper, band)`` covering scores in
+    ``(lower, upper]`` (0 belongs to the first). Because the edges sit on the
+    cut-offs, no bar mixes two recommendations. For the demo policy (40 / 70)
+    this gives the bars the dashboard has always shown: 0-20, 20-40, 40-55,
+    55-70, 70-85, 85-100.
+    """
+    low, high = bands.decline_max_score, bands.manual_review_max_score
+    edges = [0.0, low / 2, low, (low + high) / 2, high, (high + 100.0) / 2, 100.0]
+    labels = [RiskBand.HIGH, RiskBand.HIGH, RiskBand.MEDIUM, RiskBand.MEDIUM, RiskBand.LOW, RiskBand.LOW]
+    return [
+        (f"{edges[i]:g}-{edges[i + 1]:g}", edges[i], edges[i + 1], labels[i])
+        for i in range(6)
+    ]

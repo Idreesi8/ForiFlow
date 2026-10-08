@@ -364,6 +364,24 @@ class ApprovalAuthority(BaseModel):
     )
 
 
+class PolicyBands(BaseModel):
+    """The score cut-offs that applied to an assessment: what a dial should draw."""
+
+    decline_max_score: float = Field(..., description="At or below: recommend Decline (High Risk).")
+    manual_review_max_score: float = Field(
+        ..., description="Above decline_max and at or below this: Manual Review (Medium Risk)."
+    )
+    approve_above_score: float = Field(..., description="Above this: recommend Approve (Low Risk).")
+    source: str = Field(
+        ...,
+        description=(
+            "'policy_snapshot': stored with the application at scoring time. "
+            "'active_policy': the policy in force now. 'legacy_fixed_rule': the fixed "
+            "40 / 70 cut-offs in the code before 2.0, for applications scored then."
+        ),
+    )
+
+
 class PolicyRecommendation(BaseModel):
     """What the credit policy recommends for the assessment. Not a decision."""
 
@@ -379,6 +397,9 @@ class PolicyRecommendation(BaseModel):
     )
     reason: str = Field(..., description="The recommendation in one sentence.")
     authority: ApprovalAuthority
+    bands: PolicyBands | None = Field(
+        default=None, description="The cut-offs this recommendation was made under."
+    )
 
 
 class OfficerDecisionRecord(BaseModel):
@@ -576,6 +597,30 @@ class ScoreResponse(BaseModel):
     scored_by: str | None = Field(default=None, description="Officer who ran the assessment.")
 
 
+def _bands_of(policy_evaluation: dict) -> PolicyBands:
+    """The cut-offs an application was assessed under.
+
+    From its stored policy snapshot; for an application scored before 2.0,
+    which has none, the fixed cut-offs the code used then. Never the policy in
+    force today, so activating a new policy does not redraw old assessments.
+    """
+    stored = policy_evaluation.get("bands")
+    if stored:
+        low, high = float(stored["decline_max_score"]), float(stored["manual_review_max_score"])
+        source = "policy_snapshot"
+    else:
+        from services.policy_rules import (
+            LEGACY_DECLINE_MAX_SCORE,
+            LEGACY_MANUAL_REVIEW_MAX_SCORE,
+        )
+
+        low, high = LEGACY_DECLINE_MAX_SCORE, LEGACY_MANUAL_REVIEW_MAX_SCORE
+        source = "legacy_fixed_rule"
+    return PolicyBands(
+        decline_max_score=low, manual_review_max_score=high, approve_above_score=high, source=source
+    )
+
+
 class ApplicationSummary(BaseModel):
     """An application: the model's assessment, the policy's recommendation and
     the officer's decision, kept apart.
@@ -706,6 +751,7 @@ class ApplicationSummary(BaseModel):
                 manager_approval_limit_pkr=self.manager_approval_limit_pkr,
                 reason=self.authority_view.get("reason", "unknown"),
             ),
+            bands=_bands_of(stored),
         )
 
     @computed_field  # type: ignore[prop-decorator]
@@ -765,6 +811,12 @@ class ScoreBucket(BaseModel):
     lower: float
     upper: float
     count: int
+    risk_band: RiskBand | None = Field(
+        default=None, description="The band this bar lies in under the histogram's policy."
+    )
+    recommendation: Recommendation | None = Field(
+        default=None, description="What that band recommends under the histogram's policy."
+    )
 
 
 class PortfolioStats(BaseModel):
@@ -795,6 +847,14 @@ class PortfolioStats(BaseModel):
     approved_exposure_pkr: float
     average_score: float | None
     score_histogram: list[ScoreBucket]
+    histogram_policy_version: str | None = Field(
+        default=None,
+        description=(
+            "The bars are cut on this (active) policy's cut-offs. Each application "
+            "keeps the recommendation it was given under its own policy."
+        ),
+    )
+    histogram_bands: PolicyBands | None = None
     open_alerts: int = Field(..., description="EWS alerts that are Active or In Review.")
     worst_open_drop: float | None
 

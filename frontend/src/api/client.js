@@ -106,6 +106,9 @@ export const decideApplication = (applicationId, payload) =>
     .post(`/score/applications/${applicationId}/decision`, payload)
     .then((response) => response.data);
 
+export const fetchActivePolicy = () =>
+  client.get("/policy/active").then((response) => response.data);
+
 export const fetchPolicyVersions = () =>
   client.get("/policy/versions").then((response) => response.data);
 

@@ -16,7 +16,10 @@ from schemas import (
     Decision,
     DecisionHistory,
     DecisionStatus,
+    PolicyBands,
     RECOMMENDATION_OF,
+    Recommendation,
+    RiskBand,
     OfficerDecision,
     PortfolioStats,
     ReviewRequest,
@@ -31,6 +34,7 @@ from services import (
     borrower_service,
     decision_service,
     model_registry,
+    policy_rules,
     policy_service,
 )
 from services.audit_service import Action, Audit
@@ -350,15 +354,11 @@ async def list_applications(
     return [ApplicationSummary.model_validate(app) for app in applications]
 
 
-# Edges sit on the policy boundaries (40 and 70), so no bar mixes decisions.
-SCORE_BUCKETS: tuple[tuple[str, float, float], ...] = (
-    ("0-20", 0.0, 20.0),
-    ("20-40", 20.0, 40.0),
-    ("40-55", 40.0, 55.0),
-    ("55-70", 55.0, 70.0),
-    ("70-85", 70.0, 85.0),
-    ("85-100", 85.0, 100.0),
-)
+_RECOMMENDATION_OF_BAND = {
+    RiskBand.HIGH: Recommendation.DECLINE,
+    RiskBand.MEDIUM: Recommendation.MANUAL_REVIEW,
+    RiskBand.LOW: Recommendation.APPROVE,
+}
 
 
 def _final_is(decision: str):
@@ -436,8 +436,12 @@ async def portfolio_stats(db: DbSession) -> PortfolioStats:
     """Counts, exposure, score histogram and open alerts.
 
     Assessments replaced by a re-score are left out; ``superseded_assessments``
-    says how many there are.
+    says how many there are. The histogram's bars are cut on the active
+    policy's cut-offs (two bars per band), so no bar mixes recommendations.
     """
+    policy = policy_service.active_policy(db)
+    bands = policy_service.bands_of(policy)
+    buckets = policy_rules.histogram_buckets(bands)
     approved = _final_is(Decision.APPROVED.value)
     rejected = _final_is(Decision.REJECTED.value)
     pending = _is_open()
@@ -451,7 +455,7 @@ async def portfolio_stats(db: DbSession) -> PortfolioStats:
             func.avg(Application.risk_score),
             *[
                 func.count(case((_in_bucket(lower, upper), 1)))
-                for _label, lower, upper in SCORE_BUCKETS
+                for _label, lower, upper, _band in buckets
             ],
         ).where(_current())
     ).one()
@@ -470,6 +474,7 @@ async def portfolio_stats(db: DbSession) -> PortfolioStats:
     open_alerts, worst_drop = db.execute(
         select(func.count(Alert.id), func.max(Alert.score_drop)).where(open_filter)
     ).one()
+    db.commit()  # keeps the demo policy if this request was the first to need it
 
     return PortfolioStats(
         total_applications=total,
@@ -488,9 +493,23 @@ async def portfolio_stats(db: DbSession) -> PortfolioStats:
         approved_exposure_pkr=float(exposure),
         average_score=round(float(average), 2) if average is not None else None,
         score_histogram=[
-            ScoreBucket(label=label, lower=lower, upper=upper, count=count)
-            for (label, lower, upper), count in zip(SCORE_BUCKETS, bucket_counts, strict=True)
+            ScoreBucket(
+                label=label,
+                lower=lower,
+                upper=upper,
+                count=count,
+                risk_band=band,
+                recommendation=_RECOMMENDATION_OF_BAND[band],
+            )
+            for (label, lower, upper, band), count in zip(buckets, bucket_counts, strict=True)
         ],
+        histogram_policy_version=policy.version,
+        histogram_bands=PolicyBands(
+            decline_max_score=bands.decline_max_score,
+            manual_review_max_score=bands.manual_review_max_score,
+            approve_above_score=bands.manual_review_max_score,
+            source="active_policy",
+        ),
         open_alerts=open_alerts,
         worst_open_drop=float(worst_drop) if worst_drop is not None else None,
     )

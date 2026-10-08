@@ -315,7 +315,10 @@ export default function ModelPage() {
 
         <div className="card min-w-0">
           <div className="card-header">
-            <h3 className="card-title">Default rate by policy band</h3>
+            <h3 className="card-title">Default rate by band</h3>
+            <span className="text-xs text-slate-500">
+              model evaluation cut-offs 40 / 70, not the credit policy in force
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -379,12 +382,16 @@ export default function ModelPage() {
                 <tr key={row.flag_score_at_or_below}>
                   <td className="tabular px-5 py-3 font-semibold text-slate-900">
                     Score {row.flag_score_at_or_below}
+                    {/* Fixed evaluation cut-offs (the demo policy's 40 / 70 when the
+                        evaluation was recorded), not the credit policy in force. */}
                     {row.flag_score_at_or_below === 40 ? (
-                      <span className="ml-2 text-xs font-normal text-slate-500">Rejected band</span>
+                      <span className="ml-2 text-xs font-normal text-slate-500">
+                        Decline band (evaluation cut-off)
+                      </span>
                     ) : null}
                     {row.flag_score_at_or_below === 70 ? (
                       <span className="ml-2 text-xs font-normal text-slate-500">
-                        Rejected + Manual Review
+                        Decline + Manual Review (evaluation cut-off)
                       </span>
                     ) : null}
                   </td>

@@ -100,6 +100,11 @@ Rules:
 - Every create, activate and retire is written to the audit trail.
 - `MANAGER_APPROVAL_LIMIT_PKR` only sets the limit of the first (demo) policy
   when it is created. After that the policy is the single source.
+- The dashboard holds no cut-off. The score dial draws each application with
+  the bands from its own snapshot (`policy.bands`; `legacy_fixed_rule` for
+  applications scored before 2.0) and an empty dial with the active policy;
+  the histogram is cut on the active policy by the API. The Model Performance
+  page's 40 / 70 are model evaluation cut-offs and are labelled so.
 - The EWS thresholds (15-point drop, 10% default probability) are monitoring
   rules, not credit-decision policy, and are unchanged in `ews_service.py`.
 
@@ -399,8 +404,8 @@ flowchart TB
     officer[Officer browser] --> fe
 ```
 
-Images: `foriflow-backend:2.0.0` (`python:3.12-slim` + `libgomp1`) and
-`foriflow-frontend:2.0.0` (Node 20 build, nginx 1.27). See
+Images: `foriflow-backend:2.0.1` (`python:3.12-slim` + `libgomp1`) and
+`foriflow-frontend:2.0.1` (Node 20 build, nginx 1.27). See
 [deployment.md](deployment.md).
 
 ## Repository map
