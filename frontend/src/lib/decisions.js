@@ -95,36 +95,6 @@ export function isPendingReview(application) {
   return ["Pending", "Escalated"].includes(decisionStatusOf(application));
 }
 
-/** Alert lifecycle styling. Active alerts are always red. */
-export const ALERT_STATUS_STYLES = {
-  Active: {
-    badgeClass: "bg-rose-100 text-rose-800 ring-1 ring-rose-300",
-    dotClass: "bg-rose-500",
-    rowClass: "bg-rose-50/40",
-  },
-  "In Review": {
-    badgeClass: "bg-amber-100 text-amber-800 ring-1 ring-amber-300",
-    dotClass: "bg-amber-500",
-    rowClass: "",
-  },
-  Resolved: {
-    badgeClass: "bg-slate-100 text-slate-600 ring-1 ring-slate-300",
-    dotClass: "bg-slate-400",
-    rowClass: "opacity-70",
-  },
-};
-
-export function alertStatusStyle(status) {
-  return ALERT_STATUS_STYLES[status] ?? ALERT_STATUS_STYLES.Resolved;
-}
-
-/**
- * Severity of an EWS alert. The backend triggers above a 15 point drop, so
- * anything past double that threshold is treated as critical.
- */
-export function alertSeverity(scoreDrop) {
-  const drop = Number(scoreDrop) || 0;
-  if (drop >= 30) return { label: "Critical", className: "bg-rose-600 text-white" };
-  if (drop >= 22) return { label: "High", className: "bg-rose-500 text-white" };
-  return { label: "Elevated", className: "bg-amber-500 text-white" };
-}
+// EWS alert statuses, severities and states are styled in lib/ews.js. The
+// severity of an alert comes from the API; the dashboard never derives it
+// from a score drop.

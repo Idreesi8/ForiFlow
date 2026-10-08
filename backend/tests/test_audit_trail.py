@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import DatabaseError
 
-from models.database import AuditLog, AuditLogImmutable, User
+from models.database import AuditLog, AuditLogImmutable, EWSTracking, User
 from services import audit_service
 from services.audit_service import Action, AuditContext
 from services.auth_service import hash_password
@@ -193,23 +193,58 @@ def test_a_refused_approval_is_recorded_even_though_the_request_fails(
     assert _entries(db_session_factory, action=Action.OFFICER_DECISION) == []
 
 
+CORRECTION = "Bureau extract re-read: the month was paid on time."
+
+
+def _correct(client: TestClient, observation_id: int, status: str = "On Time", **extra):
+    return client.post(
+        f"/ews/observations/{observation_id}/correct",
+        json={
+            "installment_status": status,
+            "bureau_balance": 1,
+            "pos_cash_balance": 10_000_000,
+            "correction_reason": CORRECTION,
+            **extra,
+        },
+    )
+
+
 def test_a_corrected_month_keeps_the_figures_it_replaced(
     client: TestClient, db_session_factory
 ) -> None:
+    """Since 2.1 the original row is kept (superseded) as well as audited."""
     application_id = client.post("/score", json=STRONG_APPLICANT).json()["application_id"]
     decide(client, application_id)
-    assert _month(client, application_id, "Late 60-89", amount_paid_pkr=1000).status_code == 201
-    assert _month(client, application_id, "On Time", amount_paid_pkr=66_000).status_code == 201
+    first = _month(client, application_id, "Late 60-89", amount_paid_pkr=1000)
+    assert first.status_code == 201
+    original_id = first.json()["tracking"]["id"]
+    second = _correct(client, original_id, "On Time", amount_paid_pkr=66_000)
+    assert second.status_code == 201
+    corrected_id = second.json()["tracking"]["id"]
 
     created = _entries(db_session_factory, action=Action.EWS_OBSERVATION_CREATED)
-    updated = _entries(db_session_factory, action=Action.EWS_OBSERVATION_UPDATED)
-    assert len(created) == 1 and len(updated) == 1
+    corrected = _entries(db_session_factory, action=Action.EWS_OBSERVATION_CORRECTED)
+    superseded = _entries(db_session_factory, action=Action.EWS_OBSERVATION_SUPERSEDED)
+    assert _entries(db_session_factory, action=Action.EWS_OBSERVATION_UPDATED) == []
+    assert len(created) == 1 and len(corrected) == 1 and len(superseded) == 1
     assert created[0].previous_state is None
-    # The row itself now says On Time; the trail still has what it said before.
-    assert updated[0].previous_state["installment_status"] == "Late 60-89"
-    assert updated[0].previous_state["amount_paid_pkr"] == 1000
-    assert updated[0].new_state["installment_status"] == "On Time"
-    assert updated[0].details["application_id"] == application_id
+    assert corrected[0].entity_id == str(corrected_id)
+    assert corrected[0].previous_state["installment_status"] == "Late 60-89"
+    assert corrected[0].previous_state["amount_paid_pkr"] == 1000
+    assert corrected[0].new_state["installment_status"] == "On Time"
+    assert corrected[0].new_state["supersedes_observation_id"] == original_id
+    assert corrected[0].details["correction_reason"] == CORRECTION
+    assert superseded[0].entity_id == str(original_id)
+    assert superseded[0].new_state["superseded_by_observation_id"] == corrected_id
+
+    db = db_session_factory()
+    try:
+        original = db.get(EWSTracking, original_id)
+        assert original.installment_status == "Late 60-89"
+        assert original.amount_paid_pkr == 1000
+        assert original.record_status == "superseded"
+    finally:
+        db.close()
 
 
 def test_an_alert_is_audited_from_raised_to_resolved(
@@ -218,18 +253,31 @@ def test_an_alert_is_audited_from_raised_to_resolved(
     application_id = client.post("/score", json=STRONG_APPLICANT).json()["application_id"]
     decide(client, application_id)
     alert = _month(client, application_id, "Default").json()["alert"]
-    client.patch(f"/ews/alerts/{alert['id']}/review")
+    assert client.post(f"/ews/alerts/{alert['id']}/acknowledge").status_code == 200
+    client.post(
+        f"/ews/alerts/{alert['id']}/action-required",
+        json={"action_note": "Visit the shop this week.", "assigned_to": "admin"},
+    )
     client.patch(f"/ews/alerts/{alert['id']}/resolve", json={"note": "Handed to remedial."})
 
     actions = [
         entry.action
         for entry in _entries(db_session_factory, entity_type="ews_alert", entity_id=str(alert["id"]))
     ]
-    assert actions == [Action.EWS_ALERT_CREATED, Action.EWS_ALERT_TAKEN, Action.EWS_ALERT_RESOLVED]
+    assert actions == [
+        Action.EWS_ALERT_CREATED,
+        Action.EWS_ALERT_ACKNOWLEDGED,
+        Action.EWS_ALERT_ACTION_REQUIRED,
+        Action.EWS_ALERT_RESOLVED,
+    ]
+    acknowledged = _entries(db_session_factory, action=Action.EWS_ALERT_ACKNOWLEDGED)[0]
+    assert acknowledged.previous_state["alert_status"] == "Open"
+    assert acknowledged.new_state["alert_status"] == "Acknowledged"
     resolved = _entries(db_session_factory, action=Action.EWS_ALERT_RESOLVED)[0]
-    assert resolved.previous_state["alert_status"] == "In Review"
+    assert resolved.previous_state["alert_status"] == "Action Required"
     assert resolved.new_state["alert_status"] == "Resolved"
     assert resolved.new_state["resolution_note"] == "Handed to remedial."
+    assert resolved.details["note"] == "Handed to remedial."
 
 
 def test_an_alert_closed_by_a_correction_is_audited(
@@ -237,8 +285,8 @@ def test_an_alert_closed_by_a_correction_is_audited(
 ) -> None:
     application_id = client.post("/score", json=STRONG_APPLICANT).json()["application_id"]
     decide(client, application_id)
-    _month(client, application_id, "Default")
-    _month(client, application_id, "On Time")
+    raised = _month(client, application_id, "Default").json()
+    _correct(client, raised["tracking"]["id"], "On Time")
 
     assert len(_entries(db_session_factory, action=Action.EWS_ALERT_AUTO_RESOLVED)) == 1
 

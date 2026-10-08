@@ -6,6 +6,86 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-08
+
+Phase 3: the Early Warning System becomes historical, explainable, auditable
+and actionable, and says plainly what it is: deterministic, rule- and
+trend-based monitoring of officer-recorded months, not a model that predicts
+default. No change to the model, the probability, the score, SHAP,
+calibration, the credit policy or the decision workflow. Method and limits:
+[docs/ews.md](docs/ews.md).
+
+### Changed (deliberate reversals)
+
+- **A recorded month is no longer overwritten.** Recording a month that is
+  already on file returns `409`. A manager or admin corrects it with
+  `POST /ews/observations/{id}/correct` and a reason: a new row is added and
+  the original is kept, marked `superseded`, with both linked.
+- **A typed score is an officer override.** `current_score` needs a manager
+  or admin and an `override_reason`; it is stored as
+  `score_source = officer_override` next to the rule score it replaced, and an
+  analyst's attempt is refused (`403`) and audited.
+- **Alert statuses**: `Active` / `In Review` / `Resolved` become `Open` /
+  `Acknowledged` / `Action Required` / `Resolved` / `Dismissed`. Taking or
+  following up an alert is a manager's or admin's step (was any officer).
+  `PATCH /ews/alerts/{id}/review` and `/resolve` still work.
+- **The Markov chain no longer raises alerts.** Its 10% line flagged exactly
+  Late 60-89 and Default, which the rules already mark CRITICAL, and it is
+  fitted on consumer card accounts. Its probability is still returned with a
+  month, labelled reference only.
+
+### Added
+
+- Observation history: date, days late (checked against the bucket), score
+  source, rule score, author, time, request id, correction links and the EWS
+  assessment as of that month. One active row per facility and month is
+  enforced by the database.
+- Score provenance shown everywhere: origination assessment, EWS rules,
+  officer override, unknown (before 2.1). A manual value is never presented as
+  a model score.
+- Trend: baseline, latest, total and recent deterioration, OLS slope and a
+  direction from three months; "Insufficient Data" below that.
+- Six deterministic signals with stable codes and evidence
+  (`PAYMENT_DELAY_INCREASED`, `BALANCE_INCREASED`, `POS_CASH_FLOW_DECLINED`,
+  `RISK_SCORE_DECLINED`, `RISK_TREND_DETERIORATING`,
+  `MULTIPLE_NEGATIVE_SIGNALS`) and the states NORMAL / WATCH / WARNING /
+  CRITICAL, separate from credit risk bands.
+- Alerts at WARNING and CRITICAL with severity, reason codes, evidence,
+  previous and current score, recommended actions and the observations they
+  rest on. One open alert per facility (database index); severity only rises
+  while open.
+- Alert lifecycle with acknowledgement, assignee, due date, action note,
+  overdue flag, resolution and dismissal, every step audited;
+  `GET /ews/alerts/{id}/history`.
+- `GET /ews/overview`, `/ews/methodology`, and per facility
+  `/observations`, `/trend`, `/state`, `/timeline` (stored events only).
+- Dashboard EWS page: portfolio tiles, facility table, score-history chart
+  (baseline drawn apart, overrides marked, insufficient-history message),
+  state reasons, signals and actions, recorded months with corrections,
+  timeline, the alert queue with its lifecycle, and the methodology read from
+  the API. The dashboard holds no EWS threshold.
+- Tests: the engine, the API and roles on SQLite, migration 0008 and the
+  workflow on PostgreSQL, and frontend helpers.
+
+### Migration
+
+- `0008_ews_history_alerts`. No row deleted, nothing invented: existing
+  observations are marked `legacy_unknown` and `active`; alert statuses are
+  renamed (Active to Open, In Review to Acknowledged, keeping who had taken
+  it); legacy alerts keep severity and reasons empty. It stops if a facility
+  has two open alerts. Downgrade is refused while corrections exist.
+
+### Known limits
+
+- Monthly figures are typed; there is no bureau, bank or POS integration.
+- The thresholds are judgement, not calibrated on SME outcomes.
+- The monitored score is the origination score minus rule penalties, not a
+  fresh model assessment (`latest_foriflow_assessment` is reserved).
+- No notifications are sent.
+- Alerts are evaluated when a month is recorded or corrected; the migration
+  does not raise alerts on pre-2.1 history, which the dashboard still shows
+  with its live state.
+
 ## [2.0.1] - 2026-10-08
 
 Corrective release. No change to the model, the probability, the score, SHAP,

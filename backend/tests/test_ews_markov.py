@@ -148,23 +148,46 @@ def test_the_chain_supplies_probability_and_runway() -> None:
     assert _evaluate(service, InstallmentStatus.DEFAULT).estimated_days_to_default == 0
 
 
-def test_the_model_can_alert_when_the_score_has_not_dropped() -> None:
-    """A high chain probability alerts even if an external score shows no drop."""
+def test_the_chain_no_longer_raises_an_alert() -> None:
+    """Reversed in 2.1: a high chain probability alone no longer alerts.
+
+    Until 2.0 the chain could alert when the score had not dropped. It is now
+    reported for reference only; the alert comes from the EWS rules.
+    """
     chain = {
         "state_outlook": [
             {"state": "Late 60-89", "default_within_3_months": MODEL_ALERT_PROBABILITY,
              "default_within_12_months": 0.5, "expected_days_to_default": 60},
-            {"state": "Late 1-59", "default_within_3_months": MODEL_ALERT_PROBABILITY - 0.01,
-             "default_within_12_months": 0.2, "expected_days_to_default": 150},
         ]
     }
     service = EWSService(chain=chain)
 
-    by_model = _evaluate(service, InstallmentStatus.LATE_60_89, current_score=80.0)
+    by_model = _evaluate(
+        service, InstallmentStatus.LATE_60_89, current_score=80.0,
+        override_reason="Officer typed the bank's own score.",
+    )
     assert by_model.score_drop == 0.0
-    assert by_model.alert_triggered is True
-    below = _evaluate(service, InstallmentStatus.LATE_1_29, current_score=80.0)
-    assert below.alert_triggered is False
+    assert by_model.default_probability_3m == MODEL_ALERT_PROBABILITY
+    assert by_model.alert_triggered is False
+
+
+@needs_chain
+def test_the_chain_flagged_only_what_the_rules_mark_critical() -> None:
+    """Why the chain left the alert path: it added no alert the rules miss.
+
+    The statuses whose fitted three-month default probability reached the old
+    10% line are exactly Late 60-89 and Default, which the EWS rules treat as
+    CRITICAL on their own.
+    """
+    from services.ews_engine import CRITICAL_STATUSES
+
+    service = EWSService(chain=CHAIN)
+    flagged = {
+        status.value
+        for status in InstallmentStatus
+        if service.chain_outlook(status)["default_within_3_months"] >= MODEL_ALERT_PROBABILITY
+    }
+    assert flagged == set(CRITICAL_STATUSES)
 
 
 @needs_chain
@@ -185,6 +208,9 @@ def test_monitoring_returns_the_probability(client: TestClient) -> None:
     assert body["runway_basis"] == "markov"
     assert body["default_probability_3m"] >= MODEL_ALERT_PROBABILITY
     assert body["alert"]["estimated_days_to_default"] == body["estimated_days_to_default"]
+    # The alert comes from the rules, with its reasons; the probability is reference only.
+    assert body["ews_state"] == "CRITICAL"
+    assert "PAYMENT_DELAY_INCREASED" in body["alert"]["reason_codes"]
 
 
 def test_early_warning_endpoint(client: TestClient) -> None:

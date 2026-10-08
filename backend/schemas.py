@@ -70,11 +70,63 @@ class RiskBand(StrEnum):
 
 
 class AlertStatus(StrEnum):
-    """Lifecycle of an EWS alert."""
+    """Lifecycle of an EWS alert.
 
-    ACTIVE = "Active"
-    IN_REVIEW = "In Review"
+    Open -> Acknowledged -> Action Required -> Resolved; an open alert may also
+    be Dismissed (for example, raised on a data-entry error). Resolved and
+    Dismissed are final. Before 2.1 the statuses were Active and In Review;
+    migration 0008 renamed them to Open and Acknowledged.
+    """
+
+    OPEN = "Open"
+    ACKNOWLEDGED = "Acknowledged"
+    ACTION_REQUIRED = "Action Required"
     RESOLVED = "Resolved"
+    DISMISSED = "Dismissed"
+
+
+class EWSState(StrEnum):
+    """Monitoring state of a facility. Not a credit band and not a decision."""
+
+    NORMAL = "NORMAL"
+    WATCH = "WATCH"
+    WARNING = "WARNING"
+    CRITICAL = "CRITICAL"
+
+
+class AlertSeverity(StrEnum):
+    """Severity of an alert: the EWS state that raised it (WARNING or CRITICAL)."""
+
+    WARNING = "WARNING"
+    CRITICAL = "CRITICAL"
+
+
+class TrendDirection(StrEnum):
+    """Direction of the monitored score over the recorded months."""
+
+    IMPROVING = "Improving"
+    STABLE = "Stable"
+    DETERIORATING = "Deteriorating"
+    INSUFFICIENT_DATA = "Insufficient Data"
+
+
+class ScoreSource(StrEnum):
+    """Where a monitored score came from."""
+
+    EWS_RULE_ADJUSTED = "ews_rule_adjusted"
+    OFFICER_OVERRIDE = "officer_override"
+    LATEST_FORIFLOW_ASSESSMENT = "latest_foriflow_assessment"
+    ORIGINATION_ASSESSMENT = "origination_assessment"
+    LEGACY_UNKNOWN = "legacy_unknown"
+
+
+SCORE_SOURCE_LABELS: dict[str, str] = {
+    "ews_rule_adjusted": "EWS rules applied to the ForiFlow origination assessment",
+    "officer_override": "Officer Override",
+    "latest_foriflow_assessment": "ForiFlow Assessment",
+    "origination_assessment": "ForiFlow Assessment (origination)",
+    "legacy_unknown": "Unknown (recorded before 2.1)",
+}
 
 
 class InstallmentStatus(StrEnum):
@@ -855,7 +907,9 @@ class PortfolioStats(BaseModel):
         ),
     )
     histogram_bands: PolicyBands | None = None
-    open_alerts: int = Field(..., description="EWS alerts that are Active or In Review.")
+    open_alerts: int = Field(
+        ..., description="EWS alerts that are Open, Acknowledged or Action Required."
+    )
     worst_open_drop: float | None
 
 
@@ -894,26 +948,33 @@ class AlertResolveRequest(BaseModel):
     )
 
 
-class EWSMonitorRequest(BaseModel):
-    """One month of post-disbursement surveillance data for a borrower."""
+# Days past due that each repayment bucket allows, inclusive. Default has no upper end.
+DAYS_LATE_RANGE: dict[InstallmentStatus, tuple[int, int | None]] = {
+    InstallmentStatus.ON_TIME: (0, 0),
+    InstallmentStatus.LATE_1_29: (1, 29),
+    InstallmentStatus.LATE_30_59: (30, 59),
+    InstallmentStatus.LATE_60_89: (60, 89),
+    InstallmentStatus.DEFAULT: (90, None),
+}
 
-    model_config = ConfigDict(
-        str_strip_whitespace=True,
-        json_schema_extra={
-            "example": {
-                "borrower_id": 1,
-                "month_number": 4,
-                "installment_status": "Late 30-59",
-                "bureau_balance": 1_650_000,
-                "pos_cash_balance": 240_000,
-                "data_source_primary": "ECIB",
-            }
-        },
-    )
 
-    borrower_id: int = Field(..., gt=0, description="Application id of the borrower.")
-    month_number: int = Field(..., ge=1, le=84, description="Months since disbursement.")
+class EWSObservationFields(BaseModel):
+    """What an officer records about one month of a facility.
+
+    ``current_score`` is an override of the rule-derived monitored score. It
+    needs a manager or admin and a written ``override_reason``, and is stored
+    and shown as an officer override, never as a model score.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     installment_status: InstallmentStatus
+    days_late: int | None = Field(
+        default=None,
+        ge=0,
+        le=3650,
+        description="Days past due on the installment, when known. Must fit the status bucket.",
+    )
     bureau_balance: float = Field(
         ...,
         ge=0,
@@ -935,48 +996,205 @@ class EWSMonitorRequest(BaseModel):
             "are left out of the collection figures."
         ),
     )
+    observation_date: date | None = Field(
+        default=None,
+        description="The date the figures were observed. Today when omitted; never in the future.",
+    )
     current_score: float | None = Field(
         default=None,
         ge=0,
         le=100,
-        description="Externally computed score. Derived from the payload when omitted.",
+        description=(
+            "Officer override of the monitored score (manager or admin, with "
+            "override_reason). Derived by the EWS rules when omitted."
+        ),
+    )
+    override_reason: str | None = Field(
+        default=None,
+        min_length=10,
+        max_length=1000,
+        description="Why the officer overrides the rule-derived score. Required with current_score.",
+    )
+
+    @model_validator(mode="after")
+    def _check_consistency(self) -> "EWSObservationFields":
+        low, high = DAYS_LATE_RANGE[self.installment_status]
+        if self.days_late is not None and (
+            self.days_late < low or (high is not None and self.days_late > high)
+        ):
+            span = f"{low} or more" if high is None else (f"{low}" if low == high else f"{low}-{high}")
+            raise ValueError(
+                f"days_late {self.days_late} does not fit '{self.installment_status.value}' "
+                f"(expected {span})."
+            )
+        if self.current_score is not None and not self.override_reason:
+            raise ValueError("A score override (current_score) needs an override_reason.")
+        if self.override_reason and self.current_score is None:
+            raise ValueError("override_reason is only accepted with a current_score override.")
+        if self.observation_date is not None and self.observation_date > date.today():
+            raise ValueError("observation_date cannot be in the future.")
+        return self
+
+
+class EWSMonitorRequest(EWSObservationFields):
+    """One month of post-disbursement surveillance data for a facility."""
+
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        json_schema_extra={
+            "example": {
+                "borrower_id": 1,
+                "month_number": 4,
+                "installment_status": "Late 30-59",
+                "days_late": 34,
+                "bureau_balance": 1_650_000,
+                "pos_cash_balance": 240_000,
+                "data_source_primary": "ECIB",
+            }
+        },
+    )
+
+    borrower_id: int = Field(
+        ..., gt=0, description="The facility: the id of the approved application."
+    )
+    month_number: int = Field(
+        ..., ge=1, le=84, description="Reporting period: months since disbursement."
     )
 
 
+class EWSCorrectionRequest(EWSObservationFields):
+    """A correction of a recorded month. The original stays on file, superseded."""
+
+    correction_reason: str = Field(
+        ...,
+        min_length=10,
+        max_length=1000,
+        description="What was wrong with the recorded figures.",
+    )
+
+
+class AlertNoteRequest(BaseModel):
+    """An optional note on a lifecycle step."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class AlertAssignRequest(BaseModel):
+    """Who follows the alert up, optionally by when."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    assigned_to: str = Field(..., min_length=1, max_length=64)
+    due_date: date | None = None
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class AlertDueDateRequest(BaseModel):
+    """When the follow-up action is due."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    due_date: date
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class AlertActionRequest(BaseModel):
+    """Mark an acknowledged alert Action Required, saying what must be done."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    action_note: str = Field(
+        ...,
+        min_length=5,
+        max_length=1000,
+        description="The follow-up action, e.g. 'Visit the shop and collect June statement'.",
+    )
+    assigned_to: str | None = Field(default=None, min_length=1, max_length=64)
+    due_date: date | None = None
+
+
 class AlertResponse(BaseModel):
-    """An EWS alert as returned by the API."""
+    """An EWS alert as returned by the API.
+
+    ``severity``, ``reason_codes``, ``evidence`` and ``recommended_actions`` are
+    null on alerts raised before 2.1 (``is_legacy``), which recorded only a
+    score drop. ``estimated_days_to_default`` is a heuristic kept for
+    compatibility; it plays no part in raising an alert.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     borrower_id: int
     business_name: str | None = None
+    severity: AlertSeverity | None = None
+    reason_codes: list[str] | None = None
+    evidence: list[dict] | None = None
+    recommended_actions: list[str] | None = None
     baseline_score: float
+    previous_score: float | None = None
     current_score: float
-    score_drop: float
+    score_drop: float = Field(..., description="Baseline minus current: total deterioration.")
     estimated_days_to_default: int
     alert_status: AlertStatus
     triggered_at: datetime
-    resolved_at: datetime | None = None
+    observation_id: int | None = None
+    last_observation_id: int | None = None
+    acknowledged_at: datetime | None = None
+    acknowledged_by: str | None = None
     assigned_to: str | None = None
+    assigned_at: datetime | None = None
+    assigned_by: str | None = None
+    action_due_date: date | None = None
+    action_note: str | None = None
+    resolved_at: datetime | None = None
     resolved_by: str | None = None
     resolution_note: str | None = None
+    is_open: bool = True
+    is_overdue: bool = False
+    is_legacy: bool = False
 
 
 class EWSTrackingResponse(BaseModel):
-    """A stored monthly EWS observation."""
+    """A stored monthly EWS observation.
+
+    ``record_status`` is ``superseded`` when a later correction replaced it; a
+    superseded row is history and is not used by the trend, state or alerts.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     borrower_id: int
     month_number: int
+    observation_date: date | None = None
     installment_status: InstallmentStatus
+    days_late: int | None = None
     bureau_balance: float
     pos_cash_balance: float
     monthly_score: float
+    score_source: ScoreSource = ScoreSource.LEGACY_UNKNOWN
+    override_reason: str | None = None
+    rule_score: float | None = None
     data_source_primary: DataSource
     amount_paid_pkr: float | None = None
+    record_status: str = "active"
+    supersedes_observation_id: int | None = None
+    superseded_by_observation_id: int | None = None
+    correction_reason: str | None = None
+    assessment: dict | None = None
+    created_by: str | None = None
+    created_at: datetime | None = None
+    request_id: str | None = None
+    is_legacy: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def score_source_label(self) -> str:
+        """How the dashboard names the source of the monitored score."""
+        return SCORE_SOURCE_LABELS[self.score_source.value]
 
 
 class StatusExposure(BaseModel):
@@ -1052,40 +1270,6 @@ class PortfolioSummary(BaseModel):
     latest_status: list[StatusExposure]
     decision_matrix: list[DecisionMatrixRow]
     sectors: list[SectorRow]
-
-
-class EWSMonitorResponse(BaseModel):
-    """Outcome of a monitoring run for a single borrower-month."""
-
-    borrower_id: int
-    business_name: str
-    month_number: int
-    baseline_score: float
-    current_score: float
-    score_drop: float
-    alert_triggered: bool
-    alert_threshold: float
-    estimated_days_to_default: int | None = None
-    default_probability_3m: float | None = Field(
-        default=None,
-        ge=0,
-        le=1,
-        description=(
-            "Probability of reaching Default within three months, from a Markov "
-            "chain fitted on monthly repayment histories of consumer card accounts "
-            "(UCI, Taiwan 2005), not on SME loans. Null when no chain is loaded."
-        ),
-    )
-    runway_basis: str = Field(
-        default="rules",
-        description=(
-            "'markov': estimated_days_to_default is the chain's mean time to "
-            "Default given it happens within 12 months. 'rules': the heuristic."
-        ),
-    )
-    recommended_action: str
-    tracking: EWSTrackingResponse
-    alert: AlertResponse | None = None
 
 
 class HealthResponse(BaseModel):
@@ -1402,3 +1586,190 @@ class DecisionHistory(BaseModel):
         default=None,
         description="Set when part of the history predates the audit trail (release 1.10).",
     )
+
+
+# --- Early Warning System 2.1 -------------------------------------------------------
+
+
+class EWSSignal(BaseModel):
+    """One deterministic warning signal, with the figures that triggered it."""
+
+    code: str = Field(..., description="Stable reason code, e.g. PAYMENT_DELAY_INCREASED.")
+    label: str
+    evidence: str = Field(..., description="The comparison that fired, in words.")
+    values: dict[str, Any] = Field(default_factory=dict)
+
+
+class TrendPoint(BaseModel):
+    """One point of a facility's score history. Month 0 is the origination baseline."""
+
+    label: str
+    month_number: int
+    score: float
+    score_source: ScoreSource
+    observation_id: int | None = None
+    observation_date: date | None = None
+    installment_status: InstallmentStatus | None = None
+
+
+class EWSTrend(BaseModel):
+    """Baseline, latest and direction of the monitored score.
+
+    The slope is ordinary least squares over the active monthly observations
+    (points per month) and is reported only from ``min_observations``
+    observations; below that the direction is ``Insufficient Data``.
+    """
+
+    facility_id: int
+    baseline_score: float
+    latest_score: float | None = None
+    previous_score: float | None = None
+    total_deterioration: float | None = Field(
+        default=None, description="Baseline minus latest. Positive means worse."
+    )
+    recent_deterioration: float | None = Field(
+        default=None, description="Previous month minus latest. Positive means worse."
+    )
+    slope_points_per_month: float | None = None
+    direction: TrendDirection
+    observations: int
+    min_observations: int
+    message: str | None = None
+    points: list[TrendPoint]
+
+
+class EWSFacilityState(BaseModel):
+    """The EWS view of one facility now: state, why, and what to consider doing."""
+
+    facility_id: int
+    business_name: str
+    borrower_id: int | None = None
+    monitored: bool
+    state: EWSState
+    state_reasons: list[str]
+    signals: list[EWSSignal]
+    recommended_actions: list[str]
+    trend: EWSTrend
+    latest_observation: EWSTrackingResponse | None = None
+    open_alert: AlertResponse | None = None
+    note: str = Field(
+        default=(
+            "Rule- and trend-based monitoring, not a default prediction. "
+            "Recommendations only: ForiFlow changes nothing on the facility."
+        )
+    )
+
+
+class EWSOverviewRow(BaseModel):
+    """One monitored facility on the EWS dashboard."""
+
+    facility_id: int
+    business_name: str
+    borrower_id: int | None = None
+    baseline_score: float
+    current_score: float | None = None
+    total_deterioration: float | None = None
+    recent_deterioration: float | None = None
+    trend_direction: TrendDirection
+    state: EWSState
+    active_alerts: int
+    open_alert_id: int | None = None
+    open_alert_status: AlertStatus | None = None
+    overdue: bool = False
+    observations: int
+    last_month_number: int | None = None
+    last_observation_date: date | None = None
+    score_source: ScoreSource | None = None
+
+
+class EWSMethodology(BaseModel):
+    """The EWS thresholds, served so the dashboard hard-codes none of them."""
+
+    score_drop_warning: float
+    score_drop_critical: float
+    trend_min_observations: int
+    trend_slope_points_per_month: float
+    balance_increase_pct: float
+    pos_decline_pct: float
+    alert_states: list[EWSState]
+    critical_statuses: list[InstallmentStatus]
+    notes: list[str]
+
+
+class EWSOverview(BaseModel):
+    """Portfolio EWS position."""
+
+    monitored_facilities: int
+    state_counts: dict[str, int]
+    open_alerts: int
+    overdue_actions: int
+    rows: list[EWSOverviewRow]
+    methodology: EWSMethodology
+
+
+class TimelineEvent(BaseModel):
+    """One stored event in a facility's history.
+
+    ``source`` is ``audit_log`` for entries of the audit trail and ``record``
+    for events read from a stored row that predates the trail; ``occurred_at``
+    is null when that row kept no time.
+    """
+
+    occurred_at: datetime | None = None
+    kind: str
+    title: str
+    detail: str | None = None
+    actor: str | None = None
+    entity_type: str
+    entity_id: str | None = None
+    source: str
+
+
+class FacilityTimeline(BaseModel):
+    """Everything on file for a facility, in order."""
+
+    facility_id: int
+    business_name: str
+    events: list[TimelineEvent]
+    note: str | None = None
+
+
+class EWSMonitorResponse(BaseModel):
+    """Outcome of recording one month for a facility."""
+
+    borrower_id: int
+    business_name: str
+    month_number: int
+    baseline_score: float
+    current_score: float
+    score_source: ScoreSource
+    score_drop: float = Field(..., description="Baseline minus this month's score.")
+    alert_triggered: bool = Field(
+        ..., description="True when this observation raised or updated an open alert."
+    )
+    alert_threshold: float = Field(..., description="Score drop above which the state is WARNING.")
+    ews_state: EWSState
+    state_reasons: list[str]
+    signals: list[EWSSignal]
+    trend: EWSTrend
+    recommended_actions: list[str]
+    recommended_action: str = Field(..., description="The first recommended action, for older clients.")
+    estimated_days_to_default: int | None = Field(
+        default=None, description="Heuristic runway, shown with an alert only. Not a prediction."
+    )
+    default_probability_3m: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Reference only, not used to raise alerts: probability of reaching "
+            "Default within three months from a Markov chain fitted on consumer "
+            "card repayment histories (UCI, Taiwan 2005), not on SME loans."
+        ),
+    )
+    runway_basis: str = Field(
+        default="rules",
+        description="'markov' or 'rules': where estimated_days_to_default came from.",
+    )
+    tracking: EWSTrackingResponse
+    alert: AlertResponse | None = None

@@ -11,9 +11,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from models.database import Alert, Application, EWSTracking, get_db
+from models.database import ALERT_OPEN_STATUSES, Alert, Application, EWSTracking, get_db
 from schemas import (
-    AlertStatus,
     Decision,
     DecisionMatrixRow,
     InstallmentStatus,
@@ -23,6 +22,9 @@ from schemas import (
     StatusExposure,
 )
 from services.auth_service import get_current_user
+
+# Superseded observations are history; every figure here uses the active row per month.
+ACTIVE_OBSERVATION = EWSTracking.record_status == "active"
 
 router = APIRouter(
     prefix="/portfolio",
@@ -76,7 +78,10 @@ async def portfolio_summary(db: DbSession) -> PortfolioSummary:
             func.count(case((has_amount, 1))),
             func.coalesce(func.sum(EWSTracking.amount_paid_pkr), 0.0),
         )
-        .outerjoin(EWSTracking, EWSTracking.borrower_id == Application.id)
+        .outerjoin(
+            EWSTracking,
+            and_(EWSTracking.borrower_id == Application.id, ACTIVE_OBSERVATION),
+        )
         .where(approved)
         .group_by(Application.id)
     ).all()
@@ -87,6 +92,7 @@ async def portfolio_summary(db: DbSession) -> PortfolioSummary:
             EWSTracking.borrower_id.label("borrower_id"),
             func.max(EWSTracking.month_number).label("month_number"),
         )
+        .where(ACTIVE_OBSERVATION)
         .group_by(EWSTracking.borrower_id)
         .subquery()
     )
@@ -97,6 +103,7 @@ async def portfolio_summary(db: DbSession) -> PortfolioSummary:
                 and_(
                     EWSTracking.borrower_id == latest_month.c.borrower_id,
                     EWSTracking.month_number == latest_month.c.month_number,
+                    ACTIVE_OBSERVATION,
                 ),
             )
         ).all()
@@ -151,7 +158,7 @@ async def portfolio_summary(db: DbSession) -> PortfolioSummary:
     for sector, count in db.execute(
         select(Application.business_sector, func.count(Alert.id))
         .join(Alert, Alert.borrower_id == Application.id)
-        .where(Alert.alert_status != AlertStatus.RESOLVED.value)
+        .where(Alert.alert_status.in_(ALERT_OPEN_STATUSES))
         .group_by(Application.business_sector)
     ):
         open_alerts_by_sector[sector or SECTOR_NOT_RECORDED] = count
@@ -295,7 +302,10 @@ async def payment_reminders(db: DbSession) -> list[Reminder]:
             func.count(case((has_amount, 1))),
             func.coalesce(func.sum(EWSTracking.amount_paid_pkr), 0.0),
         )
-        .outerjoin(EWSTracking, EWSTracking.borrower_id == Application.id)
+        .outerjoin(
+            EWSTracking,
+            and_(EWSTracking.borrower_id == Application.id, ACTIVE_OBSERVATION),
+        )
         .where(_final_is(Decision.APPROVED.value))
         .group_by(Application.id)
     ).all()
@@ -305,6 +315,7 @@ async def payment_reminders(db: DbSession) -> list[Reminder]:
             EWSTracking.borrower_id.label("borrower_id"),
             func.max(EWSTracking.month_number).label("month_number"),
         )
+        .where(ACTIVE_OBSERVATION)
         .group_by(EWSTracking.borrower_id)
         .subquery()
     )
@@ -315,6 +326,7 @@ async def payment_reminders(db: DbSession) -> list[Reminder]:
                 and_(
                     EWSTracking.borrower_id == latest_month.c.borrower_id,
                     EWSTracking.month_number == latest_month.c.month_number,
+                    ACTIVE_OBSERVATION,
                 ),
             )
         ).all()

@@ -386,7 +386,7 @@ def test_history_gathers_every_application_score_month_and_alert(client: TestCli
     assert rows[0]["model_version"] == first["model_version"]
     assert rows[0]["scoring_engine"] == "surrogate"
     assert [month["month_number"] for month in rows[0]["monitoring"]] == [1, 2]
-    assert len(rows[0]["alerts"]) == 1 and rows[0]["alerts"][0]["alert_status"] == "Active"
+    assert len(rows[0]["alerts"]) == 1 and rows[0]["alerts"][0]["alert_status"] == "Open"
     assert rows[1]["decision"] == second["decision"]
     assert rows[1]["monitoring"] == [] and rows[1]["alerts"] == []
 

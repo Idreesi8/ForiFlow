@@ -65,11 +65,12 @@ latest Alembic revision (`alembic upgrade head`).
 | `POST`  | `/score/applications/{id}/review`    | Approve or reject a Manual Review case (admin) |
 | `POST`  | `/explain/{application_id}`          | Generate the SHAP explanation                  |
 | `GET`   | `/explain/{application_id}`          | Read the stored explanation                    |
-| `POST`  | `/ews/monitor`                       | Record a monitored month, alert on score drops |
-| `GET`   | `/ews/alerts`                        | List alerts, worst first                       |
-| `GET`   | `/ews/borrowers/{id}/history`        | Monthly score trend for one borrower           |
-| `PATCH` | `/ews/alerts/{id}/review`            | Take an alert for review                       |
-| `PATCH` | `/ews/alerts/{id}/resolve`           | Resolve an alert with a note (admin)           |
+| `POST`  | `/ews/observations` (or `/ews/monitor`) | Record a monitored month (never overwrites) |
+| `POST`  | `/ews/observations/{id}/correct`     | Correct a month; the original is kept (manager) |
+| `GET`   | `/ews/facilities/{id}/observations` / `trend` / `state` / `timeline` | One facility's EWS history |
+| `GET`   | `/ews/overview`                      | Portfolio EWS position                         |
+| `GET`   | `/ews/alerts`                        | List alerts, open and worst first              |
+| `POST`  | `/ews/alerts/{id}/acknowledge` / `assign` / `due-date` / `action-required` / `resolve` / `dismiss` | Alert lifecycle (manager) |
 
 ### Decision policy
 
@@ -89,17 +90,18 @@ records the officer who scored it.
 
 ### EWS alerting
 
-The origination score is the borrower's baseline. Each monitored month is
-re-scored from the officer-entered repayment ageing bucket, an officer-typed
-bureau balance, and POS settlement inflows. There is no live bureau pull. A
-drop of **more than 15 points** raises an alert. So does a probability of
-default within three months of **10% or more** from the fitted Markov chain
-(next section), which also supplies the days-to-default estimate. An unresolved alert is updated in place rather than duplicated, and
-re-submitting a month (e.g. after a corrected typed balance) overwrites that
-observation. Only an approved facility can be monitored: Approved by the
-model, or Manual Review approved by an officer; anything else returns `409`.
-Any officer can take an alert for review (`In Review`, with their name);
-resolving it needs the `admin` role and a note, and records who resolved it.
+Since 2.1 the EWS is deterministic, rule- and trend-based monitoring; it is
+not a default-prediction model and never changes a facility. Each month an
+officer records the repayment bucket (and days late), a typed bureau balance
+and POS inflow. The monitored score is the origination score minus fixed rule
+penalties, or a manager's override with a reason, labelled as such. A recorded
+month is never overwritten: a correction adds a row and supersedes the
+original. From the facility's history the engine computes a trend (OLS slope,
+from three months), six signals with evidence and a state (NORMAL, WATCH,
+WARNING, CRITICAL). WARNING and CRITICAL open an alert, one per facility,
+which managers acknowledge, assign, set a due date on, mark Action Required,
+resolve or dismiss; every step is audited. The Markov chain below is
+reference only. Full method and limits: [docs/ews.md](../docs/ews.md).
 
 ## Layout
 
@@ -116,7 +118,8 @@ backend/
   routers/ews.py              # monitoring, alerts, borrower history
   services/auth_service.py    # bcrypt hashing, JWT, role checks
   services/scoring_service.py # scoring + explainability logic (ML + surrogate)
-  services/ews_service.py     # monitoring, alert and runway logic
+  services/ews_service.py     # the monthly monitored score and the runway heuristic
+  services/ews_engine.py      # EWS trend, signals, state and recommended actions (deterministic)
   services/audit_service.py   # append-only audit trail (who, what, when)
   services/borrower_service.py# borrowers, repeat-application linkage, history
   services/model_registry.py  # which model scored what (model_versions)

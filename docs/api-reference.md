@@ -72,7 +72,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts",
@@ -90,7 +90,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "database": "connected",
   "scoring_engine": "ml",
   "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26",
@@ -334,47 +334,38 @@ none is stored).
 
 `GET /explain/{application_id}` is the read-only twin.
 
-## POST `/ews/monitor`
+## Early Warning System (2.1)
 
-Record one month of post-disbursement surveillance. Triggers an alert when the
-monthly score drops more than 15 points from the originating application, or
-when the fitted Markov chain puts default within three months at 10% or more.
-`default_probability_3m` and, when `runway_basis` is `"markov"`,
-`estimated_days_to_default` come from that chain (see `GET
-/model/early-warning`); it is fitted on consumer card accounts, not SME loans.
+Method, thresholds and limits: [docs/ews.md](ews.md). The EWS is rule- and
+trend-based, not a default-prediction model; it recommends and never changes a
+facility or a credit decision. Every route needs a signed-in officer.
 
-**Request**
+### POST `/ews/observations` (also `POST /ews/monitor`)
+
+Record one month for an approved facility. Any officer.
 
 ```json
 {
   "borrower_id": 1,
   "month_number": 4,
+  "observation_date": "2026-10-05",
   "installment_status": "Late 30-59",
+  "days_late": 34,
   "bureau_balance": 1650000,
   "pos_cash_balance": 240000,
+  "amount_paid_pkr": 50000,
   "data_source_primary": "ECIB"
 }
 ```
 
-`installment_status`: `On Time`, `Late 1-29`, `Late 30-59`, `Late 60-89`,
-`Default`. `data_source_primary`: `ECIB`, `POS`, `Bank Statement`,
-`Self Reported`.
+`borrower_id` is the facility: the id of the approved application.
+`observation_date` defaults to today and cannot be in the future or before the
+application. `days_late` is optional and must fit the bucket. To override the
+monitored score add `current_score` and `override_reason` (10-1000
+characters); this needs a manager or admin (`403` otherwise, and the refusal
+is audited).
 
-`borrower_id` is an application id. An unknown id returns `404`. Only an
-approved application became a facility, so only it can be monitored: Approved
-by the model, or Manual Review and then approved by an officer. Anything else
-returns `409`: a model Rejected application, a Manual Review case still
-awaiting its decision, or one an officer rejected. `month_number` cannot be
-past the facility's `tenure_months` (`422`).
-
-The alert follows the latest month on file. A new latest month that drops more
-than 15 points opens an alert, or updates the open one. Back-filling an older
-month never changes the alert (the response says so in `recommended_action`).
-If the latest month is corrected and no longer breaches, the open alert is
-closed with an automatic note. The example below assumes application 1 was
-approved first.
-
-**Response `201`**
+**`201`**
 
 ```json
 {
@@ -383,90 +374,139 @@ approved first.
   "month_number": 4,
   "baseline_score": 67.23,
   "current_score": 47.01,
+  "score_source": "ews_rule_adjusted",
   "score_drop": 20.22,
   "alert_triggered": true,
   "alert_threshold": 15.0,
+  "ews_state": "WARNING",
+  "state_reasons": ["Score is 20.22 points below baseline (warning above 15).", "Latest month is Late 30-59."],
+  "signals": [
+    {"code": "PAYMENT_DELAY_INCREASED", "label": "Payment delay increased",
+     "evidence": "Repayment moved from On Time (month 3) to Late 30-59 (month 4), 34 days late.",
+     "values": {"previous_status": "On Time", "current_status": "Late 30-59"}}
+  ],
+  "trend": {"facility_id": 1, "baseline_score": 67.23, "latest_score": 47.01, "previous_score": 66.1,
+            "total_deterioration": 20.22, "recent_deterioration": 19.09,
+            "slope_points_per_month": -5.2, "direction": "Deteriorating",
+            "observations": 4, "min_observations": 3, "message": null,
+            "points": [{"label": "Baseline", "month_number": 0, "score": 67.23, "score_source": "origination_assessment"}]},
+  "recommended_actions": ["Relationship manager to contact the borrower within 7 days.", "..."],
+  "recommended_action": "Relationship manager to contact the borrower within 7 days.",
   "estimated_days_to_default": 160,
   "default_probability_3m": 0.0266,
   "runway_basis": "markov",
-  "recommended_action": "Relationship manager to contact the borrower within 7 days and verify POS settlement trends.",
-  "tracking": {
-    "id": 1,
-    "borrower_id": 1,
-    "month_number": 4,
-    "installment_status": "Late 30-59",
-    "bureau_balance": 1650000.0,
-    "pos_cash_balance": 240000.0,
-    "monthly_score": 47.01,
-    "data_source_primary": "ECIB"
-  },
-  "alert": {
-    "id": 1,
-    "borrower_id": 1,
-    "baseline_score": 67.23,
-    "current_score": 47.01,
-    "score_drop": 20.22,
-    "estimated_days_to_default": 160,
-    "alert_status": "Active",
-    "triggered_at": "2026-09-25T10:47:16.580236+05:00",
-    "resolved_at": null,
-    "business_name": "Siddiqui Textiles (Faisalabad)",
-    "assigned_to": null,
-    "resolved_by": null,
-    "resolution_note": null
-  }
+  "tracking": {"id": 4, "month_number": 4, "score_source": "ews_rule_adjusted",
+               "score_source_label": "EWS rules applied to the ForiFlow origination assessment",
+               "rule_score": 47.01, "record_status": "active", "created_by": "zakria", "...": "..."},
+  "alert": {"id": 1, "severity": "WARNING", "alert_status": "Open",
+            "reason_codes": ["PAYMENT_DELAY_INCREASED", "RISK_SCORE_DECLINED", "..."], "...": "..."}
 }
 ```
 
-**Errors:** `404` if `borrower_id` is not a scored application; `409` if it is
-not an approved facility; `422` for a month past the tenure or out-of-range
-fields.
+`default_probability_3m` is reference only (a Markov chain fitted on consumer
+card accounts, not SME loans) and never raises an alert.
+`estimated_days_to_default` is a heuristic kept for compatibility.
 
-## GET `/ews/alerts`
+**Errors:** `404` unknown application; `409` not an approved facility, or the
+month is already recorded (the message names the correction route); `422`
+past the tenure, a bad date, `days_late` outside the bucket, or a
+`current_score` without a reason.
 
-Officer alert queue.
+**Changed in 2.1:** a recorded month used to be overwritten by a second
+submission; it is now refused. `current_score` used to be accepted from any
+officer without a reason.
 
-Query: `alert_status` (`Active` | `In Review` | `Resolved`), `limit`, `offset`.
+### POST `/ews/observations/{id}/correct` (manager or admin)
 
-**Response `200`**
+The same fields without `borrower_id` and `month_number`, plus
+`correction_reason` (10-1000 characters). Adds a corrected row for the same
+month; the original keeps its figures and becomes `superseded`. `409` if it
+was already corrected. Returns the same body as above.
+
+### GET `/ews/facilities/{id}/observations`
+
+Every recorded month, oldest first, corrections included (`record_status`,
+`supersedes_observation_id`, `superseded_by_observation_id`,
+`correction_reason`). `?include_superseded=false` for the active rows only.
+`GET /ews/borrowers/{id}/history` (pre-2.1) returns the active rows.
+
+### GET `/ews/facilities/{id}/trend`
+
+Baseline, latest, previous, total and recent deterioration, OLS slope,
+direction (`Improving`, `Stable`, `Deteriorating`, `Insufficient Data`), and
+`points` for the chart: `Baseline` (month 0) then each active month with its
+`score_source`. `message` is "Insufficient history for multi-month trend"
+below three observations.
+
+### GET `/ews/facilities/{id}/state`
+
+`state` (`NORMAL`, `WATCH`, `WARNING`, `CRITICAL`), `state_reasons`,
+`signals`, `recommended_actions`, `trend`, `latest_observation`,
+`open_alert`.
+
+### GET `/ews/facilities/{id}/timeline`
+
+Stored events, oldest first: audit-trail entries for the application, its
+observations and its alerts (`source: "audit_log"`), plus rows from before the
+audit trail (`source: "record"`, time as stored or null).
+
+### GET `/ews/overview`
+
+`monitored_facilities`, `state_counts`, `open_alerts`, `overdue_actions`, one
+row per monitored facility (baseline, current, deteriorations, trend, state,
+active alerts, last observation), worst first, and `methodology`.
+
+### GET `/ews/methodology`
+
+The thresholds the engine uses and the caveats. The dashboard reads these.
+
+### GET `/ews/alerts`
+
+Query: `alert_status` (`Open`, `Acknowledged`, `Action Required`, `Resolved`,
+`Dismissed`), `severity` (`WARNING`, `CRITICAL`), `facility_id`, `open_only`,
+`limit`, `offset`. Open alerts first, then severity and drop. Closed alerts
+stay listed.
 
 ```json
-[
-  {
-    "id": 1,
-    "borrower_id": 1,
-    "baseline_score": 67.23,
-    "current_score": 47.01,
-    "score_drop": 20.22,
-    "estimated_days_to_default": 160,
-    "alert_status": "Active",
-    "triggered_at": "2026-09-25T10:47:16.580236+05:00",
-    "resolved_at": null,
-    "business_name": "Siddiqui Textiles (Faisalabad)",
-    "assigned_to": null,
-    "resolved_by": null,
-    "resolution_note": null
-  }
-]
+{
+  "id": 1, "borrower_id": 1, "business_name": "Siddiqui Textiles (Faisalabad)",
+  "severity": "WARNING", "reason_codes": ["PAYMENT_DELAY_INCREASED", "RISK_SCORE_DECLINED", "MULTIPLE_NEGATIVE_SIGNALS"],
+  "evidence": [{"kind": "signal", "code": "RISK_SCORE_DECLINED", "label": "...", "evidence": "...", "values": {}},
+               {"kind": "state_rule", "code": null, "label": "WARNING rule", "evidence": "Latest month is Late 30-59.", "values": {}}],
+  "recommended_actions": ["..."],
+  "baseline_score": 67.23, "previous_score": 66.1, "current_score": 47.01, "score_drop": 20.22,
+  "estimated_days_to_default": 160, "alert_status": "Acknowledged",
+  "triggered_at": "2026-10-05T10:47:16+05:00", "observation_id": 4, "last_observation_id": 4,
+  "acknowledged_at": "2026-10-05T11:02:00+05:00", "acknowledged_by": "manager1",
+  "assigned_to": "zakria", "assigned_at": "...", "assigned_by": "manager1",
+  "action_due_date": "2026-10-12", "action_note": null,
+  "resolved_at": null, "resolved_by": null, "resolution_note": null,
+  "is_open": true, "is_overdue": false, "is_legacy": false
+}
 ```
 
-Related: `GET /ews/borrowers/{id}/history`.
+Alerts raised before 2.1 have `severity`, `reason_codes` and `evidence` null
+and `is_legacy: true`.
 
-## PATCH `/ews/alerts/{id}/review`
+### GET `/ews/alerts/{id}` and `/ews/alerts/{id}/history`
 
-Any officer takes an open alert for review: `alert_status` becomes
-`In Review` and `assigned_to` records who. `404` unknown id, `409` if the
-alert is already resolved or is being reviewed by another officer.
+One alert, and its audit entries oldest first.
 
-## PATCH `/ews/alerts/{id}/resolve` (manager or admin)
+### Alert lifecycle (manager or admin)
 
-```json
-{ "note": "Borrower paid the arrears on 12 Oct." }
-```
+| Route | Body | From |
+|---|---|---|
+| `POST /ews/alerts/{id}/acknowledge` | `{"note": "optional"}` | Open |
+| `POST /ews/alerts/{id}/assign` | `{"assigned_to": "zakria", "due_date": "2026-10-12", "note": "optional"}` | any open status |
+| `POST /ews/alerts/{id}/due-date` | `{"due_date": "2026-10-12"}` | any open status |
+| `POST /ews/alerts/{id}/action-required` | `{"action_note": "...", "assigned_to": "optional", "due_date": "optional"}` | Acknowledged |
+| `POST /ews/alerts/{id}/resolve` (also `PATCH`) | `{"note": "5-1000 characters"}` | any open status |
+| `POST /ews/alerts/{id}/dismiss` | `{"note": "5-1000 characters"}` | any open status |
+| `PATCH /ews/alerts/{id}/review` (pre-2.1) | none | acknowledge and assign to yourself |
 
-Closes an Active or In Review alert, recording `resolved_at`, `resolved_by`
-and `resolution_note` (5–1000 characters). `404` unknown id, `409` if already
-resolved, `403` for analysts, `422` without a note.
+`403` for analysts; `404` unknown alert; `409` for a step not allowed from the
+current status (a closed alert never reopens); `422` for an unknown assignee
+or a past due date. Every step is audited.
 
 ## POST `/score/statement`
 

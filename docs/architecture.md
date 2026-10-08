@@ -105,8 +105,9 @@ Rules:
   applications scored before 2.0) and an empty dial with the active policy;
   the histogram is cut on the active policy by the API. The Model Performance
   page's 40 / 70 are model evaluation cut-offs and are labelled so.
-- The EWS thresholds (15-point drop, 10% default probability) are monitoring
-  rules, not credit-decision policy, and are unchanged in `ews_service.py`.
+- The EWS thresholds are monitoring rules, not credit-decision policy. Since
+  2.1 they live in `services/ews_engine.py` and are served by
+  `GET /ews/methodology` (see [ews.md](ews.md)).
 
 ### Decision workflow
 
@@ -366,21 +367,29 @@ serving now and never changes what the application recorded.
 
 ```mermaid
 flowchart LR
-    month[Monthly observation] --> derive[derive_monthly_score]
-    derive --> drop{drop > 15?}
-    drop -->|yes| alert[Alert + days-to-default]
-    drop -->|no| track[EWSTracking row only]
+    month[Monthly observation] --> score[ews_service: rule score or officer override]
+    score --> store[(ews_tracking: append, never overwrite)]
+    store --> engine[ews_engine: trend, signals, state]
+    engine -->|WARNING / CRITICAL| alert[(one open alert per facility)]
+    engine -->|NORMAL / WATCH| list[dashboard only]
+    alert --> life[Open > Acknowledged > Action Required > Resolved / Dismissed]
+    store --> audit[(audit_logs)]
+    alert --> audit
 ```
 
-`POST /ews/monitor` records one borrower-month. Only an approved facility can be
-monitored: Approved by the model, or Manual Review approved by an officer
-(anything else is `409`), and only up to the facility's tenure. The baseline is
-the originating application score. When the latest month drops more than 15
-points, an `Active` alert opens (or the open one is updated) with an estimated
-days-to-default. Back-filling an older month never rewrites the alert; if a
-correction brings the alerting month back within the threshold, the alert is
-closed with a note. Any officer can take an alert `In Review`; an admin
-resolves it with a note.
+Since 2.1 the EWS is a deterministic layer, separate from the model and the
+credit policy:
+
+| Part | Code | Does |
+|---|---|---|
+| Monthly score | `services/ews_service.py` | Origination score minus fixed penalties (repayment bucket, bureau leverage, POS shortfall), or an officer override with a reason |
+| Engine | `services/ews_engine.py` | Pure functions: trend (OLS slope from 3 months), six signals with evidence, the NORMAL / WATCH / WARNING / CRITICAL state, recommended actions |
+| API | `routers/ews.py` | Stores observations (corrections supersede, never overwrite), keeps one open alert per facility, runs the lifecycle, audits every change |
+
+The EWS state is not a credit risk band, and the EWS never changes a facility
+or a credit decision. The thresholds are monitoring rules, not values fitted
+on SME outcomes; the full method, the Markov chain's demotion to reference
+only, the migration and the limits are in [ews.md](ews.md).
 
 ## Deployment
 
@@ -404,8 +413,8 @@ flowchart TB
     officer[Officer browser] --> fe
 ```
 
-Images: `foriflow-backend:2.0.1` (`python:3.12-slim` + `libgomp1`) and
-`foriflow-frontend:2.0.1` (Node 20 build, nginx 1.27). See
+Images: `foriflow-backend:2.1.0` (`python:3.12-slim` + `libgomp1`) and
+`foriflow-frontend:2.1.0` (Node 20 build, nginx 1.27). See
 [deployment.md](deployment.md).
 
 ## Repository map

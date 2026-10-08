@@ -1,5 +1,5 @@
+import { alertStatusStyle, alertSeverityStyle, ewsStateStyle } from "../../lib/ews.js";
 import {
-  alertStatusStyle,
   bandForDecision,
   decisionStatusOf,
   finalDecisionOf,
@@ -31,13 +31,34 @@ export function DecisionBadge({ decision }) {
   );
 }
 
-/** EWS alert lifecycle chip. Active alerts render red. */
+/** EWS alert lifecycle chip. Open alerts render red. */
 export function AlertStatusBadge({ status }) {
   const style = alertStatusStyle(status);
   return (
     <span className={`badge ${style.badgeClass}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${style.dotClass}`} aria-hidden="true" />
       {status}
+    </span>
+  );
+}
+
+/** A facility's EWS state (NORMAL, WATCH, WARNING, CRITICAL). Not a credit band. */
+export function EwsStateBadge({ state }) {
+  const style = ewsStateStyle(state);
+  return (
+    <span className={`badge ${style.badgeClass}`} data-ews-state={state ?? "none"}>
+      <span className={`h-1.5 w-1.5 rounded-full ${style.dotClass}`} aria-hidden="true" />
+      {style.label}
+    </span>
+  );
+}
+
+/** An alert's severity as the API set it; "Legacy" for alerts raised before 2.1. */
+export function AlertSeverityBadge({ alert }) {
+  const style = alertSeverityStyle(alert);
+  return (
+    <span className={`badge ${style.className}`} title={style.title}>
+      {style.label}
     </span>
   );
 }

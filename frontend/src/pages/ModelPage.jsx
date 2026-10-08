@@ -751,8 +751,10 @@ function EarlyWarningSection({ chain }) {
           </div>
           <p className="border-t border-slate-200 px-5 py-3 text-xs text-slate-500">
             "Days to default" is the average time to default for accounts that do default
-            within {chain.outlook_months} months. An alert is raised at 10% or more in 3
-            months, or when the score drops more than 15 points.
+            within {chain.outlook_months} months. Since 2.1 this chain is reference only:
+            EWS alerts come from the deterministic monitoring rules on the EWS page. The
+            states it flagged (Late 60-89, Default) are the ones those rules already mark
+            Critical, and it was fitted on consumer card accounts, not SME loans.
           </p>
         </div>
       </section>

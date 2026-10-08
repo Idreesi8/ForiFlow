@@ -24,4 +24,4 @@ Does this need ECIB, customer PII, or an SBP audit trail? Say so up front.
 
 ## Success looks like
 
-A concrete check a reviewer can run (example: "POST /ews/monitor with a 16-point drop creates an Active alert").
+A concrete check a reviewer can run (example: "POST /ews/monitor with a 16-point drop creates an Open WARNING alert").

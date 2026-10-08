@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from models.database import (
+    ALERT_OPEN_STATUSES,
     Application,
     Borrower,
     User,
@@ -23,7 +24,6 @@ from models.database import (
 )
 from schemas import (
     AlertResponse,
-    AlertStatus,
     ApplicationSummary,
     BorrowerApplicationHistory,
     BorrowerHistory,
@@ -289,7 +289,8 @@ def history(db: Session, borrower: Borrower) -> BorrowerHistory:
                 scoring_engine=application.scoring_engine,
                 monitoring=[
                     EWSTrackingResponse.model_validate(record)
-                    for record in sorted(application.ews_records, key=lambda r: r.month_number)
+                    # Corrections included: a superseded row says so in record_status.
+                    for record in sorted(application.ews_records, key=lambda r: (r.month_number, r.id))
                 ],
                 alerts=[
                     AlertResponse.model_validate(alert)
@@ -312,10 +313,10 @@ def history(db: Session, borrower: Borrower) -> BorrowerHistory:
             approved_facilities=sum(
                 1 for row in rows if row.final_decision is Decision.APPROVED
             ),
-            monitored_months=sum(len(row.monitoring) for row in rows),
-            open_alerts=sum(
-                1 for alert in alerts if alert.alert_status is not AlertStatus.RESOLVED
+            monitored_months=sum(
+                1 for row in rows for month in row.monitoring if month.record_status == "active"
             ),
+            open_alerts=sum(1 for alert in alerts if alert.alert_status.value in ALERT_OPEN_STATUSES),
             total_alerts=len(alerts),
             # In order of first use; "unrecorded" marks rows scored before 1.10.
             model_versions_used=list(

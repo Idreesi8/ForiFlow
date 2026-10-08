@@ -62,18 +62,29 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 - `components/ShapWaterfall.jsx` — horizontal contribution chart from
   `POST /explain/{id}`, with base value, positive/negative totals, the credit
   file narrative and the compliance note.
-- `components/EWSAlertFeed.jsx` — alert table from `GET /ews/alerts` with
-  severity badges, days-to-default, `PATCH /ews/alerts/{id}/review` (any
-  officer) and `PATCH /ews/alerts/{id}/resolve` with a note (admin).
+- `components/EWSAlertFeed.jsx` — alert queue from `GET /ews/alerts`: the
+  API's severity, reason codes and evidence, follow-up (acknowledged by,
+  assignee, due date, overdue), and the lifecycle steps for managers
+  (acknowledge, assign, due date, action required, resolve, dismiss) with the
+  alert's audit history. Closed alerts stay listed.
+- `components/EWSOverview.jsx`, `components/EWSFacilityDetail.jsx` — the
+  portfolio EWS position and one facility's state, signals, score-history
+  chart (baseline drawn apart, overrides marked, "Insufficient history for
+  multi-month trend" below three months), recorded months with corrections,
+  and its stored timeline.
+- `lib/ews.js` — EWS wording and colours only; every threshold and
+  classification comes from the API (`lib/ews.test.js` checks that none is
+  hard-coded).
 - `components/ApplicationTable.jsx` — sortable register from
   `GET /score/applications` with search, model and final decision columns,
   Pending review / Approved / Rejected filters and per-row SHAP or Review links.
 - `components/ReviewPanel.jsx` — the decision on file; for a pending Manual
   Review case an admin approves or rejects it with a reason through
   `POST /score/applications/{id}/review`.
-- `components/MonitoringPanel.jsx` — records a surveillance month for an
-  approved facility through `POST /ews/monitor` so alerts can be raised from
-  the UI.
+- `components/MonitoringPanel.jsx` — records a month for an approved
+  facility through `POST /ews/observations` (date, days late, typed figures,
+  and a manager's score override with a reason). A month already on file is
+  refused; a manager can save the figures as a correction instead.
 
 ## API layer
 

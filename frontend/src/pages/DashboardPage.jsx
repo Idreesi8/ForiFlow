@@ -22,6 +22,7 @@ import { ErrorState, LoadingState } from "../components/common/States.jsx";
 import { SCORE_BANDS, bandForDecision } from "../lib/decisions.js";
 import { bandIndexForRiskBand, describeBands } from "../lib/policyBands.js";
 import { formatPKRCompact } from "../lib/format.js";
+import { isOpenAlert } from "../lib/ews.js";
 
 /** Portfolio overview: origination quality on the left, surveillance below. */
 export default function DashboardPage() {
@@ -56,8 +57,8 @@ export default function DashboardPage() {
   }, [loadPortfolio]);
 
   const handleAlertsLoaded = useCallback((alerts) => {
-    // Open = not yet resolved: Active, or In Review with an officer.
-    setOpenAlerts(alerts.filter((alert) => alert.alert_status !== "Resolved"));
+    // Open = Open, Acknowledged or Action Required (the API's is_open).
+    setOpenAlerts(alerts.filter(isOpenAlert));
   }, []);
 
   const decisionData = useMemo(

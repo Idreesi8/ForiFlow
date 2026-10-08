@@ -31,7 +31,7 @@ ForiFlow is an end-to-end AI credit intelligence platform that:
 - Scores unbanked SMEs using **alternative data** (digital payments and other officer-entered signals)
 - Gives a risk assessment and a policy **recommendation**; an authorised credit officer makes every decision
 - Provides **SHAP explainability** for every assessment, stored on-premise to support an SBP-oriented review (ForiFlow is not SBP-certified and has no live ECIB connector)
-- Monitors approved borrowers (approved by an officer) with an **Early Warning System** that raises an alert when the monthly score drops more than 15 points below origination, or when a Markov chain puts default within three months at 10% or more. The chain is fitted on real monthly repayment histories (UCI credit card accounts, Taiwan 2005), not on SME loans
+- Monitors approved facilities with an **Early Warning System**: deterministic, rule- and trend-based monitoring of officer-recorded months (repayment, typed bureau balance, POS inflow). It keeps an immutable monthly history, shows where every score came from, computes a trend from three months, explains each NORMAL / WATCH / WARNING / CRITICAL state with evidence, and runs an audited alert lifecycle. It recommends follow-up; it does not predict default or change any facility
 
 ## 🏗️ Architecture
 
@@ -72,7 +72,7 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 | 🖨️ **Credit memo** | A printable one-page record per application: request, score, factor points, turnover evidence, decision and reason |
 | 💼 **Loan book analytics** | Disbursed, collected, overdue and outstanding amounts, portfolio at risk (30+ days), defaults, a decision matrix and a per-sector table, from the months officers record |
 | ✅ **Officer decision on every application** | A manager or admin approves, rejects or escalates each application with a written reason, whatever the policy recommended; the recommendation, the officer's decision, name and time are all kept, and only approved facilities can be monitored |
-| 🚨 **Early Warning System** | Officer-submitted monthly observation. A Markov chain fitted on 24,000 real repayment histories gives the probability of default within three months and the expected days to default; an alert fires at 10% or more, or on a >15-point score drop |
+| 🚨 **Early Warning System** | Immutable monthly history with score provenance, OLS trend from three months, six evidence-backed signals, NORMAL / WATCH / WARNING / CRITICAL states, one open alert per facility with an audited lifecycle (acknowledge, assign, due date, action, resolve, dismiss). Rule-based, not a default model ([docs/ews.md](docs/ews.md)) |
 | 🏦 **PKR Banking Context** | PKR amounts; designed for SBP-oriented explainability (not SBP-certified, no live ECIB feed) |
 | 🐳 **Docker Ready** | One-command deployment for bank demos |
 | 🔐 **JWT Authentication** | On-premise login (bcrypt, HS256, 8-hour tokens); three roles (analyst, manager, admin): managers decide Manual Review cases (approving up to a configurable facility limit) and resolve alerts, admins also manage officer accounts; every assessment records who scored it |

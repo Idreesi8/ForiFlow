@@ -155,6 +155,46 @@ EXPECTED_0007: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Migration 0008: EWS history, score provenance and the alert lifecycle.
+EXPECTED_0008: dict[str, tuple[str, ...]] = {
+    **EXPECTED_0007,
+    "alerts": (
+        *EXPECTED_0003["alerts"],
+        "severity",
+        "reason_codes",
+        "evidence",
+        "previous_score",
+        "recommended_actions",
+        "observation_id",
+        "last_observation_id",
+        "acknowledged_at",
+        "acknowledged_by",
+        "assigned_at",
+        "assigned_by",
+        "action_due_date",
+        "action_note",
+    ),
+    "ews_tracking": (
+        *EXPECTED_0004["ews_tracking"],
+        "observation_date",
+        "days_late",
+        "score_source",
+        "override_reason",
+        "rule_score",
+        "record_status",
+        "supersedes_observation_id",
+        "superseded_by_observation_id",
+        "correction_reason",
+        "assessment",
+        "created_by",
+        "created_at",
+        "request_id",
+    ),
+}
+
+# Pre-2.1 alert statuses and their 2.1 names (as migration 0008 renames them).
+ALERT_STATUS_RENAMES = {"Active": "Open", "In Review": "Acknowledged"}
+
 # SQLite declared types we will copy without rewriting values.
 _INT = {"INT", "INTEGER", "BIGINT"}
 _FLOAT = {"REAL", "FLOAT", "DOUBLE", "DOUBLE PRECISION", "NUMERIC", "DECIMAL"}
@@ -171,8 +211,9 @@ TABLE_ORDER = (
     "model_versions",
     "credit_policies",
     "applications",
-    "alerts",
+    # Since 0008 an alert points at the observations it rests on.
     "ews_tracking",
+    "alerts",
     "audit_logs",
 )
 
@@ -306,6 +347,7 @@ def assert_schema(connection: sqlite3.Connection) -> dict[str, tuple[str, ...]]:
             EXPECTED_0005.get(table),
             EXPECTED_0006.get(table),
             EXPECTED_0007.get(table),
+            EXPECTED_0008.get(table),
         ):
             raise MigrationError(
                 f"Table {table!r} columns {names} do not match expected {expected}."
@@ -366,6 +408,24 @@ def _with_legacy_decision(row: dict) -> dict:
     }
 
 
+def _with_legacy_observation(row: dict) -> dict:
+    """A pre-2.1 month: provenance unknown, and the only (active) row of its month.
+
+    Mirrors migration 0008. Nothing else is filled in: date, days late, author
+    and request were never recorded.
+    """
+    return {**row, "score_source": "legacy_unknown", "record_status": "active"}
+
+
+def _with_renamed_status(row: dict) -> dict:
+    """A pre-2.1 alert under its 2.1 status. In Review keeps who took it."""
+    status = row["alert_status"]
+    renamed = {**row, "alert_status": ALERT_STATUS_RENAMES.get(status, status)}
+    if status == "In Review" and row.get("assigned_to"):
+        renamed["acknowledged_by"] = row["assigned_to"]
+    return renamed
+
+
 def _with_new_borrowers(connection, applications: list[dict]) -> list[dict]:
     """Open one borrower per legacy application and return the linked rows.
 
@@ -423,6 +483,10 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
         needs_borrowers = "borrower_id" not in copy_tables["applications"]
         # A file from before migration 0007: no recorded decision status.
         needs_decision_status = "decision_status" not in copy_tables["applications"]
+        # A file from before migration 0008: no observation provenance or lifecycle.
+        needs_ews_history = (
+            "ews_tracking" in copy_tables and "record_status" not in copy_tables["ews_tracking"]
+        )
         if needs_borrowers and "borrowers" in copy_tables:
             raise MigrationError(
                 "SQLite has a borrowers table but applications without borrower_id."
@@ -469,18 +533,27 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
                 if table == "applications" and needs_decision_status:
                     columns = (*columns, "decision_status", "decision_source", "risk_band")
                     rows = [_with_legacy_decision(row) for row in rows]
-                if table == "applications":
+                if table == "ews_tracking" and needs_ews_history:
+                    columns = (*columns, "score_source", "record_status")
+                    rows = [_with_legacy_observation(row) for row in rows]
+                if table == "alerts" and needs_ews_history:
+                    columns = (*columns, "acknowledged_by")
+                    rows = [_with_renamed_status(row) for row in rows]
+                link_column = {
+                    "applications": "superseded_by_application_id",
+                    "ews_tracking": "superseded_by_observation_id",
+                }.get(table)
+                links = []
+                if link_column is not None:
                     # A row can point at a later one (superseded_by), so the
                     # links are filled in after every row exists.
                     links = [
-                        (row["id"], row.get("superseded_by_application_id"))
+                        (row["id"], row.get(link_column))
                         for row in rows
-                        if row.get("superseded_by_application_id") is not None
+                        if row.get(link_column) is not None
                     ]
                     rows = [
-                        {**row, "superseded_by_application_id": None}
-                        if "superseded_by_application_id" in row
-                        else row
+                        {**row, link_column: None} if link_column in row else row
                         for row in rows
                     ]
                 if table == "credit_policies":
@@ -501,15 +574,11 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
                         rows,
                     )
                 copied[table] = len(rows)
-                if table == "applications":
-                    for application_id, later_id in links:
-                        connection.execute(
-                            text(
-                                "UPDATE applications SET superseded_by_application_id = :later "
-                                "WHERE id = :id"
-                            ),
-                            {"later": later_id, "id": application_id},
-                        )
+                for row_id, later_id in links:
+                    connection.execute(
+                        text(f"UPDATE {table} SET {link_column} = :later WHERE id = :id"),
+                        {"later": later_id, "id": row_id},
+                    )
             for table in dict.fromkeys((*table_order, *(("borrowers",) if needs_borrowers else ()))):
                 connection.execute(
                     text(

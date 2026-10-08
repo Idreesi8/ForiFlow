@@ -9,9 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from models.database import Alert, Application, User, get_db, utcnow
+from models.database import ALERT_OPEN_STATUSES, Alert, Application, User, get_db, utcnow
 from schemas import (
-    AlertStatus,
     ApplicationSummary,
     Decision,
     DecisionHistory,
@@ -470,7 +469,7 @@ async def portfolio_stats(db: DbSession) -> PortfolioStats:
     ):
         by_band[band] = count
 
-    open_filter = Alert.alert_status != AlertStatus.RESOLVED.value
+    open_filter = Alert.alert_status.in_(ALERT_OPEN_STATUSES)
     open_alerts, worst_drop = db.execute(
         select(func.count(Alert.id), func.max(Alert.score_drop)).where(open_filter)
     ).one()

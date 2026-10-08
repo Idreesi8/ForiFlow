@@ -243,6 +243,7 @@ def alert_fixture(client: TestClient) -> dict[str, Any]:
         json=_month(
             scored["application_id"],
             current_score=scored["risk_score"] - 25,
+            override_reason="Branch visit found two months of unpaid suppliers.",
             pos_cash_balance=STRONG_APPLICANT["cash_flow_proxy"],
         ),
     ).json()
@@ -251,16 +252,21 @@ def alert_fixture(client: TestClient) -> dict[str, Any]:
     return body["alert"]
 
 
-def test_any_officer_can_take_an_alert_for_review(
+def test_a_manager_takes_an_alert_and_an_analyst_cannot(
     client: TestClient, db_session_factory, alert: dict[str, Any]
 ) -> None:
+    """Reversed in 2.1: acknowledging an alert is a manager's step, not any officer's."""
     analyst = _analyst(db_session_factory)
-    response = client.patch(f"/ews/alerts/{alert['id']}/review", headers=analyst)
+    refused = client.patch(f"/ews/alerts/{alert['id']}/review", headers=analyst)
+    assert refused.status_code == 403
+    assert client.get(f"/ews/alerts/{alert['id']}").json()["alert_status"] == "Open"
 
+    response = client.patch(f"/ews/alerts/{alert['id']}/review")
     assert response.status_code == 200, response.text
-    assert response.json()["alert_status"] == "In Review"
-    assert response.json()["assigned_to"] == "analyst1"
-    listed = client.get("/ews/alerts", params={"alert_status": "In Review"}).json()
+    assert response.json()["alert_status"] == "Acknowledged"
+    assert response.json()["assigned_to"] == "admin"
+    assert response.json()["acknowledged_by"] == "admin"
+    listed = client.get("/ews/alerts", params={"alert_status": "Acknowledged"}).json()
     assert [row["id"] for row in listed] == [alert["id"]]
 
 

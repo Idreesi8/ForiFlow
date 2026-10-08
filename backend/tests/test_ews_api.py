@@ -24,8 +24,15 @@ def borrower_fixture(client: TestClient) -> dict[str, Any]:
     return {"id": body["application_id"], "baseline": body["risk_score"]}
 
 
+OVERRIDE_REASON = "Branch visit: figures confirmed with the owner's ledger."
+
+
 def _healthy_month(borrower_id: int, month: int = 1, **overrides: Any) -> dict[str, Any]:
-    """Build a monitoring payload that keeps the borrower at its baseline."""
+    """Build a monitoring payload that keeps the borrower at its baseline.
+
+    Since 2.1 a supplied ``current_score`` is an officer override and needs a
+    reason, so one is added whenever a test sets the score directly.
+    """
     payload: dict[str, Any] = {
         "borrower_id": borrower_id,
         "month_number": month,
@@ -35,6 +42,8 @@ def _healthy_month(borrower_id: int, month: int = 1, **overrides: Any) -> dict[s
         "data_source_primary": "ECIB",
     }
     payload.update(overrides)
+    if "current_score" in overrides and "override_reason" not in overrides:
+        payload["override_reason"] = OVERRIDE_REASON
     return payload
 
 
@@ -86,11 +95,13 @@ def test_drop_above_threshold_triggers_alert(
     assert body["score_drop"] == pytest.approx(20.0)
     assert body["alert_threshold"] == ALERT_SCORE_DROP_THRESHOLD
     assert body["estimated_days_to_default"] > 0
-    assert body["alert"]["alert_status"] == "Active"
+    assert body["alert"]["alert_status"] == "Open"
+    assert body["alert"]["severity"] == "WARNING"
+    assert "RISK_SCORE_DECLINED" in body["alert"]["reason_codes"]
     assert body["alert"]["borrower_id"] == borrower["id"]
     assert body["recommended_action"]
 
-    alerts = client.get("/ews/alerts", params={"alert_status": "Active"}).json()
+    alerts = client.get("/ews/alerts", params={"alert_status": "Open"}).json()
     assert len(alerts) == 1
     assert alerts[0]["score_drop"] == pytest.approx(20.0)
 
@@ -135,19 +146,25 @@ def test_default_status_reports_zero_runway(
     assert "remedial" in body["recommended_action"].lower()
 
 
-def test_resubmitting_a_month_overwrites_the_observation(
+def test_resubmitting_a_month_is_refused_and_the_original_kept(
     client: TestClient, borrower: dict[str, Any]
 ) -> None:
-    """A corrected typed bureau balance updates the month instead of duplicating it."""
-    client.post("/ews/monitor", json=_healthy_month(borrower["id"], 4))
-    client.post(
+    """Reversed in 2.1: a recorded month is history and is not overwritten.
+
+    Until 2.0 a re-submitted month replaced the row. Now it returns 409 and
+    names the correction route; the first figures stay on file.
+    """
+    first = client.post("/ews/monitor", json=_healthy_month(borrower["id"], 4)).json()
+    again = client.post(
         "/ews/monitor",
         json=_healthy_month(borrower["id"], 4, data_source_primary="POS"),
     )
+    assert again.status_code == 409
+    assert f"/ews/observations/{first['tracking']['id']}/correct" in again.json()["detail"]
 
     history = client.get(f"/ews/borrowers/{borrower['id']}/history").json()
     assert len(history) == 1
-    assert history[0]["data_source_primary"] == "POS"
+    assert history[0]["data_source_primary"] == "ECIB"
 
 
 def test_repeated_deterioration_reuses_the_open_alert(
@@ -165,6 +182,10 @@ def test_repeated_deterioration_reuses_the_open_alert(
 
     assert second["alert"]["id"] == first["alert"]["id"]
     assert second["alert"]["score_drop"] == pytest.approx(30.0)
+    # A 30-point drop is CRITICAL: the open alert is escalated, not duplicated.
+    assert first["alert"]["severity"] == "WARNING"
+    assert second["alert"]["severity"] == "CRITICAL"
+    assert second["alert"]["previous_score"] == pytest.approx(borrower["baseline"] - 18)
     assert len(client.get("/ews/alerts").json()) == 1
 
 
@@ -185,7 +206,9 @@ def test_resolving_an_alert_stamps_the_resolution_time(
     assert resolved.json()["resolved_at"] is not None
     assert resolved.json()["resolved_by"] == "admin"
     assert resolved.json()["resolution_note"] == "Arrears cleared in full."
-    assert client.get("/ews/alerts", params={"alert_status": "Active"}).json() == []
+    assert client.get("/ews/alerts", params={"alert_status": "Open"}).json() == []
+    # A resolved alert stays visible.
+    assert [a["id"] for a in client.get("/ews/alerts").json()] == [opened["id"]]
 
     relapse = client.post(
         "/ews/monitor",

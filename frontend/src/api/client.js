@@ -118,17 +118,51 @@ export const createPolicyVersion = (payload) =>
 export const activatePolicyVersion = (policyId) =>
   client.post(`/policy/versions/${policyId}/activate`).then((response) => response.data);
 
-export const takeAlertForReview = (alertId) =>
-  client.patch(`/ews/alerts/${alertId}/review`).then((response) => response.data);
+// --- Early Warning System (2.1) ---------------------------------------------------
+// The backend is authoritative for every EWS fact: state, trend, severity and
+// reasons. The dashboard only shows them.
 
-export const resolveAlert = (alertId, note) =>
-  client.patch(`/ews/alerts/${alertId}/resolve`, { note }).then((response) => response.data);
+/** Record a month. 409 when the month is already on file (see correctObservation). */
+export const recordObservation = (payload) =>
+  client.post("/ews/observations", payload).then((response) => response.data);
+
+/** Pre-2.1 name for recordObservation. */
+export const monitorBorrower = recordObservation;
+
+/** Correct a recorded month (manager or admin). The original is kept, superseded. */
+export const correctObservation = (observationId, payload) =>
+  client
+    .post(`/ews/observations/${observationId}/correct`, payload)
+    .then((response) => response.data);
+
+export const fetchFacilityObservations = (facilityId, params = {}) =>
+  client
+    .get(`/ews/facilities/${facilityId}/observations`, { params })
+    .then((response) => response.data);
+
+export const fetchFacilityTrend = (facilityId) =>
+  client.get(`/ews/facilities/${facilityId}/trend`).then((response) => response.data);
+
+export const fetchFacilityState = (facilityId) =>
+  client.get(`/ews/facilities/${facilityId}/state`).then((response) => response.data);
+
+export const fetchFacilityTimeline = (facilityId) =>
+  client.get(`/ews/facilities/${facilityId}/timeline`).then((response) => response.data);
+
+export const fetchEwsOverview = () => client.get("/ews/overview").then((response) => response.data);
+
+export const fetchAlertHistory = (alertId) =>
+  client.get(`/ews/alerts/${alertId}/history`).then((response) => response.data);
+
+/**
+ * One lifecycle step on an alert (manager or admin): "acknowledge", "assign",
+ * "due-date", "action-required", "resolve" or "dismiss".
+ */
+export const alertLifecycle = (alertId, step, payload = {}) =>
+  client.post(`/ews/alerts/${alertId}/${step}`, payload).then((response) => response.data);
 
 export const fetchBorrowerHistory = (borrowerId) =>
   client.get(`/ews/borrowers/${borrowerId}/history`).then((response) => response.data);
-
-export const monitorBorrower = (payload) =>
-  client.post("/ews/monitor", payload).then((response) => response.data);
 
 export const summariseStatement = (csv) =>
   client.post("/score/statement", { csv }).then((response) => response.data);

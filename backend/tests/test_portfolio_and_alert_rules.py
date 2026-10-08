@@ -153,20 +153,40 @@ def test_months_past_the_tenure_are_refused(
     assert f"{tenure}-month tenure" in response.json()["detail"]
 
 
+CORRECTION = "Typed the wrong ageing bucket; the ledger shows the month was paid."
+
+
+def _correct(client: TestClient, observation_id: int, borrower: dict[str, Any], **fields: Any):
+    payload = _month(borrower, 0, **fields)
+    payload.pop("borrower_id")
+    payload.pop("month_number")
+    payload["correction_reason"] = CORRECTION
+    return client.post(f"/ews/observations/{observation_id}/correct", json=payload)
+
+
 def test_correcting_the_alert_month_closes_the_alert(
     client: TestClient, approved: dict[str, Any]
 ) -> None:
+    """Since 2.1 a correction is its own route; the corrected row is kept, superseded."""
     raised = client.post(
         "/ews/monitor", json=_month(approved, 3, installment_status="Default")
     ).json()
     assert raised["alert_triggered"] is True
 
-    corrected = client.post("/ews/monitor", json=_month(approved, 3)).json()
+    response = _correct(client, raised["tracking"]["id"], approved)
+    assert response.status_code == 201, response.text
+    corrected = response.json()
     assert corrected["alert_triggered"] is False
     assert corrected["alert"]["id"] == raised["alert"]["id"]
     assert corrected["alert"]["alert_status"] == "Resolved"
     assert "month 3 was corrected" in corrected["alert"]["resolution_note"]
     assert client.get("/score/stats").json()["open_alerts"] == 0
+
+    rows = client.get(f"/ews/facilities/{approved['application_id']}/observations").json()
+    assert [(r["month_number"], r["installment_status"], r["record_status"]) for r in rows] == [
+        (3, "Default", "superseded"),
+        (3, "On Time", "active"),
+    ]
 
 
 def test_a_new_healthy_month_leaves_the_alert_for_an_officer(
@@ -178,26 +198,28 @@ def test_a_new_healthy_month_leaves_the_alert_for_an_officer(
     recovered = client.post("/ews/monitor", json=_month(approved, 4)).json()
 
     assert recovered["alert"] is None
+    assert recovered["ews_state"] == "NORMAL"
     alerts = client.get("/ews/alerts").json()
-    assert [(a["id"], a["alert_status"]) for a in alerts] == [(raised["alert"]["id"], "Active")]
+    assert [(a["id"], a["alert_status"]) for a in alerts] == [(raised["alert"]["id"], "Open")]
 
 
 def test_correcting_a_healthy_month_does_not_close_an_earlier_alert(
     client: TestClient, approved: dict[str, Any]
 ) -> None:
     client.post("/ews/monitor", json=_month(approved, 3, installment_status="Default"))
-    client.post("/ews/monitor", json=_month(approved, 4))
-    corrected = client.post(
-        "/ews/monitor", json=_month(approved, 4, data_source_primary="POS")
+    healthy = client.post("/ews/monitor", json=_month(approved, 4)).json()
+    corrected = _correct(
+        client, healthy["tracking"]["id"], approved, data_source_primary="POS"
     ).json()
 
     assert corrected["alert"] is None
     assert client.get("/score/stats").json()["open_alerts"] == 1
 
 
-def test_back_filling_an_older_month_never_rewrites_the_alert(
+def test_back_filling_an_older_month_keeps_the_alert_on_the_latest_month(
     client: TestClient, approved: dict[str, Any]
 ) -> None:
+    """A back-filled month joins the history; the alert still describes the latest month."""
     raised = client.post(
         "/ews/monitor", json=_month(approved, 5, installment_status="Default")
     ).json()
@@ -205,11 +227,12 @@ def test_back_filling_an_older_month_never_rewrites_the_alert(
         "/ews/monitor", json=_month(approved, 2, installment_status="Late 60-89")
     ).json()
 
-    assert backfill["alert_triggered"] is False
-    assert backfill["alert"] is None
-    assert "latest month on file (month 5)" in backfill["recommended_action"]
+    assert backfill["ews_state"] == "CRITICAL"  # month 5 is still Default
+    assert backfill["alert"]["id"] == raised["alert"]["id"]
     alert = client.get("/ews/alerts").json()[0]
     assert alert["current_score"] == raised["alert"]["current_score"]
+    assert alert["last_observation_id"] == raised["tracking"]["id"]
+    assert len(client.get("/ews/alerts").json()) == 1
 
 
 def test_an_alert_under_review_cannot_change_hands(
@@ -220,7 +243,8 @@ def test_an_alert_under_review_cannot_change_hands(
     ).json()["alert"]
     db = db_session_factory()
     try:
-        db.add(User(username="bob", hashed_password=hash_password("bob-password-1"), role="analyst"))
+        db.add(User(username="bob", hashed_password=hash_password("bob-password-1"), role="manager"))
+        db.add(User(username="zed", hashed_password=hash_password("zed-password-1"), role="analyst"))
         db.commit()
     finally:
         db.close()
@@ -228,7 +252,12 @@ def test_an_alert_under_review_cannot_change_hands(
     assert client.patch(f"/ews/alerts/{alert['id']}/review").status_code == 200
     assert client.patch(f"/ews/alerts/{alert['id']}/review").status_code == 200  # same officer
     taken = client.patch(
-        f"/ews/alerts/{alert['id']}/review", headers=bearer_header("bob", "analyst")
+        f"/ews/alerts/{alert['id']}/review", headers=bearer_header("bob", "manager")
     )
     assert taken.status_code == 409
-    assert "already being reviewed by admin" in taken.json()["detail"]
+    assert "already assigned to admin" in taken.json()["detail"]
+    # Since 2.1 taking an alert is a manager's step; an analyst cannot.
+    analyst = client.patch(
+        f"/ews/alerts/{alert['id']}/review", headers=bearer_header("zed", "analyst")
+    )
+    assert analyst.status_code == 403

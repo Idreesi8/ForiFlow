@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Generator
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import (
@@ -17,6 +17,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -488,10 +489,12 @@ class Application(Base):
         back_populates="applications", lazy="selectin"
     )
     alerts: Mapped[list["Alert"]] = relationship(
-        back_populates="borrower", cascade="all, delete-orphan"
+        back_populates="borrower", cascade="all, delete-orphan", foreign_keys="Alert.borrower_id"
     )
     ews_records: Mapped[list["EWSTracking"]] = relationship(
-        back_populates="borrower", cascade="all, delete-orphan"
+        back_populates="borrower",
+        cascade="all, delete-orphan",
+        foreign_keys="EWSTracking.borrower_id",
     )
 
     @property
@@ -565,15 +568,46 @@ class Application(Base):
         )
 
 
-class Alert(Base):
-    """An EWS alert raised when a borrower's score deteriorates materially.
+# Alert lifecycle. Open, Acknowledged and Action Required are open; Resolved
+# and Dismissed are closed. Alerts from before 2.1 were Active / In Review and
+# were renamed by migration 0008 (Active -> Open, In Review -> Acknowledged).
+ALERT_OPEN_STATUSES: tuple[str, ...] = ("Open", "Acknowledged", "Action Required")
+ALERT_CLOSED_STATUSES: tuple[str, ...] = ("Resolved", "Dismissed")
 
-    ``score_drop`` is expressed in score points relative to the borrower's
-    baseline (origination) score, and ``estimated_days_to_default`` is the
-    model's runway estimate used to prioritise recovery outreach.
+
+class Alert(Base):
+    """An EWS alert on one approved facility (``borrower_id`` is the application).
+
+    One alert is open per facility at a time (a partial unique index); a later
+    observation that still breaches updates it instead of opening another, and
+    its severity only rises while it is open. Alerts are raised at the WARNING
+    and CRITICAL states; a WATCH facility is listed on the dashboard, not alerted.
+    ``severity``, ``reason_codes`` and ``evidence`` say why it fired and are set
+    by the deterministic EWS engine (``services.ews_engine``). They are NULL on
+    alerts raised before 2.1, which recorded only a score drop.
+
+    ``estimated_days_to_default`` is a heuristic runway kept for compatibility;
+    it plays no part in raising an alert.
     """
 
     __tablename__ = "alerts"
+    __table_args__ = (
+        CheckConstraint(
+            "alert_status IN ('Open', 'Acknowledged', 'Action Required', 'Resolved', 'Dismissed')",
+            name="ck_alerts_status",
+        ),
+        CheckConstraint(
+            "severity IS NULL OR severity IN ('WARNING', 'CRITICAL')",
+            name="ck_alerts_severity",
+        ),
+        Index(
+            "uq_alerts_one_open_per_facility",
+            "borrower_id",
+            unique=True,
+            postgresql_where=text("alert_status IN ('Open', 'Acknowledged', 'Action Required')"),
+            sqlite_where=text("alert_status IN ('Open', 'Acknowledged', 'Action Required')"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     borrower_id: Mapped[int] = mapped_column(
@@ -586,7 +620,7 @@ class Alert(Base):
     estimated_days_to_default: Mapped[int] = mapped_column(Integer, nullable=False)
 
     alert_status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="Active", index=True
+        String(32), nullable=False, default="Open", index=True
     )
     triggered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False, index=True
@@ -594,10 +628,31 @@ class Alert(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # The officer who took the alert for review, and who closed it and why.
+    # Who owns the follow-up, and who closed it and why (Resolved or Dismissed).
     assigned_to: Mapped[str | None] = mapped_column(String(64), nullable=True)
     resolved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --- 2.1: why it fired (NULL on legacy alerts) ---
+    severity: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    reason_codes: Mapped[list | None] = mapped_column(JsonColumn, nullable=True)
+    evidence: Mapped[list | None] = mapped_column(JsonColumn, nullable=True)
+    previous_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recommended_actions: Mapped[list | None] = mapped_column(JsonColumn, nullable=True)
+    # The observation that raised it, and the latest one that updated it.
+    observation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ews_tracking.id", ondelete="SET NULL"), nullable=True
+    )
+    last_observation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ews_tracking.id", ondelete="SET NULL"), nullable=True
+    )
+    # --- 2.1: lifecycle ---
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    assigned_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    action_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    action_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     borrower: Mapped["Application"] = relationship(back_populates="alerts")
 
@@ -606,6 +661,25 @@ class Alert(Base):
         """The borrower's business, so an alert is readable without a lookup."""
         return self.borrower.business_name
 
+    @property
+    def is_open(self) -> bool:
+        """Still needs attention: Open, Acknowledged or Action Required."""
+        return self.alert_status in ALERT_OPEN_STATUSES
+
+    @property
+    def is_overdue(self) -> bool:
+        """An open alert whose action due date has passed."""
+        return (
+            self.is_open
+            and self.action_due_date is not None
+            and self.action_due_date < utcnow().date()
+        )
+
+    @property
+    def is_legacy(self) -> bool:
+        """Raised before 2.1, so it carries no severity, reasons or evidence."""
+        return self.severity is None
+
     def __repr__(self) -> str:  # pragma: no cover - debugging helper
         return (
             f"<Alert id={self.id} borrower_id={self.borrower_id} "
@@ -613,22 +687,61 @@ class Alert(Base):
         )
 
 
-class EWSTracking(Base):
-    """One monthly post-disbursement observation for a borrower.
+# Where an observation's score came from. Never a model score unless it is one.
+SCORE_SOURCES: tuple[str, ...] = (
+    "ews_rule_adjusted",  # origination score minus the EWS rule penalties
+    "officer_override",  # typed by a manager or admin, with a reason
+    "latest_foriflow_assessment",  # reserved: not produced by this release
+    "origination_assessment",  # the baseline point only
+    "legacy_unknown",  # recorded before 2.1; not stored then
+)
 
-    Combines an officer-entered bureau balance (``bureau_balance``), point-of-sale
-    settlement cash (``pos_cash_balance``) and repayment behaviour into the
-    recomputed ``monthly_score``. ``data_source_primary`` is an officer-selected
-    label (``ECIB`` means a typed extract, not a live pull).
+
+class EWSTracking(Base):
+    """One monthly monitoring observation of an approved facility.
+
+    ``borrower_id`` is the application (facility), as it has been since 1.0.
+    Observations are history: a recorded month is never edited. A correction
+    adds a new row and marks the earlier one ``superseded``, linking the two;
+    only one ``active`` row may exist per facility and month (a partial unique
+    index). Superseded rows are kept and shown, never counted.
+
+    ``monthly_score`` is the monitored score. ``score_source`` says where it
+    came from: the EWS rules applied to the origination score, an officer's
+    override (with ``override_reason``), or unknown for rows recorded before
+    2.1. It is never a fresh model score.
     """
 
     __tablename__ = "ews_tracking"
+    __table_args__ = (
+        CheckConstraint(
+            "record_status IN ('active', 'superseded')", name="ck_ews_tracking_record_status"
+        ),
+        CheckConstraint(
+            "score_source IN ('ews_rule_adjusted', 'officer_override', "
+            "'latest_foriflow_assessment', 'origination_assessment', 'legacy_unknown')",
+            name="ck_ews_tracking_score_source",
+        ),
+        CheckConstraint(
+            "score_source <> 'officer_override' OR override_reason IS NOT NULL",
+            name="ck_ews_tracking_override_reason",
+        ),
+        Index(
+            "uq_ews_tracking_active_month",
+            "borrower_id",
+            "month_number",
+            unique=True,
+            postgresql_where=text("record_status = 'active'"),
+            sqlite_where=text("record_status = 'active'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     borrower_id: Mapped[int] = mapped_column(
         ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
+    # The reporting period: months since disbursement.
     month_number: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     installment_status: Mapped[str] = mapped_column(String(32), nullable=False)
     bureau_balance: Mapped[float] = mapped_column(Float, nullable=False)
@@ -638,7 +751,36 @@ class EWSTracking(Base):
     # What the borrower paid this month. NULL when the officer did not record it.
     amount_paid_pkr: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # --- 2.1 (NULL on rows recorded before it, where noted) ---
+    observation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Days past due when known; must fit the installment status bucket.
+    days_late: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_source: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="ews_rule_adjusted"
+    )
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The rule-derived score an override replaced, for the record.
+    rule_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    record_status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    supersedes_observation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ews_tracking.id", ondelete="RESTRICT"), nullable=True
+    )
+    superseded_by_observation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ews_tracking.id", ondelete="RESTRICT"), nullable=True
+    )
+    correction_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What the EWS concluded when this row was recorded: state, trend, signals.
+    assessment: Mapped[dict | None] = mapped_column(JsonColumn, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     borrower: Mapped["Application"] = relationship(back_populates="ews_records")
+
+    @property
+    def is_legacy(self) -> bool:
+        """Recorded before 2.1: no date, author or score provenance on file."""
+        return self.score_source == "legacy_unknown"
 
     def __repr__(self) -> str:  # pragma: no cover - debugging helper
         return (
