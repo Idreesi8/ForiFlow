@@ -439,8 +439,8 @@ flowchart TB
     officer[Officer browser] --> fe
 ```
 
-Images: `foriflow-backend:2.2.0` (`python:3.12-slim` + `libgomp1`) and
-`foriflow-frontend:2.2.0` (Node 20 build, nginx 1.27). See
+Images: `foriflow-backend:2.2.1` (`python:3.12-slim` + `libgomp1`) and
+`foriflow-frontend:2.2.1` (Node 20 build, nginx 1.27). See
 [deployment.md](deployment.md).
 
 ## Repository map

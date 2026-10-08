@@ -452,6 +452,23 @@ CONFIDENCE_DISAGREEMENT_SPAN: float = 0.5
 SHAP_ADDITIVITY_TOLERANCE: float = 1e-6
 
 
+def artifact_fingerprint(paths: Any) -> str:
+    """SHA-256 over the artefact files, in the given order.
+
+    JSON metadata is hashed with LF line endings: a Windows checkout turns
+    ``feature_names.json`` into CRLF, and the same model must get the same
+    fingerprint on every machine. Binary files are hashed byte for byte.
+    """
+    digest = hashlib.sha256()
+    for path in paths:
+        data = path.read_bytes()
+        if path.suffix == ".json":
+            data = data.replace(b"\r\n", b"\n")
+        digest.update(path.name.encode("utf-8"))
+        digest.update(data)
+    return digest.hexdigest()
+
+
 def _rebind_shap_links(explainers: dict[str, Any]) -> dict[str, Any]:
     """Point each explainer's ``link`` at this interpreter's ``shap.links``.
 
@@ -577,19 +594,15 @@ class MLScoringService(ScoringService):
             load_model_evaluation,
         )
 
-        # Fingerprint the bytes that are about to be loaded, in a fixed order.
-        digest = hashlib.sha256()
-        for path in (MODEL_PATH, SCALER_PATH, SHAP_EXPLAINER_PATH, FEATURE_NAMES_PATH):
-            digest.update(path.name.encode("utf-8"))
-            digest.update(path.read_bytes())
-
         return cls(
             model=joblib.load(MODEL_PATH),
             scaler=joblib.load(SCALER_PATH),
             shap_bundle=joblib.load(SHAP_EXPLAINER_PATH),
             metadata=load_feature_metadata(),
             evaluation=load_model_evaluation(),
-            artifact_sha256=digest.hexdigest(),
+            artifact_sha256=artifact_fingerprint(
+                (MODEL_PATH, SCALER_PATH, SHAP_EXPLAINER_PATH, FEATURE_NAMES_PATH)
+            ),
         )
 
     def _calibration_breakpoints(

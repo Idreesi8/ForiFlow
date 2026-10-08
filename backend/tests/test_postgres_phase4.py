@@ -110,3 +110,38 @@ def test_the_schema_matches_the_models(migrated) -> None:
     with migrated.connect() as connection:
         context = MigrationContext.configure(connection, opts={"compare_type": True})
         assert compare_metadata(context, Base.metadata) == []
+
+
+def test_the_served_model_registers_on_postgres(migrated, ml_service, monkeypatch) -> None:
+    """The real 2.2 artefacts register on JSONB (2.2.0 failed here on NaN).
+
+    The NaN is put back into the metadata, as 2.2.0 shipped it, so the
+    registry's own guard is what is tested, not only the corrected file.
+    """
+    from sqlalchemy.orm import Session
+
+    from services import model_registry
+
+    xgb_config = dict(ml_service.metadata["model_config"]["xgboost"], missing=float("nan"))
+    monkeypatch.setitem(
+        ml_service.metadata,
+        "model_config",
+        dict(ml_service.metadata["model_config"], xgboost=xgb_config),
+    )
+
+    with Session(migrated) as session:
+        row = model_registry.ensure_registered(session, ml_service)
+        session.commit()
+        new_id = row.id
+    rows = _rows(
+        migrated,
+        "SELECT id, status, provenance IS NOT NULL, "
+        "provenance->'model_config'->'xgboost'->>'missing' FROM model_versions ORDER BY id",
+    )
+    assert rows[0][1:3] == ("retired", False)
+    assert rows[-1] == (new_id, "active", True, "NaN")
+    assert _rows(
+        migrated,
+        "SELECT COUNT(*) FROM audit_logs WHERE action = 'model.registered' "
+        f"AND entity_id = '{new_id}'",
+    ) == [(1,)]

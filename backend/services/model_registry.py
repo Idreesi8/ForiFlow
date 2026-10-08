@@ -10,6 +10,7 @@ when the hand-weighted fallback formula was serving instead of the trained one.
 from __future__ import annotations
 
 import hashlib
+import math
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +25,22 @@ from services.scoring_service import ScoringService
 def feature_set_version(features: list[str]) -> str:
     """Short fingerprint of the ordered feature list."""
     return hashlib.sha256("|".join(features).encode("utf-8")).hexdigest()[:12]
+
+
+def _json_safe(value):
+    """``value`` with NaN and infinities spelled as strings.
+
+    PostgreSQL JSONB rejects the bare ``NaN`` token that Python's ``json``
+    writes (XGBoost's ``missing`` parameter is NaN), so registration failed on
+    PostgreSQL. The setting is kept, as the text ``"NaN"``, not dropped.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return "NaN" if math.isnan(value) else ("Infinity" if value > 0 else "-Infinity")
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 def describe(scorer: ScoringService) -> dict:
@@ -85,8 +102,8 @@ def describe(scorer: ScoringService) -> dict:
         "feature_set": features,
         "feature_set_version": feature_set_version(features),
         "trained_at": metadata.get("trained_at"),
-        "metrics": metrics or None,
-        "provenance": provenance,
+        "metrics": _json_safe(metrics) or None,
+        "provenance": _json_safe(provenance),
         "fallback_reason": scorer.fallback_reason,
     }
 

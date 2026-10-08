@@ -267,7 +267,7 @@ backend container.
 
 ```bash
 docker compose build
-docker save foriflow-backend:2.2.0 foriflow-frontend:2.2.0 postgres:16.6 -o foriflow-images.tar
+docker save foriflow-backend:2.2.1 foriflow-frontend:2.2.1 postgres:16.6 -o foriflow-images.tar
 ```
 
 Copy the tarball, `docker-compose.yml`, and a filled `.env` (never the

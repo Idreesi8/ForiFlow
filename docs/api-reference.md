@@ -72,7 +72,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts",
@@ -90,7 +90,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "database": "connected",
   "scoring_engine": "ml",
   "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26",

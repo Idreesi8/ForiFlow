@@ -103,6 +103,41 @@ def test_the_artifact_fingerprint_follows_the_files(ml_service) -> None:
     assert ml_service.artifact_sha256 == digest.hexdigest()
 
 
+def test_a_windows_checkout_gets_the_same_fingerprint(tmp_path) -> None:
+    """CRLF in the JSON metadata (git on Windows) must not change the hash."""
+    from ml.features import FEATURE_NAMES_PATH, MODEL_PATH
+
+    unix = tmp_path / "unix"
+    windows = tmp_path / "windows"
+    for folder, newline in ((unix, b"\n"), (windows, b"\r\n")):
+        folder.mkdir()
+        (folder / MODEL_PATH.name).write_bytes(MODEL_PATH.read_bytes())
+        text = FEATURE_NAMES_PATH.read_bytes().replace(b"\r\n", b"\n")
+        (folder / FEATURE_NAMES_PATH.name).write_bytes(text.replace(b"\n", newline))
+    fingerprint = scoring_service.artifact_fingerprint
+    names = (MODEL_PATH.name, FEATURE_NAMES_PATH.name)
+    assert fingerprint(unix / n for n in names) == fingerprint(windows / n for n in names)
+
+
+def test_the_registered_facts_are_strict_json(ml_service) -> None:
+    """PostgreSQL JSONB rejects NaN; XGBoost's ``missing`` setting is NaN."""
+    facts = model_registry.describe(ml_service)
+    json.dumps(facts, allow_nan=False)
+    assert facts["provenance"]["model_config"]["xgboost"]["missing"] == "NaN"
+    assert model_registry._json_safe({"a": [float("inf"), float("-inf"), 1.5]}) == {
+        "a": ["Infinity", "-Infinity", 1.5]
+    }
+
+
+def test_the_shipped_metadata_is_strict_json() -> None:
+    from ml.features import FEATURE_NAMES_PATH
+
+    def reject(token):
+        raise ValueError(f"non-standard JSON token {token}")
+
+    json.loads(FEATURE_NAMES_PATH.read_text(encoding="utf-8"), parse_constant=reject)
+
+
 def test_a_changed_formula_is_a_different_model_record(db_session_factory) -> None:
     standard = ScoringService()
     altered = ScoringService(weights={"payment_history_score": 1.0})

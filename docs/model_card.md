@@ -5,9 +5,9 @@
 | | |
 |---|---|
 | Model version | `ensemble-xgb-rf-credit_risk_shared-2026-10-08T17:36:16` |
-| Release | ForiFlow 2.2.0 (training protocol 2.2.0) |
+| Release | ForiFlow 2.2.0, metadata corrected in 2.2.1 (training protocol 2.2.0) |
 | Training date | 2026-10-08T17:36:16 (PKT) |
-| Artifact fingerprint | `2b2b350c8a8a74ec9459005dc182236a28595f74345d361080dc426bae0d239d` (SHA-256 over `foriflow_model.pkl`, `scaler.pkl`, `shap_explainer.pkl`, `feature_names.json`, as computed by the API and stored in `model_versions`) |
+| Artifact fingerprint | `15a24f14f148b513bddf75c5eafb55f873af8d57f42988970fc51247686ff43d` (SHA-256 over `foriflow_model.pkl`, `scaler.pkl`, `shap_explainer.pkl`, `feature_names.json` with LF line endings, as computed by the API and stored in `model_versions`; 2.2.1 value, see CHANGELOG) |
 | Dataset SHA-256 | `ce3c6d2167717bf1627d1c0c81cbccd28323cd4aa7b96d542599366d5ff6aac8` (`credit_risk_dataset.csv`) |
 | Random seed | 42 |
 

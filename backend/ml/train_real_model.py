@@ -759,8 +759,15 @@ def model_config(features: list[str]) -> dict:
     members = dict(ensemble.estimators)
 
     def plain(params: dict) -> dict:
+        # NaN (XGBoost's ``missing``) is written as the text "NaN": the file
+        # must stay strict JSON, which PostgreSQL JSONB and browsers require.
+        def safe(value):
+            if isinstance(value, float) and value != value:
+                return "NaN"
+            return list(value) if isinstance(value, tuple) else value
+
         return {
-            key: (list(value) if isinstance(value, tuple) else value)
+            key: safe(value)
             for key, value in params.items()
             if isinstance(value, (int, float, str, bool, list, tuple, type(None)))
         }

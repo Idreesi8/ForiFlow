@@ -110,7 +110,7 @@
       "max_depth": 5,
       "max_leaves": null,
       "min_child_weight": 5,
-      "missing": NaN,
+      "missing": "NaN",
       "monotone_constraints": [
         1,
         -1,

@@ -6,6 +6,35 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-10-08
+
+Fix for two faults found when 2.2.0 was deployed on Docker with PostgreSQL.
+No model, metric, threshold or score changes.
+
+### Fixed
+
+- **The 2.2 model was never registered on PostgreSQL.** The training metadata
+  recorded XGBoost's `missing` setting as a bare `NaN`, which PostgreSQL JSONB
+  rejects. Registration at startup failed (logged), the 2.1 row stayed marked
+  active, and every new score would have failed with HTTP 500 at the same
+  step. SQLite accepts `NaN`, so the SQLite suite and the earlier PostgreSQL
+  tests (which inserted hand-written rows) did not catch it.
+  `feature_names.json` now records `"missing": "NaN"` as text, the trainer
+  writes it that way, and the registry turns any non-finite number into text
+  before storing it. New PostgreSQL test registers the real model, with the
+  `NaN` put back, and fails without the fix.
+- **The artifact fingerprint depended on the machine.** A Windows checkout
+  stores `feature_names.json` with CRLF line endings, so the same model got a
+  different `artifact_sha256` on the laptop. JSON metadata is now hashed with
+  LF endings. The fingerprint of the 2.2 model is now
+  `15a24f14f148…` (it also changed because of the `NaN` fix above).
+
+### Unchanged
+
+- The trained model, scaler, explainer, calibrator, all evaluation files and
+  every stored score. The 2.1 model row stays as it is (retired once the 2.2
+  model registers).
+
 ## [2.2.0] - 2026-10-08
 
 Phase 4: ML and data credibility. The model is made more defensible and more
