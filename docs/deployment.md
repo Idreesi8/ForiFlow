@@ -127,7 +127,7 @@ They are not required for Compose interpolation.
 | `FORIFLOW_SCORING_ENGINE` | `auto` | See below. |
 | `FORIFLOW_LOG_LEVEL` | `INFO` | Python logging level. |
 | `FORIFLOW_ENV` | `production` in Docker | `production` refuses to start on an unsafe configuration (placeholder/short JWT secret, weak or placeholder database password, SQLite, `*` CORS) and turns the docs off. See [SECURITY.md](../SECURITY.md). |
-| `FORIFLOW_ENABLE_DOCS` | off in production | Set `true` to serve `/docs`, `/redoc`, `/openapi.json` (a warning is logged). |
+| `FORIFLOW_ENABLE_DOCS` | `false` | Development only. Production never serves `/docs`, `/redoc`, `/openapi.json` (2.3.1); a true value is ignored with a warning. |
 | `FORIFLOW_JWT_EXPIRE_MINUTES` | `480` | Session length, 15 to 720. |
 | `FORIFLOW_CORS_ORIGINS` | none in production | Comma-separated origins; `*` is refused. Not needed for the Docker stack. |
 | `FORIFLOW_MAX_BODY_BYTES` | `3145728` | Largest request body. |
@@ -236,7 +236,7 @@ real secrets into tickets or chat logs.
 4. **Dashboard** — open http://localhost:3000. An unauthenticated browser is
    redirected to `/login`. After sign-in, the shell should show **API online**.
 
-`GET /`, `/health`, `/health/live`, `/health/ready` and `/docs` (only when `FORIFLOW_ENABLE_DOCS=true`; off by default in production) stay unauthenticated.
+`GET /`, `/health`, `/health/live`, `/health/ready` stay unauthenticated. `/docs` exists only in development mode.
 
 ## Access points
 
@@ -247,7 +247,7 @@ real secrets into tickets or chat logs.
 | http://127.0.0.1:8000/health/live | Liveness |
 | http://127.0.0.1:8000/health/ready | Readiness (Docker healthcheck) |
 | http://127.0.0.1:8000/health | Status summary (dashboard) |
-| http://127.0.0.1:8000/docs | Swagger UI (only when `FORIFLOW_ENABLE_DOCS=true` in production) |
+| http://127.0.0.1:8000/docs | Swagger UI, development mode only (404 in the Docker stack) |
 | http://127.0.0.1:8000/auth/login | `POST` JSON `{ "username", "password" }` → JWT |
 
 The API, dashboard, and PostgreSQL are published as **`127.0.0.1` only** —
@@ -304,7 +304,7 @@ Then seed the admin user as in [First-run setup](#first-run-setup-creating-the-a
 | `502 Bad Gateway` | Backend container exited. Check its logs. |
 | Backend keeps restarting; log says `Refusing to start in production` | 2.3 production mode found an unsafe setting; the log names it (never its value). Fix it in `.env` (e.g. a 32+ character `JWT_SECRET_KEY`, a non-default `POSTGRES_PASSWORD`) and run `docker compose up -d`. |
 | Sign-in says "Try again in N minutes" | Five wrong passwords locked that username for 15 minutes, or one computer made more than 30 attempts in 5 minutes. Wait; the lock lifts by itself. |
-| `/docs` returns 404 | Production mode turns the docs off. Set `FORIFLOW_ENABLE_DOCS=true` in `.env` while you need them. |
+| `/docs` returns 404 | Expected: production never serves the docs (2.3.1). Read [api-reference.md](api-reference.md), or run the API locally in development mode. |
 | Login 401 with a password you just set | Seed was not run, or the hash was not rotated (`--reset-password`). |
 | `Scoring engine ready: surrogate-linear-v1` | Artefacts were not baked into the image, or `FORIFLOW_SCORING_ENGINE=surrogate`. Rebuild with artefacts; use `auto` or `ml` for a pilot. |
 | `start.sh: bash\r: No such file` | CRLF line endings. `.gitattributes` prevents this; `git add --renormalize .` if it already happened. |

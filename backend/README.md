@@ -46,7 +46,7 @@ pytest
 | `FORIFLOW_DATABASE_URL`   | unset                    | SQLAlchemy URL; wins over `POSTGRES_*` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB` | unset | PostgreSQL connection when user and host are set; otherwise `sqlite:///./foriflow.db` |
 | `FORIFLOW_SCORING_ENGINE` | `auto`                   | `ml` (trained ensemble), `surrogate`, or `auto` (ml when the artefacts load) |
-| `FORIFLOW_ENABLE_DOCS`    | on in dev, off in prod   | Serve `/docs`, `/redoc`, `/openapi.json` |
+| `FORIFLOW_ENABLE_DOCS`    | on in dev                | Serve `/docs`, `/redoc`, `/openapi.json` in development; ignored in production (always off) |
 | `FORIFLOW_ADMIN_USERNAME`, `FORIFLOW_ADMIN_PASSWORD`, `FORIFLOW_ADMIN_ROLE` | `admin`, none, `admin` | Read by `python -m scripts.seed_admin` |
 | `FORIFLOW_LOG_LEVEL`      | `INFO`                   | Root log level              |
 

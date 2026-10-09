@@ -107,7 +107,7 @@ implemented (see §12).
 | Security headers (dashboard, nginx) | CSP `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'…`, plus the same no-sniff / frame / referrer / permissions headers; `server_tokens off`. `'unsafe-inline'` styles are needed by the chart library. |
 | Body size | 3 MiB in the API (`413`), 4 MiB in nginx. A malformed `Content-Length` is `400`. Schemas cap every string (e.g. statement CSV 2,000,000 characters). |
 | CORS | `FORIFLOW_CORS_ORIGINS` (comma separated). Unset: closed in production (same-origin stack), dev-server origins in development. `*` is refused in every mode. No credentials mode (the token is a header, not a cookie). |
-| Interactive docs | `/docs`, `/redoc`, `/openapi.json`: on in development, **off in production** unless `FORIFLOW_ENABLE_DOCS=true` (then a warning is logged at start-up). OpenAPI support itself is kept. |
+| Interactive docs | `/docs`, `/redoc`, `/openapi.json`: on in development, **always off in production** (2.3.1). `FORIFLOW_ENABLE_DOCS=true` is ignored in production and logged as a warning at start-up; Docker Compose also pins it to `false`. OpenAPI support itself is kept. |
 | Validation | Pydantic schemas on every input; unknown enum values, out-of-range numbers and over-long strings are `422`. |
 | Rate limiting | Sign-in only (§2). Other endpoints are behind authentication and are not rate limited. |
 
@@ -119,7 +119,7 @@ implemented (see §12).
 | | development | production |
 |---|---|---|
 | Unsafe configuration (below) | logged as warnings; starts | **refuses to start**, naming each setting (never its value) |
-| `/docs`, `/redoc`, `/openapi.json` | on | off unless `FORIFLOW_ENABLE_DOCS=true` |
+| `/docs`, `/redoc`, `/openapi.json` | on (unless `FORIFLOW_ENABLE_DOCS=false`) | always off |
 | CORS default | localhost dev-server origins | none |
 | Database | SQLite allowed | PostgreSQL required |
 
@@ -142,7 +142,7 @@ database password under 12 characters is a warning.
 | `JWT_SECRET_KEY` | ✓ | – | 32+ random characters. Secret. Changing it signs everyone out. |
 | `FORIFLOW_JWT_EXPIRE_MINUTES` | – | `480` | 15 to 720. |
 | `FORIFLOW_CORS_ORIGINS` | – | see above | No `*`. |
-| `FORIFLOW_ENABLE_DOCS` | – | dev on / prod off | |
+| `FORIFLOW_ENABLE_DOCS` | – | `false` | Development only; ignored in production. |
 | `FORIFLOW_MAX_BODY_BYTES` | – | `3145728` | At least 65,536. |
 | `FORIFLOW_LOG_LEVEL` | – | `INFO` | `DEBUG` adds detail but never secrets. |
 | `FORIFLOW_SCORING_ENGINE` | – | `auto` | `ml`, `surrogate`, `auto`. |

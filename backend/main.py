@@ -5,7 +5,7 @@ Run locally from the ``backend`` directory:
     uvicorn main:app --reload --port 8000
 
 Interactive docs are then served at http://localhost:8000/docs (development
-mode; production turns them off unless ``FORIFLOW_ENABLE_DOCS=true``).
+mode only; production never serves them).
 
 ``FORIFLOW_ENV=production`` (set by docker-compose.yml) makes the API refuse to
 start on an unsafe configuration: see ``services.security_config`` and
@@ -38,7 +38,7 @@ from services.http_security import BodySizeLimitMiddleware, SecurityHeadersMiddl
 from services.scoring_service import get_scoring_service
 from services.security_config import configuration_report
 
-API_VERSION = "2.3.0"
+API_VERSION = "2.3.1"
 
 logging.basicConfig(
     level=os.getenv("FORIFLOW_LOG_LEVEL", "INFO"),

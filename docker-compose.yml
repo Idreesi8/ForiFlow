@@ -34,7 +34,7 @@ services:
   backend:
     build:
       context: ./backend
-    image: foriflow-backend:2.3.0
+    image: foriflow-backend:2.3.1
     container_name: foriflow-backend
     restart: unless-stopped
     env_file:
@@ -46,9 +46,13 @@ services:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
       # 2.3: production mode. The API refuses to start on a placeholder or
-      # weak secret, keeps CORS closed and turns /docs off unless .env sets
-      # FORIFLOW_ENABLE_DOCS=true. See SECURITY.md.
+      # weak secret, keeps CORS closed and never serves /docs, /redoc or
+      # /openapi.json.
+      # See SECURITY.md.
       FORIFLOW_ENV: ${FORIFLOW_ENV:-production}
+      # 2.3.1: fixed, not read from .env. Production ignores a true value
+      # anyway; this keeps the container's own setting unambiguous.
+      FORIFLOW_ENABLE_DOCS: "false"
       FORIFLOW_SCORING_ENGINE: ${FORIFLOW_SCORING_ENGINE:-auto}
       FORIFLOW_LOG_LEVEL: ${FORIFLOW_LOG_LEVEL:-INFO}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}

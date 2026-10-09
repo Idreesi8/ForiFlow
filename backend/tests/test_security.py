@@ -699,20 +699,35 @@ def test_development_cors_allows_the_dev_server_only(monkeypatch) -> None:
     assert "access-control-allow-origin" not in evil.headers
 
 
-def test_docs_are_off_in_production_unless_asked_for(monkeypatch) -> None:
-    _production(monkeypatch)
-    assert config.docs_enabled() is False
-    local = TestClient(create_app())
-    assert local.get("/docs").status_code == 404
-    assert local.get("/openapi.json").status_code == 404
-    assert local.get("/").json()["docs"] is None
-    monkeypatch.setenv("FORIFLOW_ENABLE_DOCS", "true")
-    assert config.docs_enabled() is True
-    report = configuration_report(PG_URL.format("Tq7-unique-db-password"))
-    assert report.ok and any("FORIFLOW_ENABLE_DOCS" in warning for warning in report.warnings)
+def test_docs_are_always_off_in_production(monkeypatch) -> None:
+    """2.3.1: production never serves the docs, even when .env asks for them."""
+    pg = PG_URL.format("Tq7-unique-db-password")
+    for flag in (None, "false", "true", "1", "yes"):
+        _production(monkeypatch)
+        if flag is not None:
+            monkeypatch.setenv("FORIFLOW_ENABLE_DOCS", flag)
+        assert config.docs_enabled() is False, flag
+        local = TestClient(create_app())
+        for path in ("/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"):
+            assert local.get(path).status_code == 404, (flag, path)
+        assert local.get("/").json()["docs"] is None
+        report = configuration_report(pg)
+        assert report.ok
+        asked = flag in ("true", "1", "yes")
+        assert any("ignored in production" in w for w in report.warnings) is asked, flag
+
+
+def test_docs_stay_available_in_development(monkeypatch) -> None:
     monkeypatch.setenv("FORIFLOW_ENV", "development")
-    monkeypatch.delenv("FORIFLOW_ENABLE_DOCS")
+    monkeypatch.delenv("FORIFLOW_ENABLE_DOCS", raising=False)
     assert config.docs_enabled() is True
+    local = TestClient(create_app())
+    assert local.get("/docs").status_code == 200
+    assert local.get("/redoc").status_code == 200
+    assert local.get("/openapi.json").status_code == 200
+    monkeypatch.setenv("FORIFLOW_ENABLE_DOCS", "false")
+    assert config.docs_enabled() is False
+    assert TestClient(create_app()).get("/openapi.json").status_code == 404
 
 
 def test_token_lifetime_is_configurable_within_bounds(monkeypatch) -> None:

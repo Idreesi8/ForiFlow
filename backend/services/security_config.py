@@ -87,10 +87,10 @@ def configuration_report(database_url: str | None = None) -> ConfigurationReport
         except RuntimeError as exc:
             report.problems.append(f"{name}: {exc}")
 
-    if production and config.docs_enabled():
+    if production and config.docs_requested():
         report.warnings.append(
-            "FORIFLOW_ENABLE_DOCS=true in production: /docs, /redoc and /openapi.json are "
-            "served. Set it to false unless the API documentation is needed."
+            "FORIFLOW_ENABLE_DOCS=true is ignored in production: /docs, /redoc and "
+            "/openapi.json stay disabled. Set it to false in .env."
         )
 
     if not production:

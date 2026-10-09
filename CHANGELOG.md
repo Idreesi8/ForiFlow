@@ -6,6 +6,24 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-10-10
+
+Production configuration fix. Backend only; no model, SHAP, EWS, policy,
+decision, score, borrower or audit change.
+
+### Changed
+
+- **Production never serves `/docs`, `/redoc` or `/openapi.json`.** In 2.3.0
+  an explicit `FORIFLOW_ENABLE_DOCS=true` in `.env` turned them back on in
+  production (with only a warning). It is now ignored in production and
+  logged as such; `docker-compose.yml` also pins the API container's
+  `FORIFLOW_ENABLE_DOCS` to `false`. Development is unchanged (on unless set
+  to `false`).
+- `.env.example` sets `FORIFLOW_ENABLE_DOCS=false` and says to remove
+  `FORIFLOW_ADMIN_PASSWORD` once the first admin exists.
+- Tests: production keeps all three documentation endpoints at 404 for every
+  value of the flag; development still serves them.
+
 ## [2.3.0] - 2026-10-09
 
 Production and security hardening for a controlled pilot. No change to the
