@@ -29,12 +29,12 @@ def seed_admin(
     """Insert the user if missing. Returns ``created``, ``exists``, or ``updated``."""
     if not password:
         raise ValueError("FORIFLOW_ADMIN_PASSWORD is empty.")
-    validate_new_password(password)
-    if role not in ALLOWED_ROLES:
-        raise ValueError(f"Role must be one of {sorted(ALLOWED_ROLES)}.")
     username = username.strip()
     if not username:
         raise ValueError("Username is empty.")
+    validate_new_password(password, username)
+    if role not in ALLOWED_ROLES:
+        raise ValueError(f"Role must be one of {sorted(ALLOWED_ROLES)}.")
 
     init_db()
     db = SessionLocal()

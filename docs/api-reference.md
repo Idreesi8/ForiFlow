@@ -3,7 +3,10 @@
 Base URL in Docker and local Vite: `http://localhost:3000/api` (nginx / Vite
 strip `/api` before FastAPI). Direct access: `http://localhost:8000`.
 
-Interactive docs: [http://localhost:8000/docs](http://localhost:8000/docs).
+Interactive docs: [http://localhost:8000/docs](http://localhost:8000/docs) in
+development mode. Since 2.3 production mode (the Docker stack) turns `/docs`,
+`/redoc` and `/openapi.json` off unless `FORIFLOW_ENABLE_DOCS=true`. Security
+behaviour in full: [SECURITY.md](../SECURITY.md).
 
 All amounts are PKR. Timestamps are UTC ISO-8601.
 
@@ -11,9 +14,11 @@ All amounts are PKR. Timestamps are UTC ISO-8601.
 
 Three roles, each including the one below: `analyst`, `manager`, `admin`.
 
-`GET /`, `GET /health`, `POST /auth/login` and the interactive docs are public.
-Every other route needs `Authorization: Bearer <token>`; a missing, expired or
-invalid token returns `401`.
+`GET /`, `GET /health`, `GET /health/live`, `GET /health/ready`,
+`POST /auth/login` and (when enabled) the interactive docs are public. Every
+other route needs `Authorization: Bearer <token>`; a missing, malformed,
+expired, signed-out or pre-2.3 token, or one for a disabled account, returns
+`401 Not authenticated`.
 
 The role is read from the `users` table on every request, not from the token,
 so changing a user's role takes effect immediately.
@@ -29,11 +34,18 @@ so changing a user's role takes effect immediately.
 | Decide an escalated application | no (`403`) | no (`403`) | yes |
 | Create or activate a credit policy version | no (`403`) | no (`403`) | yes |
 | Resolve an EWS alert | no (`403`) | yes | yes |
-| List or create officer accounts | no (`403`) | no (`403`) | yes |
+| List, create, disable or re-enable officer accounts | no (`403`) | no (`403`) | yes |
+| Read the audit trail | no (`403`) | no (`403`) | yes |
 
 The API refuses to sign tokens while `JWT_SECRET_KEY` is empty, shorter than 32
-characters, or still the `.env.example` placeholder (login returns `500` and
-the startup log names the problem).
+characters, or still the `.env.example` placeholder; in production mode it
+refuses to start (the log names the setting, never its value).
+
+Every response carries security headers (`Content-Security-Policy`,
+`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+`Cache-Control: no-store`, …). Bodies over 3 MiB get `413`. An unexpected
+error is `500 {"detail": "Internal server error…", "request_id": "…"}` with no
+traceback.
 
 ### POST `/auth/login`
 
@@ -42,11 +54,24 @@ the startup log names the problem).
 ```
 
 **Response `200`**: `access_token`, `token_type` (`bearer`), `expires_in`
-(28800 seconds), `username`, `role`. Wrong credentials return `401`.
+(28800 seconds by default; `FORIFLOW_JWT_EXPIRE_MINUTES`), `username`, `role`.
+The token carries `sub`, `role`, `iat`, `exp`, `iss` (`foriflow`) and a random
+`jti`.
+
+| Status | When |
+| --- | --- |
+| `401 Incorrect username or password` | Unknown username or wrong password (one message for both). |
+| `403` | Correct password, but the account is disabled. |
+| `429` + `Retry-After` | 5 wrong passwords for this username within 15 minutes (locked 15 minutes, also for unknown usernames), or more than 30 sign-in requests in 5 minutes from one address. |
+
+### POST `/auth/logout` (2.3)
+
+Revokes the token used for the request (its `jti`) until it would have
+expired. Other sessions of the same officer are unaffected. **Response `204`**.
 
 ### GET `/auth/me`
 
-The signed-in account: `id`, `username`, `role`, `created_at`.
+The signed-in account: `id`, `username`, `role`, `created_at`, `is_active`.
 
 ### GET `/auth/users` (admin)
 
@@ -60,8 +85,21 @@ All officer accounts, oldest first. Password hashes are never returned.
 
 `role` defaults to `analyst`. Usernames are 3–64 characters of letters, digits,
 `.`, `_` or `-`. Passwords are 12–72 characters and may not be the
-`.env.example` placeholder (`422`). An existing username returns `409`.
+`.env.example` placeholder, a common password, a keyboard or number sequence,
+fewer than 5 different characters, or contain the username (`422`, the
+password is never echoed). An existing username returns `409`.
 **Response `201`**: the new account, as in `GET /auth/me`.
+
+### PATCH `/auth/users/{id}/status` (admin, 2.3)
+
+```json
+{ "is_active": false, "reason": "Left the branch." }
+```
+
+Disables or re-enables an account. A disabled account's tokens stop working
+on the next request and it cannot sign in; nothing is deleted. `409` when an
+admin tries to disable their own account or the last enabled admin; `404` for
+an unknown id. Audited as `user.disabled` / `user.enabled` with the reason.
 
 ## GET `/`
 
@@ -72,7 +110,7 @@ Service metadata.
 ```json
 {
   "service": "ForiFlow API",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "docs": "/docs",
   "endpoints": ["/auth/login", "/score", "/score/applications", "/score/stats",
                 "/explain/{application_id}", "/ews/monitor", "/ews/alerts",
@@ -82,7 +120,9 @@ Service metadata.
 
 ## GET `/health`
 
-Liveness and database connectivity. The dashboard polls this every 60 seconds.
+Status summary and database connectivity; always `200` while the process
+runs. The dashboard polls this every 60 seconds. `docs` in `GET /` is `null`
+when the interactive docs are off.
 
 **Response `200`**
 
@@ -90,7 +130,7 @@ Liveness and database connectivity. The dashboard polls this every 60 seconds.
 {
   "status": "ok",
   "service": "ForiFlow API",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "database": "connected",
   "scoring_engine": "ml",
   "model_version": "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26",
@@ -104,6 +144,28 @@ When it is `surrogate`, `scoring_fallback_reason` says why: `pinned`,
 
 Every response carries an `X-Request-ID` header. The same id is stored on the
 audit entries that request wrote.
+
+## GET `/health/live` and GET `/health/ready` (2.3)
+
+`/health/live` returns `200 {"status": "alive"}` while the process runs.
+`/health/ready` returns `200` when the database answers, the trained model is
+serving (or the fallback was pinned) and the configuration is safe, and `503`
+otherwise; each check is named with a short reason, never a value:
+
+```json
+{
+  "status": "ready",
+  "version": "2.3.0",
+  "environment": "production",
+  "checks": [
+    {"name": "database", "ok": true, "detail": "reachable"},
+    {"name": "model", "ok": true, "detail": "ml engine serving"},
+    {"name": "configuration", "ok": true, "detail": "loaded"}
+  ]
+}
+```
+
+The Docker healthcheck uses `/health/ready`.
 
 ## POST `/score`
 
@@ -257,6 +319,9 @@ review is pending. `scored_by` is `null` for rows scored before migration
 `0003_officer_decisions` (version 1.3.0). `business_sector` is `null` when the
 officer did not record one, and for every row from before
 `0004_portfolio_fields` (version 1.5.0).
+
+Since 2.3 `contact_phone` is masked in this list (all but the last three
+digits); `GET /score/applications/{id}` returns it in full.
 
 ## GET `/score/stats`
 
@@ -679,7 +744,7 @@ reference or the numeric id. Any signed-in officer unless noted.
 
 | Route | Purpose |
 |---|---|
-| `GET /borrowers?q=&limit=&offset=` | List, newest first. `q` matches business name, owner name or reference. An identifier is never searched by URL. |
+| `GET /borrowers?q=&limit=&offset=` | List, newest first. `q` matches business name, owner name or reference. An identifier is never searched by URL. Phone numbers are masked in the list (2.3). |
 | `POST /borrowers` | Open a borrower ahead of its first application. Identifier already on file: `409` naming the existing borrower. |
 | `GET /borrowers/{ref}` | One borrower. The identifier is returned masked. |
 | `PATCH /borrowers/{ref}` (manager or admin) | Correct name, owner, phone, sector, years, identifier or `status` (`active` / `inactive`). Only sent fields change. Applications keep what they were scored with. |

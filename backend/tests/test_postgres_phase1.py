@@ -28,6 +28,9 @@ POSTGRES_URL = os.getenv("FORIFLOW_TEST_POSTGRES_URL", "").strip()
 ENSEMBLE = "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26"
 TABLES = (
     "alembic_version",
+    # 0010 security state.
+    "login_attempts",
+    "revoked_tokens",
     "ews_tracking",
     "alerts",
     "applications",

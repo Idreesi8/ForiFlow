@@ -300,6 +300,16 @@ OPTIONAL_0009: dict[str, tuple[str, ...]] = {
 }
 
 
+# Migration 0010 adds the account status column.
+OPTIONAL_0010: dict[str, tuple[str, ...]] = {
+    "users": (*OPTIONAL["users"], "is_active"),
+}
+
+# 0010 security state: sign-in counters and signed-out token ids. Short-lived
+# by design and meaningless on another server, so never copied.
+TRANSIENT_TABLES = frozenset({"login_attempts", "revoked_tokens"})
+
+
 class MigrationError(RuntimeError):
     """Raised when the SQLite file cannot be copied safely."""
 
@@ -330,7 +340,9 @@ def assert_schema(connection: sqlite3.Connection) -> dict[str, tuple[str, ...]]:
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         )
     }
-    extra = existing_tables - set(EXPECTED) - set(OPTIONAL) - {"alembic_version"}
+    extra = (
+        existing_tables - set(EXPECTED) - set(OPTIONAL) - TRANSIENT_TABLES - {"alembic_version"}
+    )
     if extra:
         raise MigrationError(
             f"SQLite has unexpected tables {sorted(extra)}. Refusing to copy."
@@ -359,6 +371,7 @@ def assert_schema(connection: sqlite3.Connection) -> dict[str, tuple[str, ...]]:
             EXPECTED_0007.get(table),
             EXPECTED_0008.get(table),
             OPTIONAL_0009.get(table),
+            OPTIONAL_0010.get(table),
         ):
             raise MigrationError(
                 f"Table {table!r} columns {names} do not match expected {expected}."
@@ -575,6 +588,9 @@ def migrate(sqlite_path: Path, postgres_url: str) -> dict[str, int]:
                         {**row, "decline_override_admin_only": bool(row["decline_override_admin_only"])}
                         for row in rows
                     ]
+                if table == "users" and "is_active" in columns:
+                    # SQLite stores booleans as 0/1; PostgreSQL wants a boolean.
+                    rows = [{**row, "is_active": bool(row["is_active"])} for row in rows]
                 if rows:
                     placeholders = ", ".join(f":{name}" for name in columns)
                     connection.execute(

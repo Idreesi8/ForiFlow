@@ -34,9 +34,11 @@ client.interceptors.response.use(
     const requestUrl = String(error.config?.url ?? "");
     const isLogin = requestUrl.includes("/auth/login");
     if (status === 401 && !isLogin) {
+      // Expired, signed out elsewhere, or the account was disabled: the token
+      // is no use any more. Drop it and send the officer to sign in again.
       clearSession();
       if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-        window.location.assign("/login");
+        window.location.assign("/login?session=expired");
       }
     }
     return Promise.reject(error);
@@ -61,6 +63,16 @@ export function apiErrorMessage(error, fallback = "Something went wrong.") {
 
   const { status, data } = error.response;
   const detail = data?.detail;
+
+  if (status >= 500) {
+    // Never show a server's internals; the request id lets an admin find the log.
+    const reference = data?.request_id ?? error.response.headers?.["x-request-id"];
+    const base =
+      status === 503 && typeof detail === "string"
+        ? detail
+        : "The server could not complete this request.";
+    return reference ? `${base} (reference ${reference})` : base;
+  }
 
   if (Array.isArray(detail)) {
     return detail
@@ -205,5 +217,17 @@ export const fetchHealth = () =>
 
 export const login = (username, password) =>
   client.post("/auth/login", { username, password }).then((response) => response.data);
+
+/** Revoke this session's token on the server (2.3). */
+export const logout = () => client.post("/auth/logout").then(() => undefined);
+
+/** The signed-in account as the server sees it now (role, enabled). */
+export const fetchMe = () => client.get("/auth/me").then((response) => response.data);
+
+/** Disable or re-enable an officer account (admin only, 2.3). */
+export const setUserStatus = (userId, isActive, reason) =>
+  client
+    .patch(`/auth/users/${userId}/status`, { is_active: isActive, reason: reason || null })
+    .then((response) => response.data);
 
 export default client;

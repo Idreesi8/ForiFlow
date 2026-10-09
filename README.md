@@ -75,7 +75,7 @@ prefix to FastAPI, so a bank laptop never has to configure CORS.
 | 🚨 **Early Warning System** | Immutable monthly history with score provenance, OLS trend from three months, six evidence-backed signals, NORMAL / WATCH / WARNING / CRITICAL states, one open alert per facility with an audited lifecycle (acknowledge, assign, due date, action, resolve, dismiss). Rule-based, not a default model ([docs/ews.md](docs/ews.md)) |
 | 🏦 **PKR Banking Context** | PKR amounts; designed for SBP-oriented explainability (not SBP-certified, no live ECIB feed) |
 | 🐳 **Docker Ready** | One-command deployment for bank demos |
-| 🔐 **JWT Authentication** | On-premise login (bcrypt, HS256, 8-hour tokens); three roles (analyst, manager, admin): managers decide Manual Review cases (approving up to a configurable facility limit) and resolve alerts, admins also manage officer accounts; every assessment records who scored it |
+| 🔐 **JWT Authentication** | On-premise login (bcrypt, HS256, 8-hour tokens, sign-out revocation, lockout after 5 wrong passwords, admin-disabled accounts); three roles (analyst, manager, admin): managers decide Manual Review cases (approving up to a configurable facility limit) and resolve alerts, admins also manage officer accounts; every assessment records who scored it. Security baseline and limits: [SECURITY.md](SECURITY.md) |
 
 ## 🛠️ Tech Stack
 

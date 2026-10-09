@@ -93,6 +93,17 @@ def bearer_header(username: str = TEST_ADMIN_USERNAME, role: str = "admin") -> d
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture(autouse=True)
+def _reset_login_rate_limit() -> Generator[None, None, None]:
+    """The per-address sign-in limiter lives in process memory; every test
+    signs in from the same TestClient address, so each starts with it clear."""
+    from services.login_guard import login_ip_limiter
+
+    login_ip_limiter.reset()
+    yield
+    login_ip_limiter.reset()
+
+
 @pytest.fixture(name="db_session_factory")
 def db_session_factory_fixture() -> Generator[sessionmaker[Session], None, None]:
     """Create a fresh in-memory SQLite schema for each test.

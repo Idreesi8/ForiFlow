@@ -9,7 +9,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from models.database import ALERT_OPEN_STATUSES, Alert, Application, User, get_db, utcnow
+from models.database import (
+    ALERT_OPEN_STATUSES,
+    Alert,
+    Application,
+    User,
+    get_db,
+    mask_phone,
+    utcnow,
+)
 from schemas import (
     ApplicationSummary,
     Decision,
@@ -350,7 +358,14 @@ async def list_applications(
         statement = statement.where(Application.decision_status == decision_status.value)
 
     applications = db.scalars(statement.offset(offset).limit(limit)).all()
-    return [ApplicationSummary.model_validate(app) for app in applications]
+    # 2.3: a list shows phone numbers masked; GET /score/applications/{id}
+    # and the reminders page keep the full number for the officer who needs it.
+    return [
+        ApplicationSummary.model_validate(app).model_copy(
+            update={"contact_phone": mask_phone(app.contact_phone)}
+        )
+        for app in applications
+    ]
 
 
 _RECOMMENDATION_OF_BAND = {

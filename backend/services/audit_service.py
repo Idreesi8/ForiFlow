@@ -39,7 +39,15 @@ class Action:
 
     LOGIN = "auth.login"
     LOGIN_FAILED = "auth.login_failed"
+    # 2.3 security events.
+    LOGIN_LOCKED = "auth.login_locked"
+    LOGIN_REFUSED_LOCKED = "auth.login_refused_locked"
+    LOGIN_RATE_LIMITED = "auth.login_rate_limited"
+    LOGIN_REFUSED_DISABLED = "auth.login_refused_disabled"
+    LOGOUT = "auth.logout"
     USER_CREATED = "user.created"
+    USER_DISABLED = "user.disabled"
+    USER_ENABLED = "user.enabled"
     BORROWER_CREATED = "borrower.created"
     BORROWER_UPDATED = "borrower.updated"
     APPLICATION_CREATED = "application.created"

@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { API_BASE_LABEL, fetchHealth } from "./api/client.js";
-import { clearSession, getStoredRole, getStoredUsername, isLoggedIn } from "./api/auth.js";
+import { API_BASE_LABEL, fetchHealth, fetchMe, logout } from "./api/client.js";
+import {
+  clearSession,
+  getStoredRole,
+  getStoredUsername,
+  isLoggedIn,
+  updateStoredAccount,
+} from "./api/auth.js";
 import AlertsPage from "./pages/AlertsPage.jsx";
 import ApplicationsPage from "./pages/ApplicationsPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
@@ -70,10 +76,40 @@ function RequireAuth({ children }) {
 
 function OfficerShell() {
   const navigate = useNavigate();
-  const username = getStoredUsername();
-  const role = getStoredRole();
+  const [account, setAccount] = useState({
+    username: getStoredUsername(),
+    role: getStoredRole(),
+  });
+  const { username, role } = account;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [health, setHealth] = useState({ state: "checking", detail: null });
+
+  // The stored role is only a display hint; ask the server who this is. A
+  // disabled or signed-out account gets a 401 here and the client sends it
+  // back to the sign-in page.
+  useEffect(() => {
+    let cancelled = false;
+    fetchMe()
+      .then((me) => {
+        if (cancelled) return;
+        updateStoredAccount(me);
+        setAccount({ username: me.username, role: me.role });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const signOut = useCallback(async () => {
+    try {
+      await logout();
+    } catch {
+      // Already expired or the API is down: the local session goes regardless.
+    }
+    clearSession();
+    navigate("/login", { replace: true });
+  }, [navigate]);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -179,10 +215,7 @@ function OfficerShell() {
               <button
                 type="button"
                 className="btn-secondary px-3 py-1.5 text-xs"
-                onClick={() => {
-                  clearSession();
-                  navigate("/login", { replace: true });
-                }}
+                onClick={signOut}
               >
                 Sign out
               </button>
@@ -195,7 +228,7 @@ function OfficerShell() {
         </main>
 
         <footer className="border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500 print:hidden">
-          ForiFlow v2.0 · API {API_BASE_LABEL} · All amounts in PKR
+          ForiFlow v2.3 · API {API_BASE_LABEL} · All amounts in PKR
         </footer>
       </div>
     </div>

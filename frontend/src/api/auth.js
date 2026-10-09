@@ -30,6 +30,16 @@ export function storeSession({ access_token, username, role }) {
   window.localStorage.setItem(ROLE_KEY, role ?? "");
 }
 
+/**
+ * Refresh the stored name and role from GET /auth/me. The server re-reads the
+ * role on every request anyway; this only keeps the menus honest after an
+ * admin changes it.
+ */
+export function updateStoredAccount({ username, role }) {
+  if (username) window.localStorage.setItem(USER_KEY, username);
+  if (role) window.localStorage.setItem(ROLE_KEY, role);
+}
+
 export function clearSession() {
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);

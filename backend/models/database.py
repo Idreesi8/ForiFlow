@@ -139,6 +139,19 @@ def mask_identifier(identifier: str | None) -> str | None:
     return "*" * max(len(identifier) - 4, 0) + identifier[-4:]
 
 
+def mask_phone(phone: str | None) -> str | None:
+    """A phone number with all but its last three digits hidden (list views, 2.3).
+
+    Lists show many borrowers at once and never need to dial one; the full
+    number stays on the borrower's own record and the reminders page.
+    """
+    if not phone:
+        return None
+    prefix = "+" if phone.startswith("+") else ""
+    digits = phone.lstrip("+")
+    return prefix + "*" * max(len(digits) - 3, 0) + digits[-3:]
+
+
 def borrower_public_id(borrower_id: int) -> str:
     """The officer-facing reference for a borrower row."""
     return f"BRW-{borrower_id:06d}"
@@ -807,9 +820,51 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
+    # 2.3: a disabled account cannot sign in, and its existing tokens stop
+    # working on the next request. Accounts are disabled, never deleted, so the
+    # audit trail keeps pointing at a real row.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
 
     def __repr__(self) -> str:  # pragma: no cover - debugging helper
         return f"<User id={self.id} username={self.username!r} role={self.role!r}>"
+
+
+class LoginAttempt(Base):
+    """Recent failed sign-ins for one typed username (2.3).
+
+    Keyed by the username as typed (lower-cased), whether or not an account
+    has that name, so a lockout does not reveal which usernames exist. Deleted
+    on a successful sign-in. Holds no password and no token.
+    """
+
+    __tablename__ = "login_attempts"
+
+    username_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    first_failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class RevokedToken(Base):
+    """A signed-out token, refused until it would have expired anyway (2.3).
+
+    Stores the token's id (``jti``), never the token itself.
+    """
+
+    __tablename__ = "revoked_tokens"
+
+    jti: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    revoked_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
 
 
 def _run_alembic_upgrade() -> None:

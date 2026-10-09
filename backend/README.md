@@ -19,13 +19,14 @@ python -m scripts.seed_admin                   # first officer account (admin)
 uvicorn main:app --reload --port 8000
 ```
 
-- Swagger UI: http://localhost:8000/docs
-- Health probe: http://localhost:8000/health
+- Swagger UI: http://localhost:8000/docs (development mode; production turns it off)
+- Health: http://localhost:8000/health, `/health/live`, `/health/ready`
 - Without Docker this uses SQLite (`./foriflow.db`). The Docker stack in the
   repository root uses PostgreSQL 16; see [`docs/deployment.md`](../docs/deployment.md).
 - In Docker the dashboard calls `/api` on its own origin, so CORS is not
-  involved; the allowed origins in `main.py` only matter for a dev server on
-  another port.
+  involved; `FORIFLOW_CORS_ORIGINS` (default: the localhost dev-server origins
+  in development, none in production) only matters for a dev server on
+  another port. Security behaviour: [SECURITY.md](../SECURITY.md).
 
 Run the tests from the same directory:
 
@@ -37,11 +38,15 @@ pytest
 
 | Variable                  | Default                  | Purpose                     |
 | ------------------------- | ------------------------ | --------------------------- |
-| `JWT_SECRET_KEY`          | none (required)          | Token signing secret, 32+ characters; login returns `500` without it |
+| `FORIFLOW_ENV`            | `development`            | `production` refuses to start on an unsafe configuration and turns the docs off (Docker sets it) |
+| `JWT_SECRET_KEY`          | none (required)          | Token signing secret, 32+ characters; login fails without it, production does not start |
+| `FORIFLOW_JWT_EXPIRE_MINUTES` | `480`                | Session length (15 to 720) |
+| `FORIFLOW_CORS_ORIGINS`   | dev origins / none       | Comma-separated browser origins; `*` refused |
+| `FORIFLOW_MAX_BODY_BYTES` | `3145728`                | Largest request body (413 above) |
 | `FORIFLOW_DATABASE_URL`   | unset                    | SQLAlchemy URL; wins over `POSTGRES_*` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB` | unset | PostgreSQL connection when user and host are set; otherwise `sqlite:///./foriflow.db` |
 | `FORIFLOW_SCORING_ENGINE` | `auto`                   | `ml` (trained ensemble), `surrogate`, or `auto` (ml when the artefacts load) |
-| `FORIFLOW_ENABLE_DOCS`    | `true`                   | Serve `/docs`, `/redoc`, `/openapi.json` |
+| `FORIFLOW_ENABLE_DOCS`    | on in dev, off in prod   | Serve `/docs`, `/redoc`, `/openapi.json` |
 | `FORIFLOW_ADMIN_USERNAME`, `FORIFLOW_ADMIN_PASSWORD`, `FORIFLOW_ADMIN_ROLE` | `admin`, none, `admin` | Read by `python -m scripts.seed_admin` |
 | `FORIFLOW_LOG_LEVEL`      | `INFO`                   | Root log level              |
 
@@ -54,11 +59,14 @@ latest Alembic revision (`alembic upgrade head`).
 | ------- | ------------------------------------ | ---------------------------------------------- |
 | `POST`  | `/score`                             | Score an SME application and persist it        |
 | `GET`   | `/`                                  | Service metadata (public)                      |
-| `GET`   | `/health`                            | Liveness and database check (public)           |
-| `POST`  | `/auth/login`                        | Sign in, returns an 8-hour JWT (public)        |
+| `GET`   | `/health`                            | Status and database check (public)             |
+| `GET`   | `/health/live`, `/health/ready`      | Liveness; readiness, 503 when not ready (public) |
+| `POST`  | `/auth/login`                        | Sign in, returns an 8-hour JWT (public; lockout and rate limit) |
+| `POST`  | `/auth/logout`                       | Revoke this session's token                    |
 | `GET`   | `/auth/me`                           | The signed-in officer                          |
 | `GET`   | `/auth/users`                        | List officer accounts (admin)                  |
 | `POST`  | `/auth/users`                        | Create an officer account (admin)              |
+| `PATCH` | `/auth/users/{id}/status`            | Disable or re-enable an account (admin)        |
 | `GET`   | `/score/stats`                       | Portfolio totals for the dashboard             |
 | `GET`   | `/score/applications`                | List applications (filter by decision, final decision, pending review) |
 | `GET`   | `/score/applications/{id}`           | Fetch one application                          |

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from models.database import Borrower, User, get_db
+from models.database import Borrower, User, get_db, mask_phone
 from schemas import (
     BorrowerCreate,
     BorrowerHistory,
@@ -60,7 +60,13 @@ async def list_borrowers(
             )
         )
     borrowers = db.scalars(statement.offset(offset).limit(limit)).all()
-    return [BorrowerResponse.model_validate(borrower) for borrower in borrowers]
+    # 2.3: phone numbers are masked in the list; GET /borrowers/{ref} has them.
+    return [
+        BorrowerResponse.model_validate(borrower).model_copy(
+            update={"contact_phone": mask_phone(borrower.contact_phone)}
+        )
+        for borrower in borrowers
+    ]
 
 
 @router.post(

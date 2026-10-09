@@ -9,6 +9,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname ?? "/";
+  const sessionEnded = new URLSearchParams(location.search).get("session") === "expired";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -50,8 +51,15 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="card px-6 py-7">
           <h1 className="text-lg font-bold text-slate-900">Sign in</h1>
           <p className="mt-1 text-sm text-slate-500">
-            On-premise officer accounts only. Tokens expire after 8 hours.
+            On-premise officer accounts only. Sessions expire after 8 hours. Five
+            wrong passwords lock the username for 15 minutes.
           </p>
+
+          {sessionEnded && !error ? (
+            <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+              Your session has ended. Please sign in again.
+            </p>
+          ) : null}
 
           <label className="field-label mt-6" htmlFor="username">
             Username

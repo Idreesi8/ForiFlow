@@ -6,6 +6,87 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-09
+
+Production and security hardening for a controlled pilot. No change to the
+model, its weights or metrics, the scoring formula, SHAP, the EWS method or
+thresholds, the credit policy, the decision workflow, borrower history or the
+meaning of audit entries. ForiFlow has not undergone an independent
+penetration test or formal security certification; see
+[SECURITY.md](SECURITY.md) for the baseline and its limits.
+
+### Added
+
+- **Sign-in protection.** 5 wrong passwords for one username within 15
+  minutes lock it for 15 minutes (`429` with `Retry-After`), for unknown
+  usernames too, so a lock reveals nothing; the lock lifts by itself. At most
+  30 sign-in requests per 5 minutes from one address. An unknown username
+  costs the same bcrypt time as a wrong password.
+- **Sign-out revokes the token** (`POST /auth/logout`). Tokens now carry a
+  random `jti` and `iss=foriflow`; all claims are required.
+- **Disable / re-enable accounts** (`PATCH /auth/users/{id}/status`, Team &
+  Roles page). A disabled account is refused on its next request and at
+  sign-in (`403` only with the correct password). An admin cannot disable
+  themselves or the last enabled admin. Nothing is deleted.
+- **Password rule** when a password is set: 12–72 characters, not a common
+  password, sequence, near-repetition, the placeholder, or containing the
+  username (NIST SP 800-63B style; sign-in does not re-check it).
+- **Production mode** (`FORIFLOW_ENV=production`, set by Docker Compose): the
+  API refuses to start on a missing, placeholder or short JWT secret, SQLite,
+  an empty, placeholder or well-known database password, or invalid CORS /
+  token / body settings. The log names settings, never values.
+- **`/health/live` and `/health/ready`** (`503` naming the failing check);
+  the backend healthcheck now uses readiness.
+- **Security headers** on every API response (CSP, nosniff, frame deny,
+  referrer, permissions, COOP/CORP, `Cache-Control: no-store`, HSTS over
+  HTTPS) and on the dashboard (nginx CSP `default-src 'self'`, no inline
+  script). `Server` header removed from both.
+- **Request body limit**: 3 MiB in the API (`413`; malformed
+  `Content-Length` `400`), 4 MiB in nginx.
+- **Generic 500 handler**: `{"detail": …, "request_id": …}`, traceback only in
+  the server log.
+- **Backup, verify, restore**: `backup.bat`, `verify-backup.bat` (restore into
+  a scratch database and compare counts, migration, newest audit entry and
+  audit triggers), `restore.bat` (safety backup, typed confirmation); shell
+  equivalents in `scripts/`. See [docs/backup-restore.md](docs/backup-restore.md).
+- **Audit events**: `auth.login_locked`, `auth.login_refused_locked`,
+  `auth.login_rate_limited` (once per window), `auth.login_refused_disabled`,
+  `auth.logout`, `user.disabled`, `user.enabled`. Sign-in and sign-out record
+  a `session_id` (the `jti`), never the token.
+- Migration `0010_security_hardening`: `users.is_active` (existing accounts
+  enabled), `login_attempts`, `revoked_tokens`. Reversible.
+- Tests: `test_security.py` (51; the role matrix is read off every route, so
+  a new route without its check fails) and `test_postgres_security.py` (7).
+- `SECURITY.md`, `docs/backup-restore.md`.
+
+### Changed (security behaviour, deliberate)
+
+- **Officers sign in again once after the upgrade**: tokens issued before
+  2.3 have no `jti`/`iss` and are refused.
+- **Interactive docs are off in production** unless `FORIFLOW_ENABLE_DOCS=true`
+  (a warning is then logged). They stay on in development.
+- **CORS** comes from `FORIFLOW_CORS_ORIGINS`; none in production by default,
+  `*` refused, no credentials mode (the token is a header).
+- **Phone numbers are masked** in `GET /score/applications` and
+  `GET /borrowers` lists; the full number stays on the record and the
+  Reminders page.
+- **nginx runs as an unprivileged user**; both app containers drop every
+  Linux capability and set `no-new-privileges`.
+- `422` responses no longer carry Pydantic documentation links.
+- The dashboard signs out through the API, refreshes the role from
+  `/auth/me`, and on any `401` returns to sign-in with "Your session has
+  ended"; 5xx errors show a reference id instead of server text.
+- Frontend Docker build checks that the native build modules load and
+  reinstalls once if npm skipped one (the 2.2.1 build failure).
+
+### Security fixes in dependencies
+
+- `axios` 1.19.0 → 1.20.0 (12 advisories, high) and `source-map-js` 1.2.1 →
+  1.2.2 (high, build-time only), via `npm audit fix` without `--force`.
+  `npm audit`: 0 vulnerabilities. `pip-audit`: no known vulnerabilities in the
+  runtime Python packages. Remaining, non-blocking: `passlib` is unmaintained
+  (see SECURITY.md §11).
+
 ## [2.2.1] - 2026-10-08
 
 Fix for two faults found when 2.2.0 was deployed on Docker with PostgreSQL.

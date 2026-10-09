@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { canManageTeam } from "../api/auth.js";
-import { apiErrorMessage, createUser, fetchUsers } from "../api/client.js";
+import { canManageTeam, getStoredUsername } from "../api/auth.js";
+import { apiErrorMessage, createUser, fetchUsers, setUserStatus } from "../api/client.js";
 import { ErrorState, LoadingState, Spinner } from "../components/common/States.jsx";
 import { formatDate } from "../lib/format.js";
 
@@ -9,7 +9,7 @@ const ROLES = [
   {
     value: "admin",
     label: "Admin",
-    can: "Everything a manager can, plus approving above the manager limit or against a Decline recommendation, deciding escalated cases, setting the credit policy and creating officer accounts.",
+    can: "Everything a manager can, plus approving above the manager limit or against a Decline recommendation, deciding escalated cases, setting the credit policy, reading the audit trail, and creating, disabling and re-enabling officer accounts.",
   },
   {
     value: "manager",
@@ -55,6 +55,32 @@ export default function TeamPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const me = getStoredUsername();
+  const [statusError, setStatusError] = useState(null);
+  const [changingId, setChangingId] = useState(null);
+
+  const toggleStatus = async (user) => {
+    const enable = !user.is_active;
+    const verb = enable ? "Re-enable" : "Disable";
+    const reason = window.prompt(
+      `${verb} ${user.username}? ${
+        enable ? "They can sign in again." : "They are signed out at once and cannot sign in."
+      }\n\nReason (recorded in the audit trail, optional):`,
+      "",
+    );
+    if (reason === null) return;
+    setChangingId(user.id);
+    setStatusError(null);
+    try {
+      await setUserStatus(user.id, enable, reason.trim());
+      await load();
+    } catch (requestError) {
+      setStatusError(apiErrorMessage(requestError, `Could not ${verb.toLowerCase()} the account.`));
+    } finally {
+      setChangingId(null);
+    }
+  };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -119,19 +145,57 @@ export default function TeamPage() {
                     <tr className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
                       <th className="px-5 py-3 font-medium">Username</th>
                       <th className="px-3 py-3 font-medium">Role</th>
-                      <th className="px-5 py-3 font-medium">Created</th>
+                      <th className="px-3 py-3 font-medium">Status</th>
+                      <th className="px-3 py-3 font-medium">Created</th>
+                      <th className="px-5 py-3 font-medium">
+                        <span className="sr-only">Action</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {users.map((user) => (
-                      <tr key={user.id}>
-                        <td className="px-5 py-3 font-medium text-slate-900">{user.username}</td>
-                        <td className="px-3 py-3 capitalize">{user.role}</td>
-                        <td className="px-5 py-3 text-slate-500">{formatDate(user.created_at)}</td>
-                      </tr>
-                    ))}
+                    {users.map((user) => {
+                      const active = user.is_active !== false;
+                      const isMe = user.username === me;
+                      return (
+                        <tr key={user.id}>
+                          <td className="px-5 py-3 font-medium text-slate-900">{user.username}</td>
+                          <td className="px-3 py-3 capitalize">{user.role}</td>
+                          <td className="px-3 py-3">
+                            <span
+                              className={`badge ${
+                                active
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {active ? "Enabled" : "Disabled"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-slate-500">{formatDate(user.created_at)}</td>
+                          <td className="px-5 py-3 text-right">
+                            {isMe ? (
+                              <span className="text-xs text-slate-400">You</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn-secondary px-2.5 py-1 text-xs"
+                                disabled={changingId === user.id}
+                                onClick={() => toggleStatus(user)}
+                              >
+                                {active ? "Disable" : "Re-enable"}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+                {statusError ? (
+                  <p role="alert" className="mx-5 my-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                    {statusError}
+                  </p>
+                ) : null}
               </div>
             )}
           </div>
@@ -174,7 +238,10 @@ export default function TeamPage() {
                   autoComplete="new-password"
                   className="field-input"
                 />
-                <p className="mt-1 text-xs text-slate-500">12 to 72 characters.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  12 to 72 characters. A passphrase works well. Common passwords,
+                  sequences and the username are refused.
+                </p>
               </div>
               <div>
                 <label className="field-label" htmlFor="team-role">

@@ -1329,6 +1329,31 @@ class UserResponse(BaseModel):
     username: str
     role: UserRole
     created_at: datetime
+    is_active: bool = Field(
+        default=True, description="False when an admin has disabled the account (2.3)."
+    )
+
+
+class UserStatusUpdate(BaseModel):
+    """``PATCH /auth/users/{id}/status``: enable or disable an account (admin)."""
+
+    is_active: bool
+    reason: str | None = Field(default=None, max_length=300)
+
+
+class ReadinessCheck(BaseModel):
+    name: str
+    ok: bool
+    detail: str
+
+
+class ReadinessResponse(BaseModel):
+    """``GET /health/ready``. Names what is not ready; never a secret's value."""
+
+    status: str = Field(..., description="'ready' or 'not_ready'.")
+    version: str
+    environment: str
+    checks: list[ReadinessCheck]
 
 
 class TokenResponse(BaseModel):

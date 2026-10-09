@@ -439,15 +439,16 @@ flowchart TB
     officer[Officer browser] --> fe
 ```
 
-Images: `foriflow-backend:2.2.1` (`python:3.12-slim` + `libgomp1`) and
-`foriflow-frontend:2.2.1` (Node 20 build, nginx 1.27). See
+Images: `foriflow-backend:2.3.0` (`python:3.12-slim` + `libgomp1`) and
+`foriflow-frontend:2.3.0` (Node 20 build, nginx 1.27, running as the unprivileged `nginx` user). See
 [deployment.md](deployment.md).
 
 ## Repository map
 
 | Path | Responsibility |
 |------|----------------|
-| `backend/main.py` | App factory, CORS, lifespan (eager model load) |
+| `backend/main.py` | App factory (`create_app`), CORS, security middleware, error handlers, health/readiness, lifespan (configuration check, eager model load) |
+| `backend/services/login_guard.py`, `security_config.py`, `http_security.py` | Sign-in lockout and rate limit; start-up configuration checks; security headers and body-size limit (2.3) |
 | `backend/routers/` | `/auth`, `/score` (incl. Manual Review decision and stats), `/explain`, `/ews`, `/borrowers`, `/audit`, `/model`, `/portfolio` |
 | `backend/services/` | Scoring engines, EWS rules, auth (bcrypt, JWT, roles), borrowers, audit trail, model registry |
 | `backend/alembic/` | PostgreSQL schema migrations (0001–0005) |

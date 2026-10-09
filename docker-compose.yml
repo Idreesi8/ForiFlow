@@ -34,7 +34,7 @@ services:
   backend:
     build:
       context: ./backend
-    image: foriflow-backend:2.2.1
+    image: foriflow-backend:2.3.0
     container_name: foriflow-backend
     restart: unless-stopped
     env_file:
@@ -45,11 +45,19 @@ services:
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
+      # 2.3: production mode. The API refuses to start on a placeholder or
+      # weak secret, keeps CORS closed and turns /docs off unless .env sets
+      # FORIFLOW_ENABLE_DOCS=true. See SECURITY.md.
+      FORIFLOW_ENV: ${FORIFLOW_ENV:-production}
       FORIFLOW_SCORING_ENGINE: ${FORIFLOW_SCORING_ENGINE:-auto}
       FORIFLOW_LOG_LEVEL: ${FORIFLOW_LOG_LEVEL:-INFO}
-      FORIFLOW_ENABLE_DOCS: ${FORIFLOW_ENABLE_DOCS:-true}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env}
       MANAGER_APPROVAL_LIMIT_PKR: ${MANAGER_APPROVAL_LIMIT_PKR:-2000000}
+    # Nothing in the API needs a Linux capability or a setuid binary.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     volumes:
       # Legacy SQLite file (if any) stays readable for the one-time copy script.
       - foriflow-data:/data
@@ -63,7 +71,9 @@ services:
         - CMD
         - python
         - -c
-        - import urllib.request, sys; sys.exit(0 if urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=5).status == 200 else 1)
+        # /health/ready (2.3): 200 only when the database answers, the trained
+        # model is serving and the configuration is safe; 503 otherwise.
+        - import urllib.request, sys; sys.exit(0 if urllib.request.urlopen("http://127.0.0.1:8000/health/ready", timeout=5).status == 200 else 1)
       interval: 15s
       timeout: 10s
       retries: 5
@@ -75,9 +85,14 @@ services:
   frontend:
     build:
       context: ./frontend
-    image: foriflow-frontend:2.2.1
+    image: foriflow-frontend:2.3.0
     container_name: foriflow-frontend
     restart: unless-stopped
+    # nginx runs as its unprivileged user on port 3000 (see frontend/Dockerfile).
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
       # Loopback only — this compose stack is a single-laptop pilot, not LAN.
       - "127.0.0.1:3000:3000"

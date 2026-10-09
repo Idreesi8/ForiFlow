@@ -79,7 +79,7 @@ Set these in `.env` (the backend `env_file` makes them available to
 
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
-| `FORIFLOW_ADMIN_PASSWORD` | Yes for seed | none | **At least 12 characters** (enforced) and not the placeholder. The seed script reads it from the environment only — it is not accepted as a CLI flag and is never logged. |
+| `FORIFLOW_ADMIN_PASSWORD` | Yes for seed | none | **12 to 72 characters**, not the placeholder, not a common password or sequence, not containing the username (enforced, 2.3). **Delete it from `.env` after seeding**: `.env` is passed into the API container. The seed script reads it from the environment only — it is not accepted as a CLI flag and is never logged. |
 | `FORIFLOW_ADMIN_USERNAME` | No | `admin` | Officer username. |
 | `FORIFLOW_ADMIN_ROLE` | No | `admin` | `admin` or `analyst`. Both roles score and monitor; only `admin` can approve or reject Manual Review cases, resolve EWS alerts and create accounts (see [`api-reference.md`](api-reference.md#authentication-and-roles)). |
 
@@ -112,8 +112,9 @@ re-check length. Rotate such a password by setting a new
 `FORIFLOW_ADMIN_PASSWORD` of 12+ characters in `.env` and running the
 `--reset-password` command above.
 
-Further officers are created by an admin through `POST /auth/users` (Swagger
-at `/docs` → Authorize → `POST /auth/users`); they default to `analyst`.
+Further officers are created by an admin on the **Team & Roles** page (or
+`POST /auth/users`); they default to `analyst`. The same page disables and
+re-enables accounts (2.3).
 
 ## Optional application flags
 
@@ -125,7 +126,11 @@ They are not required for Compose interpolation.
 | `FORIFLOW_DATABASE_URL` | unset | If set, this SQLAlchemy URL **wins** over `POSTGRES_*`. Encode `@`, `:`, and `/` in the password. Example shape: `postgresql+psycopg2://foriflow:<url-encoded-password>@db:5432/foriflow` |
 | `FORIFLOW_SCORING_ENGINE` | `auto` | See below. |
 | `FORIFLOW_LOG_LEVEL` | `INFO` | Python logging level. |
-| `FORIFLOW_ENABLE_DOCS` | `true` | Set `false` to disable `/docs`, `/redoc`, and `/openapi.json`. |
+| `FORIFLOW_ENV` | `production` in Docker | `production` refuses to start on an unsafe configuration (placeholder/short JWT secret, weak or placeholder database password, SQLite, `*` CORS) and turns the docs off. See [SECURITY.md](../SECURITY.md). |
+| `FORIFLOW_ENABLE_DOCS` | off in production | Set `true` to serve `/docs`, `/redoc`, `/openapi.json` (a warning is logged). |
+| `FORIFLOW_JWT_EXPIRE_MINUTES` | `480` | Session length, 15 to 720. |
+| `FORIFLOW_CORS_ORIGINS` | none in production | Comma-separated origins; `*` is refused. Not needed for the Docker stack. |
+| `FORIFLOW_MAX_BODY_BYTES` | `3145728` | Largest request body. |
 
 ### `FORIFLOW_SCORING_ENGINE`
 
@@ -175,7 +180,7 @@ time before failures count.
 | Service | Container | Check | Timing |
 |---------|-----------|-------|--------|
 | `db` | `foriflow-db` | `pg_isready` as `POSTGRES_USER` against `POSTGRES_DB` | every 5s, timeout 5s, 10 retries, `start_period` 10s |
-| `backend` | `foriflow-backend` | HTTP GET `http://127.0.0.1:8000/health` inside the container must return **200** | every 15s, timeout 10s, 5 retries, `start_period` **120s** (ensemble, scaler, and SHAP load before the API accepts traffic) |
+| `backend` | `foriflow-backend` | HTTP GET `http://127.0.0.1:8000/health/ready` inside the container must return **200** (database reachable, trained model serving, configuration safe; 2.3) | every 15s, timeout 10s, 5 retries, `start_period` **120s** (ensemble, scaler, and SHAP load before the API accepts traffic) |
 | `frontend` | `foriflow-frontend` | `wget --spider http://127.0.0.1:3000/` | every 15s, timeout 5s, 3 retries, `start_period` 10s |
 
 ```bash
@@ -187,8 +192,9 @@ All three should show `healthy` (or `Up ... (healthy)`).
 On backend startup, `init_db()` runs **Alembic `upgrade head`** against
 PostgreSQL (revisions `0001_initial`, `0002_users`,
 `0003_officer_decisions`, `0004_portfolio_fields` and
-`0005_roles_and_evidence` on an empty database; an existing database only gets
-the revisions it is missing). Schema is owned by Alembic, not by ad hoc table creation.
+`0005_roles_and_evidence` … through `0010_security_hardening` on an empty
+database; an existing database only gets the revisions it is missing). Take a
+backup first: [backup-restore.md](backup-restore.md). Schema is owned by Alembic, not by ad hoc table creation.
 
 Postgres data lives on the named volume `foriflow-pgdata`. It survives
 `docker compose down`. Wipe it with `docker compose down -v`.
@@ -198,13 +204,12 @@ Postgres data lives on the named volume `foriflow-pgdata`. It survives
 Replace the password placeholder with the value from `.env`. Do not paste
 real secrets into tickets or chat logs.
 
-1. **Liveness (no token)** — `GET /health` returns **200**:
+1. **Readiness (no token)** — `GET /health/ready` returns **200** and
+   `"status": "ready"` (503 names the failing check):
 
    ```bash
-   curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/health
+   curl -sS http://127.0.0.1:8000/health/ready
    ```
-
-   A connected database reports `"database": "connected"` in the JSON body.
 
 2. **Protected route without a token** — **401**:
 
@@ -220,7 +225,7 @@ real secrets into tickets or chat logs.
      -d '{"username":"admin","password":"<generate-a-strong-random-password>"}'
    ```
 
-   Use the returned `access_token` (HS256 JWT, 8-hour lifetime):
+   Use the returned `access_token` (HS256 JWT, 8-hour lifetime by default; `POST /auth/logout` revokes it):
 
    ```bash
    curl -sS -o /dev/null -w "%{http_code}\n" \
@@ -231,7 +236,7 @@ real secrets into tickets or chat logs.
 4. **Dashboard** — open http://localhost:3000. An unauthenticated browser is
    redirected to `/login`. After sign-in, the shell should show **API online**.
 
-`GET /` and `/docs` (when `FORIFLOW_ENABLE_DOCS=true`) stay unauthenticated.
+`GET /`, `/health`, `/health/live`, `/health/ready` and `/docs` (only when `FORIFLOW_ENABLE_DOCS=true`; off by default in production) stay unauthenticated.
 
 ## Access points
 
@@ -239,8 +244,10 @@ real secrets into tickets or chat logs.
 |-----|------|
 | http://127.0.0.1:3000 | Officer dashboard (nginx on host port **3000**) |
 | http://127.0.0.1:8000 | ForiFlow API (uvicorn on host port **8000**) |
-| http://127.0.0.1:8000/health | Liveness |
-| http://127.0.0.1:8000/docs | Swagger UI (unless docs are disabled) |
+| http://127.0.0.1:8000/health/live | Liveness |
+| http://127.0.0.1:8000/health/ready | Readiness (Docker healthcheck) |
+| http://127.0.0.1:8000/health | Status summary (dashboard) |
+| http://127.0.0.1:8000/docs | Swagger UI (only when `FORIFLOW_ENABLE_DOCS=true` in production) |
 | http://127.0.0.1:8000/auth/login | `POST` JSON `{ "username", "password" }` → JWT |
 
 The API, dashboard, and PostgreSQL are published as **`127.0.0.1` only** —
@@ -260,6 +267,9 @@ backend container.
 | Logs | `docker compose logs -f` |
 | Rebuild after code changes | `docker compose up -d --build` |
 | Seed / rotate admin | `docker compose exec backend python -m scripts.seed_admin` (add `--reset-password` to rotate) |
+| Back up the database | `backup.bat` (`scripts/backup.sh`) |
+| Check a backup restores | `verify-backup.bat` (`scripts/verify-backup.sh`) |
+| Restore a backup (destructive) | `restore.bat <file>` (`scripts/restore.sh <file>`); see [backup-restore.md](backup-restore.md) |
 | Stop, keep Postgres data | `docker compose down` |
 | Stop and wipe volumes | `docker compose down -v` |
 
@@ -267,7 +277,7 @@ backend container.
 
 ```bash
 docker compose build
-docker save foriflow-backend:2.2.1 foriflow-frontend:2.2.1 postgres:16.6 -o foriflow-images.tar
+docker save foriflow-backend:2.3.0 foriflow-frontend:2.3.0 postgres:16.6 -o foriflow-images.tar
 ```
 
 Copy the tarball, `docker-compose.yml`, and a filled `.env` (never the
@@ -292,6 +302,9 @@ Then seed the admin user as in [First-run setup](#first-run-setup-creating-the-a
 | `Ports are not available` | A local `uvicorn` or `npm run dev` holds 8000 or 3000. Stop it. |
 | Dashboard shows "API offline" | Backend still inside the 120s health `start_period` (ensemble load) or unhealthy. `docker compose logs backend`. |
 | `502 Bad Gateway` | Backend container exited. Check its logs. |
+| Backend keeps restarting; log says `Refusing to start in production` | 2.3 production mode found an unsafe setting; the log names it (never its value). Fix it in `.env` (e.g. a 32+ character `JWT_SECRET_KEY`, a non-default `POSTGRES_PASSWORD`) and run `docker compose up -d`. |
+| Sign-in says "Try again in N minutes" | Five wrong passwords locked that username for 15 minutes, or one computer made more than 30 attempts in 5 minutes. Wait; the lock lifts by itself. |
+| `/docs` returns 404 | Production mode turns the docs off. Set `FORIFLOW_ENABLE_DOCS=true` in `.env` while you need them. |
 | Login 401 with a password you just set | Seed was not run, or the hash was not rotated (`--reset-password`). |
 | `Scoring engine ready: surrogate-linear-v1` | Artefacts were not baked into the image, or `FORIFLOW_SCORING_ENGINE=surrogate`. Rebuild with artefacts; use `auto` or `ml` for a pilot. |
 | `start.sh: bash\r: No such file` | CRLF line endings. `.gitattributes` prevents this; `git add --renormalize .` if it already happened. |

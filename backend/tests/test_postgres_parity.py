@@ -59,6 +59,8 @@ def postgres_session_factory_fixture() -> Generator[sessionmaker[Session], None,
     engine = create_engine(POSTGRES_URL, future=True, pool_pre_ping=True)
     with engine.begin() as connection:
         connection.execute(text("DROP TABLE IF EXISTS alembic_version CASCADE"))
+        connection.execute(text("DROP TABLE IF EXISTS login_attempts CASCADE"))
+        connection.execute(text("DROP TABLE IF EXISTS revoked_tokens CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS ews_tracking CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS alerts CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS applications CASCADE"))
