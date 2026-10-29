@@ -1,5 +1,22 @@
 # Scripts
 
+## Docker runtime socket recovery (Windows)
+
+If Docker Desktop reports `initializing Inference manager` / `dockerInference`
+and Windows error 1920, fully close Docker Desktop, then preview:
+
+```powershell
+.\scripts\repair-docker-runtime.ps1 -WhatIf
+```
+
+Run without `-WhatIf` to apply the confirmed repair, then start Docker Desktop
+and retry `start.bat`. The script requires a recent matching startup failure,
+refuses running Docker processes, validates the exact two runtime directories
+and their zero-byte socket contents, and renames/recreates those directories.
+It preserves the originals and a manifest under `archive/docker-runtime-recovery/`.
+It does not delete data disks, volumes, containers or settings. This is a
+workaround for the recurring Docker startup issue, not an upstream fix.
+
 ## Screenshot capture
 
 The dashboard needs a JWT login, so use the authenticated capture script. From

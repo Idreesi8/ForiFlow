@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, case, func, or_, select
@@ -20,6 +20,7 @@ from models.database import (
 )
 from schemas import (
     ApplicationSummary,
+    ApplicationRegister,
     Decision,
     DecisionHistory,
     DecisionStatus,
@@ -48,6 +49,8 @@ from services.audit_service import Action, Audit
 from services.auth_service import get_current_user, require_manager
 from services.scoring_service import ScoringService, get_scoring_service
 from services.statement_service import StatementError, parse_statement
+from services.statement_resilience import assess_statement_resilience
+from services.application_register import build_register
 
 router = APIRouter(
     prefix="/score",
@@ -213,6 +216,8 @@ async def score_application(
         details={
             "borrower_created": borrower_created,
             "turnover_from_statement": bool(evidence and evidence.get("matches_statement")),
+            "statement_source_sha256": evidence.get('source_sha256') if evidence else None,
+            "statement_parser_version": evidence.get('parser_version') if evidence else None,
             # Earlier applications on file for this borrower, so repeated
             # attempts for the same business are visible from the first entry.
             "borrower_prior_applications": int(prior[0]),
@@ -315,7 +320,21 @@ async def score_application(
         explanation=explanation if include_explanation else None,
         created_at=application.created_at,
         scored_by=application.scored_by,
+        turnover_evidence=evidence,
     )
+
+
+@router.get('/register', response_model=ApplicationRegister, summary='Search the complete application register')
+async def application_register(
+    db: DbSession,
+    search: Annotated[str, Query(max_length=120)] = '',
+    status: Literal['Awaiting decision', 'Pending', 'Escalated', 'Approved', 'Rejected', 'Superseded'] | None = None,
+    sort: Literal['id', 'applicant_name', 'business_name', 'loan_amount_pkr', 'tenure_months', 'risk_score', 'decision', 'final', 'created_at'] = 'created_at',
+    direction: Literal['asc', 'desc'] = 'desc',
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0, le=1_000_000_000)] = 0,
+) -> ApplicationRegister:
+    return build_register(db, search=search, status=status, sort=sort, direction=direction, limit=limit, offset=offset)
 
 
 @router.get(
@@ -415,15 +434,15 @@ def _turnover_evidence(applicant: SMEApplicant) -> dict | None:
     except StatementError as exc:
         raise HTTPException(status_code=422, detail=f"Statement: {exc}") from None
 
-    def close(typed: float, computed: float) -> bool:
-        return abs(typed - computed) <= max(1.0, 0.01 * computed)
-
     return {
         **summary.as_dict(),
-        "matches_statement": close(
-            applicant.monthly_digital_payments, summary.suggested_monthly_digital_payments
-        )
-        and close(applicant.cash_flow_proxy, summary.suggested_cash_flow_proxy),
+        'resilience': assess_statement_resilience(
+            summary, applicant.loan_amount_pkr, applicant.tenure_months
+        ),
+        "matches_statement": (
+            applicant.monthly_digital_payments == summary.suggested_monthly_digital_payments
+            and applicant.cash_flow_proxy == summary.suggested_cash_flow_proxy
+        ),
     }
 
 

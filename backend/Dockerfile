@@ -14,14 +14,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
+COPY requirements.txt constraints-linux.txt ./
 # Demo laptops are often on slow or flaky connections, where pip's default 15s
 # read timeout expires part-way through the large scientific wheels. The cache
 # mount lives in the build cache rather than in an image layer, so a retry
 # resumes from the wheels already fetched instead of re-downloading ~500 MB,
 # and the image stays no bigger for it.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --timeout 120 --retries 10 -r requirements.txt
+    pip install --timeout 120 --retries 10 -c constraints-linux.txt -r requirements.txt
 
 COPY . .
 

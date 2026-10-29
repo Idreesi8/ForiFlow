@@ -6,6 +6,18 @@ Bureau-style fields are officer-entered (there is no live **ECIB** connector).
 SHAP explanations are stored to support an **SBP**-oriented review; ForiFlow
 is not SBP-certified.
 
+Feature research is separate from serving-model training. See
+[`docs/feature-engineering-2026-10-28.md`](../docs/feature-engineering-2026-10-28.md)
+for the measured four-candidate, train-only study and reproduction commands.
+Authenticated `GET /model/feature-study` returns verified research, never a new
+credit decision or replacement model.
+
+`POST /model/cashflow-intelligence` provides authenticated, unsaved local
+time-series analysis from CSV. See the
+[method and limits](../docs/cashflow-intelligence-2026-10-28.md) for the robust
+trend, chronological forecasting comparison and empirical range. It does not
+invoke the credit scorer, register a model or write case records.
+
 ## Quick start
 
 ```bash
@@ -18,6 +30,15 @@ set FORIFLOW_ADMIN_PASSWORD=<12+ characters>
 python -m scripts.seed_admin                   # first officer account (admin)
 uvicorn main:app --reload --port 8000
 ```
+
+Docker's Linux Python 3.12 image also uses `constraints-linux.txt`, captured from
+the verified serving runtime. Rebuilding an application fix therefore retains
+those dependency versions. Dependency upgrades require an intentional constraint
+update and another regression/readiness check. Native Windows installs use the
+platform markers in `requirements.txt`, including `tzdata` for Asia/Karachi.
+GitHub's Linux backend checks use the same constraint file as Docker; both
+dependency files participate in the CI cache key, and `pip check` verifies
+the installed dependency graph before the tests run.
 
 - Swagger UI: http://localhost:8000/docs (development mode; production turns it off)
 - Health: http://localhost:8000/health, `/health/live`, `/health/ready`
@@ -33,6 +54,19 @@ Run the tests from the same directory:
 ```bash
 pytest
 ```
+
+On Windows, run all PostgreSQL integration tests against a new disposable
+cluster from the repository root:
+
+```powershell
+.\scripts\test-postgres.ps1
+```
+
+Supply `-BinaryDirectory` for your PostgreSQL `bin` directory, or use the
+project-local `.local/postgresql-16.15/pgsql/bin` runtime. The runner binds only
+to loopback, creates its own random test database/password, and removes its
+generated data after shutdown. It never points at the configured pilot database.
+Details: [database verification](../docs/database-verification-2026-10-22.md).
 
 ## Configuration
 
@@ -55,6 +89,29 @@ latest Alembic revision (`alembic upgrade head`).
 
 ## Endpoints
 
+`POST /model/operating-checks` and `GET /model/applications/{id}/operating-checks`
+calculate separate principal, balance/flow, inventory-cycle and receipts/headcount
+checks. Statement receipts stability can be compared with the entered consistency
+estimate. These authenticated, no-store routes do not run credit inference or
+persist data. `GET /model/sme-field-research` reports actual research acquisitions
+and why new trained effects remain unvalidated.
+[Method, sources and verification](../docs/operating-fields-2026-10-28.md).
+
+Authenticated ML additions: `GET /model/applicability` returns the additional
+input-anomaly model's provenance; `GET /model/applications/{id}/diagnostics`
+returns read-only, source-verified ensemble checks and 25 hypothetical predictions.
+Unverifiable historical cases receive an explicit unavailable result. A missing
+anomaly model leaves verified credit checks available with partial status.
+
+`POST /model/input-checks` inspects only loan amount, monthly digital payments,
+cash-flow proxy, repayment-history score and years trading. All five numeric
+values are required; unknown fields (including identity and documents) are
+rejected. The route does not call credit inference, policy evaluation, model
+registration or persistence. It returns input transformations and the existing
+anomaly model result, with `Cache-Control: no-store`. It supports the current
+three-feature contract; other engines/contracts return unavailable results.
+[Verification](../docs/input-checks-2026-10-27.md).
+
 | Method  | Path                                 | Purpose                                        |
 | ------- | ------------------------------------ | ---------------------------------------------- |
 | `POST`  | `/score`                             | Score an SME application and persist it        |
@@ -70,7 +127,8 @@ latest Alembic revision (`alembic upgrade head`).
 | `GET`   | `/score/stats`                       | Portfolio totals for the dashboard             |
 | `GET`   | `/score/applications`                | List applications (filter by decision, final decision, pending review) |
 | `GET`   | `/score/applications/{id}`           | Fetch one application                          |
-| `POST`  | `/score/applications/{id}/review`    | Approve or reject a Manual Review case (admin) |
+| `POST`  | `/score/applications/{id}/decision`  | Officer action on an application: approve, reject or escalate within recorded authority |
+| `POST`  | `/score/applications/{id}/review`    | Compatibility route for approval/rejection (manager or admin, within authority) |
 | `POST`  | `/explain/{application_id}`          | Generate the SHAP explanation                  |
 | `GET`   | `/explain/{application_id}`          | Read the stored explanation                    |
 | `POST`  | `/ews/observations` (or `/ews/monitor`) | Record a monitored month (never overwrites) |
@@ -82,19 +140,25 @@ latest Alembic revision (`alembic upgrade head`).
 
 ### Decision policy
 
-The score runs from 0 (worst) to 100 (best):
+The score runs from 0 (worst) to 100 (best). The default demonstration policy is:
 
 | Score range | Decision      | Risk band   |
 | ----------- | ------------- | ----------- |
-| 0 – 40      | Rejected      | High Risk   |
-| 41 – 70     | Manual Review | Medium Risk |
-| 71 – 100    | Approved      | Low Risk    |
+| 0 ≤ score ≤ 40   | Decline       | High Risk   |
+| 40 < score ≤ 70  | Manual Review | Medium Risk |
+| 70 < score ≤ 100 | Approve       | Low Risk    |
 
-A Manual Review case is decided by an admin (`Approved` or `Rejected`, with a
-written reason of at least 10 characters). The model's band is kept in
-`decision` and the officer's call, name and time sit beside it, so the file
-shows both. A recorded decision cannot be changed. Every application also
-records the officer who scored it.
+These are recommendations, not final decisions. A versioned credit policy can
+set different cutoffs; each assessment keeps the policy and bands that applied
+when it was scored. Fractional scores have no gaps between bands.
+
+Every new application awaits an officer decision, regardless of its recommendation.
+Managers and admins act within the application's recorded approval authority;
+manager approvals have a configured amount limit and escalation rules.
+An analyst cannot decide. The officer supplies a written reason of at least
+10 characters. The recommendation, final decision, officer and time remain on
+file; a final recorded decision cannot be changed. The officer who scored
+the application is also recorded.
 
 ### EWS alerting
 
@@ -471,3 +535,28 @@ tests assert fixed arithmetic; the trained ensemble has its own contract tests.
 Services are wired into the routers with FastAPI dependency injection
 (`get_scoring_service`, `get_ews_service`, `get_db`), so tests and alternative
 implementations can substitute their own instances.
+
+### Additional input-anomaly model
+
+`ml/applicability_model.pkl` and its JSON manifest contain an Isolation Forest,
+not a new default-risk classifier. It uses the original non-SMOTE training rows,
+train-only medians, unclipped ratio/years and the same two history levels. A
+fixed training 95th-percentile anomaly threshold flags unusual combinations;
+the validation flag rate is descriptive, not accuracy. The final test is not
+used to fit, tune or evaluate this addition. The original credit artefacts and
+held-out credit metrics remain unchanged.
+
+Reproduce in the matching pinned Linux runtime with the original public CSV
+available locally. From `backend/`, select a new output directory:
+
+```bash
+python -m ml.train_applicability --dataset /path/to/credit_risk_dataset.csv --output-dir /tmp/new-applicability-reference
+```
+
+The trainer refuses to overwrite either existing output file, verifies the
+dataset and all split identities, and never imports the application or accesses
+its database. A newly serialized file need not have the same byte fingerprint.
+Review the manifest and model pair together before deliberately replacing a
+reference. Serving checks their fingerprint, credit-model binding, feature
+order, training identities and scikit-learn version before use. Only locally
+trusted joblib files are supported. [Full method](../docs/ml-diagnostics-2026-10-27.md).

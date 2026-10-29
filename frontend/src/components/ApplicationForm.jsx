@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -7,217 +7,20 @@ import {
   scoreApplication,
   summariseStatement,
 } from "../api/client.js";
+import { FIELD_GROUPS, ALL_FIELDS, validateAssessment, assessmentPayload, assessmentKey, statementReview } from "../lib/assessmentIntake.js";
+import AssessmentReview from "./AssessmentReview.jsx";
 import { contractSummary, unusedFieldNames } from "../lib/featureContract.js";
 import { formatPKR, formatPKRCompact, formatPercent } from "../lib/format.js";
 import PathToApproval from "./PathToApproval.jsx";
+import StatementResilience from "./StatementResilience.jsx";
 import ScoreDial from "./ScoreDial.jsx";
+import ModelInputCheck from "./ModelInputCheck.jsx";
+import OperatingChecks from "./OperatingChecks.jsx";
+import { OPERATING_USES } from "../lib/operatingChecks.js";
 import { useActivePolicy } from "../lib/useActivePolicy.js";
 import { Spinner } from "./common/States.jsx";
+import { useUnsavedWork } from "./UnsavedWork.jsx";
 
-/** Mirrors `BusinessSector` in backend/schemas.py. */
-const BUSINESS_SECTORS = [
-  "Retail",
-  "Wholesale & Trading",
-  "Manufacturing",
-  "Textile & Garments",
-  "Food & Hospitality",
-  "Agriculture & Livestock",
-  "Services",
-  "Transport & Logistics",
-  "Construction",
-  "Other",
-];
-
-/** Field definitions mirror the backend's Pydantic ranges exactly. */
-const FIELD_GROUPS = [
-  {
-    title: "Applicant & business",
-    description: "Identity of the borrower as recorded in the credit file.",
-    fields: [
-      {
-        name: "applicant_name",
-        label: "Applicant name",
-        type: "text",
-        placeholder: "e.g. Ayesha Siddiqui",
-        minLength: 2,
-        maxLength: 120,
-      },
-      {
-        name: "business_name",
-        label: "Business name",
-        type: "text",
-        placeholder: "e.g. Siddiqui Textiles (Faisalabad)",
-        minLength: 2,
-        maxLength: 160,
-      },
-      {
-        name: "business_sector",
-        label: "Business sector",
-        type: "select",
-        options: BUSINESS_SECTORS,
-        optional: true,
-        hint: "For portfolio reports only. The model does not read it.",
-      },
-      {
-        name: "contact_phone",
-        label: "Contact number",
-        type: "text",
-        optional: true,
-        placeholder: "e.g. +923001234567",
-        pattern: /^\+?[0-9]{10,15}$/,
-        patternHint: "Digits only, 10 to 15, with an optional + in front.",
-        hint: "For payment reminders. Optional.",
-      },
-      {
-        name: "borrower_public_id",
-        label: "Existing borrower",
-        type: "text",
-        optional: true,
-        placeholder: "e.g. BRW-000012",
-        pattern: /^BRW-[0-9]{6,}$/i,
-        patternHint: "A borrower reference looks like BRW-000012.",
-        uppercase: true,
-        hint: "Fill in for a repeat borrower. Leave empty for a new business.",
-      },
-      {
-        name: "borrower_identifier_type",
-        label: "Identifier type",
-        type: "select",
-        options: ["CNIC", "NTN"],
-        optional: true,
-        hint: "Optional. The model does not read it.",
-      },
-      {
-        name: "borrower_identifier",
-        label: "CNIC or NTN",
-        type: "text",
-        optional: true,
-        placeholder: "e.g. 35202-1234567-1",
-        pattern: /^[0-9][0-9 -]{5,22}[0-9]$/,
-        patternHint: "Digits, with optional dashes.",
-        hint: "Links repeat applications to the same borrower.",
-      },
-    ],
-  },
-  {
-    title: "Facility requested",
-    description: "Amount and tenure being underwritten.",
-    fields: [
-      {
-        name: "loan_amount_pkr",
-        label: "Loan amount",
-        type: "number",
-        currency: true,
-        min: 1,
-        max: 500000000,
-        step: 50000,
-        hint: "Requested facility in PKR.",
-      },
-      {
-        name: "tenure_months",
-        label: "Tenure (months)",
-        type: "number",
-        min: 3,
-        max: 84,
-        step: 1,
-        integer: true,
-        hint: "Between 3 and 84 months.",
-        unusedByModel: true,
-      },
-    ],
-  },
-  {
-    title: "Alternative data signals",
-    description:
-      "Digital footprint and officer-entered bureau-style signals (not a live bureau feed).",
-    fields: [
-      {
-        name: "monthly_digital_payments",
-        label: "Monthly digital payments",
-        type: "number",
-        currency: true,
-        min: 0,
-        max: 1000000000,
-        step: 25000,
-        hint: "Average monthly Raast, POS and wallet receipts.",
-      },
-      {
-        name: "payment_history_score",
-        label: "Payment history score",
-        type: "number",
-        min: 0,
-        max: 100,
-        step: 1,
-        hint: "Officer-entered 0–100 score on an ECIB-oriented scale. Not pulled from a live bureau. The model reads 0–52 as an adverse record and 53–100 as a clean one.",
-      },
-      {
-        name: "inventory_turnover",
-        label: "Inventory turnover",
-        type: "number",
-        min: 0,
-        max: 50,
-        step: 0.1,
-        hint: "Times stock is sold per year.",
-        unusedByModel: true,
-      },
-      {
-        name: "order_consistency",
-        label: "Order consistency",
-        type: "number",
-        min: 0,
-        max: 100,
-        step: 1,
-        hint: "Stability of order volumes over 12 months (0-100).",
-        unusedByModel: true,
-      },
-      {
-        name: "existing_debt_pkr",
-        label: "Existing debt",
-        type: "number",
-        currency: true,
-        min: 0,
-        max: 1000000000,
-        step: 50000,
-        hint: "Outstanding exposure across all lenders.",
-        unusedByModel: true,
-      },
-      {
-        name: "cash_flow_proxy",
-        label: "Monthly cash flow proxy",
-        type: "number",
-        currency: true,
-        min: 0,
-        max: 1000000000,
-        step: 25000,
-        hint: "Estimated monthly net cash flow.",
-      },
-      {
-        name: "years_in_operation",
-        label: "Years in operation",
-        type: "number",
-        min: 0,
-        max: 100,
-        step: 0.5,
-        hint: "How long the business has been trading.",
-      },
-      {
-        name: "num_employees",
-        label: "Employees",
-        type: "number",
-        min: 0,
-        max: 5000,
-        step: 1,
-        integer: true,
-        hint: "Headcount including owners.",
-        unusedByModel: true,
-      },
-    ],
-  },
-];
-
-const ALL_FIELDS = FIELD_GROUPS.flatMap((group) => group.fields);
-
-// The trained 3-feature model's unused fields, used until the contract loads.
 const STATIC_UNUSED_FIELDS = ALL_FIELDS.filter((field) => field.unusedByModel).map(
   (field) => field.name,
 );
@@ -303,52 +106,6 @@ const SAMPLE_PROFILES = [
   },
 ];
 
-function validate(values) {
-  const errors = {};
-
-  for (const field of ALL_FIELDS) {
-    const raw = String(values[field.name] ?? "").trim();
-
-    if (!raw) {
-      if (!field.optional) errors[field.name] = "Required.";
-      continue;
-    }
-    if (field.type === "select") continue;
-
-    if (field.type === "text" && field.pattern) {
-      if (!field.pattern.test(raw)) errors[field.name] = field.patternHint;
-      continue;
-    }
-    if (field.type === "text") {
-      if (raw.length < field.minLength) {
-        errors[field.name] = `At least ${field.minLength} characters.`;
-      } else if (raw.length > field.maxLength) {
-        errors[field.name] = `At most ${field.maxLength} characters.`;
-      }
-      continue;
-    }
-
-    const numeric = Number(raw);
-    if (Number.isNaN(numeric)) {
-      errors[field.name] = "Enter a number.";
-    } else if (numeric < field.min) {
-      errors[field.name] = `Minimum is ${field.min}.`;
-    } else if (numeric > field.max) {
-      errors[field.name] = `Maximum is ${field.max.toLocaleString("en-PK")}.`;
-    } else if (field.integer && !Number.isInteger(numeric)) {
-      errors[field.name] = "Whole numbers only.";
-    }
-  }
-
-  // The API needs an identifier and its type together.
-  const hasType = Boolean(String(values.borrower_identifier_type ?? "").trim());
-  const hasNumber = Boolean(String(values.borrower_identifier ?? "").trim());
-  if (hasType && !hasNumber) errors.borrower_identifier = "Enter the number, or clear the type.";
-  if (hasNumber && !hasType) errors.borrower_identifier_type = "Choose CNIC or NTN.";
-
-  return errors;
-}
-
 /** Fields the statement fills, and the summary key each one comes from. */
 const STATEMENT_FIELDS = {
   monthly_digital_payments: "suggested_monthly_digital_payments",
@@ -356,24 +113,13 @@ const STATEMENT_FIELDS = {
   order_consistency: "suggested_order_consistency",
 };
 
-function toPayload(values) {
-  const payload = {};
-  for (const field of ALL_FIELDS) {
-    const raw = String(values[field.name] ?? "").trim();
-    if (!raw && field.optional) continue;
-    payload[field.name] =
-      field.type === "number" ? Number(raw) : field.uppercase ? raw.toUpperCase() : raw;
-  }
-  return payload;
-}
-
 /**
  * Credit application intake form.
  *
  * Submits to `POST /score` and renders the returned score in the gauge next to
  * the form, together with the decision and the strongest SHAP factors.
  */
-export default function ApplicationForm({ onScored }) {
+export default function ApplicationForm({ onScored, reviewLocked = false, onReviewFocus }) {
   const navigate = useNavigate();
   // Before an assessment the dial shows the policy in force; afterwards the
   // assessment's own policy snapshot, which is what its recommendation used.
@@ -382,9 +128,48 @@ export default function ApplicationForm({ onScored }) {
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitting = useRef(false);
+  const [review, setReview] = useState(null);
+  const reviewHeading = useRef(null);
+  const resultHeading = useRef(null);
   const [result, setResult] = useState(null);
   const [statement, setStatement] = useState(null);
   const [statementError, setStatementError] = useState(null);
+  const [isReadingStatement, setIsReadingStatement] = useState(false);
+  const statementRequest = useRef(0);
+  const statementController = useRef(null);
+  const [savedFingerprint, setSavedFingerprint] = useState(null);
+  const [pendingReplacement, setPendingReplacement] = useState(null);
+  const replacementNotice = useRef(null);
+  const errorSummary = useRef(null);
+  const requiredFields = ALL_FIELDS.filter(field => !field.optional);
+  const filledRequired = requiredFields.filter(field => String(values[field.name] ?? "").trim()).length;
+  const hasEntries = Boolean(statement) || Object.values(values).some(value => String(value ?? "").trim());
+  const fingerprint = JSON.stringify(ALL_FIELDS.map(field => String(values[field.name] ?? '')));
+  useUnsavedWork({ label: 'New credit assessment', dirty: hasEntries &&
+    (fingerprint !== savedFingerprint?.fields || (statement?.csv ?? null) !== savedFingerprint?.csv),
+    busy: isSubmitting || isReadingStatement });
+  const cancelStatement = () => {
+    statementRequest.current += 1;
+    statementController.current?.abort();
+    setIsReadingStatement(false);
+  };
+  useEffect(() => () => { statementRequest.current += 1; statementController.current?.abort(); }, []);
+  const focusField = id => {
+    const element = document.getElementById(id);
+    element?.scrollIntoView({ block: "center" });
+    element?.focus({ preventScroll: true });
+  };
+  const editReview = (id = "assessment-applicant") => {
+    if (submitting.current) return;
+    setReview(null);
+    setSubmitError(null);
+    requestAnimationFrame(() => focusField(id));
+  };
+  useEffect(() => { if (review) { reviewHeading.current?.scrollIntoView({ block: "start" }); reviewHeading.current?.focus({ preventScroll: true }); } }, [review]);
+  useEffect(() => { if (result) { resultHeading.current?.scrollIntoView({ block: "start" }); resultHeading.current?.focus({ preventScroll: true }); } }, [result]);
+  useEffect(() => { if (pendingReplacement) replacementNotice.current?.focus(); }, [pendingReplacement]);
+  useEffect(() => { if (Object.keys(errors).length) errorSummary.current?.focus(); }, [submitError]);
   // Which fields the model serving now actually reads (GET /model/feature-contract).
   const [contract, setContract] = useState(null);
   useEffect(() => {
@@ -408,6 +193,7 @@ export default function ApplicationForm({ onScored }) {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
+    setReview(null);
     setValues((previous) => ({ ...previous, [name]: value }));
     setErrors((previous) => {
       if (!previous[name]) return previous;
@@ -418,10 +204,14 @@ export default function ApplicationForm({ onScored }) {
   };
 
   const applySample = (sample) => {
-    setValues(sample.values);
+    setReview(null);
+    cancelStatement();
+    setValues({ ...EMPTY_FORM, ...sample.values });
     setErrors({});
     setSubmitError(null);
     setStatement(null);
+    setStatementError(null);
+    setPendingReplacement(null);
   };
 
   // Read the chosen CSV in the browser, let the API summarise it, and fill the
@@ -431,10 +221,19 @@ export default function ApplicationForm({ onScored }) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    if (isSubmitting) return;
+    setReview(null);
+    const request = ++statementRequest.current;
+    statementController.current?.abort();
+    const controller = new AbortController();
+    statementController.current = controller;
+    setIsReadingStatement(true);
     setStatementError(null);
     try {
       const csv = await file.text();
-      const summary = await summariseStatement(csv);
+      if (controller.signal.aborted || request !== statementRequest.current) return;
+      const summary = await summariseStatement(csv, { signal: controller.signal });
+      if (controller.signal.aborted || request !== statementRequest.current) return;
       setStatement({ csv, summary, fileName: file.name });
       setValues((previous) => ({
         ...previous,
@@ -444,48 +243,80 @@ export default function ApplicationForm({ onScored }) {
       }));
       setErrors({});
     } catch (error) {
-      setStatement(null);
-      setStatementError(apiErrorMessage(error, "The statement could not be read."));
+      if (!controller.signal.aborted && request === statementRequest.current) {
+        setStatementError(apiErrorMessage(error, "The statement could not be read.") +
+          (statement ? ' The previously attached statement is still in use.' : ''));
+      }
+    } finally {
+      if (request === statementRequest.current) setIsReadingStatement(false);
     }
   };
 
   const handleReset = () => {
+    if (reviewLocked) return;
+    cancelStatement();
+    setReview(null);
     setStatement(null);
     setStatementError(null);
     setValues(EMPTY_FORM);
     setErrors({});
     setSubmitError(null);
     setResult(null);
+    setPendingReplacement(null);
+    onScored?.(null);
   };
 
-  const handleSubmit = async (event) => {
+  const requestReplacement = change => {
+    if (isSubmitting) return;
+    if (hasEntries) setPendingReplacement(change);
+    else if (change.sample) applySample(change.sample);
+    else handleReset();
+  };
+
+  const handleReview = (event) => {
     event.preventDefault();
-    const validationErrors = validate(values);
+    if (submitting.current || isReadingStatement || reviewLocked || review) return;
+    const validationErrors = validateAssessment(values);
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) {
-      setSubmitError("Please correct the highlighted fields before submitting.");
+      setSubmitError("Please correct the highlighted fields before reviewing.");
+      requestAnimationFrame(() => errorSummary.current?.focus());
       return;
     }
+    setSubmitError(null);
+    setPendingReplacement(null);
+    setReview({ key: assessmentKey(values, statement), payload: assessmentPayload(values), statement });
+  };
 
+  const handleConfirm = async () => {
+    if (submitting.current || isReadingStatement || reviewLocked || !review) return;
+    if (review.key !== assessmentKey(values, statement) || Object.keys(validateAssessment(values)).length) {
+      editReview();
+      return;
+    }
+    submitting.current = true;
     setIsSubmitting(true);
     setSubmitError(null);
     try {
       const scored = await scoreApplication({
-        ...toPayload(values),
-        ...(statement ? { statement_csv: statement.csv } : {}),
+        ...review.payload,
+        ...(review.statement ? { statement_csv: review.statement.csv } : {}),
       });
       setResult(scored);
+      setReview(null);
+      setSavedFingerprint({ fields: fingerprint, csv: statement?.csv ?? null });
       onScored?.(scored);
     } catch (error) {
       setSubmitError(apiErrorMessage(error, "The application could not be scored."));
     } finally {
+      submitting.current = false;
       setIsSubmitting(false);
     }
   };
 
   return (
     <div className="grid gap-6 xl:grid-cols-3">
-      <form onSubmit={handleSubmit} noValidate className="card xl:col-span-2">
+      <form onSubmit={handleReview} noValidate className="card min-w-0 xl:col-span-2">
         <div className="card-header">
           <div>
             <h2 className="card-title">New credit assessment</h2>
@@ -493,28 +324,49 @@ export default function ApplicationForm({ onScored }) {
               All amounts in PKR. Bureau-style fields are typed in by the officer — not a live ECIB connection.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-slate-500">Load sample:</span>
+          <details hidden={Boolean(review)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <summary className="text-xs font-semibold text-slate-600">Try a sample profile</summary>
+            <p className="mt-3 text-xs leading-relaxed text-slate-500">Examples for exploring the form. Scoring a sample creates a saved assessment, just like any submission.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
             {SAMPLE_PROFILES.map((sample) => (
               <button
                 key={sample.id}
                 type="button"
-                onClick={() => applySample(sample)}
-                className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:border-brand-400 hover:text-brand-700"
+                onClick={() => requestReplacement({ sample })}
+                disabled={isSubmitting}
+                className="btn-secondary text-xs"
               >
                 {sample.label}
               </button>
             ))}
-          </div>
+            </div>
+          </details>
         </div>
 
-        <div className="space-y-7 px-5 py-5">
+        <div hidden={Boolean(review)} className="space-y-7 px-5 py-5">
+          {reviewLocked ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-testid="review-replacement-lock"><p className="font-semibold">A decision reason is still being edited or saved below.</p><p className="mt-1 text-xs leading-relaxed">Finish that decision or clear its typed reason before scoring or clearing another assessment on this page.</p><button type="button" className="btn-secondary mt-3 text-xs" onClick={onReviewFocus}>Return to the decision reason</button></div> : null}
+          {pendingReplacement ? <div ref={replacementNotice} tabIndex={-1} role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-testid="assessment-replace-guard"><p className="font-semibold">Keep your current entries?</p><p className="mt-1 text-xs leading-relaxed">{pendingReplacement.sample ? "Loading this sample replaces the figures and any attached statement in this form." : "Clearing this form removes its entries and any attached statement. Saved assessments remain on file."}</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary text-xs" onClick={() => setPendingReplacement(null)}>Keep my entries</button><button type="button" className="btn-primary text-xs" disabled={isSubmitting || (reviewLocked && !pendingReplacement.sample)} onClick={() => pendingReplacement.sample ? applySample(pendingReplacement.sample) : handleReset()}>{pendingReplacement.sample ? "Replace with sample" : "Clear form"}</button></div></div> : null}
+          <div aria-label="Assessment guide">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-slate-800">Three sections. One assessment.</p><p className="text-xs text-slate-500">{filledRequired} of {requiredFields.length} required fields filled</p></div>
+            <div role="progressbar" aria-label="Required fields filled" aria-valuemin={0} aria-valuemax={requiredFields.length} aria-valuenow={filledRequired} className="mb-4 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand-500" style={{ width: `${filledRequired / requiredFields.length * 100}%` }} /></div>
+            <div className="grid gap-2 sm:grid-cols-3">{FIELD_GROUPS.map((group, index) => {
+              const required = group.fields.filter(field => !field.optional);
+              const filled = required.filter(field => String(values[field.name] ?? "").trim()).length;
+              const issues = group.fields.filter(field => errors[field.name]).length;
+              return <button key={group.id} type="button" onClick={() => focusField(group.id)} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition hover:border-brand-400 ${issues ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-slate-50"}`}><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold text-brand-700 ring-1 ring-slate-200">{index + 1}</span><span><span className="block text-xs font-semibold text-slate-800">{group.title}</span><span className={`mt-1 block text-[11px] ${issues ? "text-rose-700" : "text-slate-500"}`}>{issues ? `${issues} fields need attention` : `${filled}/${required.length} required fields filled`}</span></span></button>;
+            })}</div>
+            <p className="mt-3 text-xs text-slate-500">Optional fields are labelled. Filled fields still need to pass validation before scoring.</p>
+          </div>
+          {submitError ? <div ref={errorSummary} tabIndex={-1} role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" data-testid="assessment-errors"><p className="font-semibold">{submitError}</p>{Object.keys(errors).length ? <ul className="mt-3 grid gap-2 sm:grid-cols-2">{ALL_FIELDS.filter(field => errors[field.name]).map(field => <li key={field.name}><button type="button" className="text-left text-xs underline underline-offset-2" onClick={() => focusField(field.name)}>{field.label}: {errors[field.name]}</button></li>)}</ul> : null}</div> : null}
           <StatementBox
             statement={statement}
             error={statementError}
             values={values}
             onPick={handleStatement}
-            onRemove={() => setStatement(null)}
+            onRemove={() => { cancelStatement(); setReview(null); setStatement(null); setStatementError(null); }}
+            busy={isReadingStatement}
+            disabled={isSubmitting}
+            onCancel={cancelStatement}
           />
           {contractLine ? (
             <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600" data-testid="feature-contract">
@@ -522,8 +374,8 @@ export default function ApplicationForm({ onScored }) {
             </p>
           ) : null}
           {FIELD_GROUPS.map((group) => (
-            <fieldset key={group.title} className="space-y-4">
-              <legend className="text-sm font-semibold text-slate-900">
+            <fieldset key={group.title} className="space-y-4 border-t border-slate-200 pt-5" disabled={isSubmitting || isReadingStatement}>
+              <legend id={group.id} tabIndex={-1} className="scroll-mt-28 px-1 text-sm font-semibold text-slate-900">
                 {group.title}
               </legend>
               <p className="-mt-3 text-xs text-slate-500">{group.description}</p>
@@ -542,48 +394,47 @@ export default function ApplicationForm({ onScored }) {
               </div>
             </fieldset>
           ))}
+          <ModelInputCheck values={values} disabled={isSubmitting || isReadingStatement} onFixField={focusField} />
+          {!review ? <OperatingChecks values={values} statement={statement} disabled={isSubmitting || isReadingStatement} onFixField={focusField} /> : null}
         </div>
-
-        {submitError ? (
-          <div
-            role="alert"
-            className="mx-5 mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
-          >
-            {submitError}
-          </div>
-        ) : null}
+        {review ? <>
+          <AssessmentReview review={review} headingRef={reviewHeading} unusedFields={unusedFields} onEdit={editReview} disabled={isSubmitting} />
+          {reviewLocked ? <p role="alert" className="mx-5 mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Finish the decision reason below before saving another assessment.</p> : null}
+          {submitError ? <p role="alert" className="mx-5 mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{submitError}</p> : null}
+        </> : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4">
           <p className="text-xs text-slate-500">
-            Submitting stores the assessment and its SHAP rationale on-premise for later review. Not SBP-certified.
+            {review ? "Saving creates a new assessment on-premise. It does not approve or disburse a loan." : "Next: review your entries before creating a saved assessment. Not SBP-certified."}
           </p>
           <div className="flex gap-2">
-            <button type="button" onClick={handleReset} className="btn-secondary">
-              Clear
+            <button type="button" onClick={() => review ? editReview() : requestReplacement({ clear: true })} disabled={isSubmitting || reviewLocked} className="btn-secondary">
+              {review ? "Back to editing" : "Clear"}
             </button>
-            <button type="submit" className="btn-primary" disabled={isSubmitting}>
+            <button type={review ? "button" : "submit"} onClick={review ? handleConfirm : undefined} className="btn-primary" disabled={isSubmitting || isReadingStatement || reviewLocked}>
               {isSubmitting ? (
                 <>
                   <Spinner className="h-4 w-4 text-white" />
                   Scoring…
                 </>
               ) : (
-                "Score application"
+                review ? "Save and score assessment" : "Review assessment"
               )}
             </button>
           </div>
         </div>
       </form>
 
-      <aside className="card h-fit xl:sticky xl:top-6">
+      <aside className="card h-fit xl:sticky xl:top-28">
         <div className="card-header">
-          <h2 className="card-title">Assessment result</h2>
+          <h2 ref={resultHeading} tabIndex={-1} className="card-title scroll-mt-28">Assessment result</h2>
           {result ? (
             <span className="text-xs text-slate-500">#{result.application_id}</span>
           ) : null}
         </div>
 
         <div className="px-5 py-6">
+          {result ? <p className="mb-4 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">Last saved assessment #{result.application_id}. Editing this form does not update that record. Score again to create a new assessment.</p> : null}
           <ScoreDial
             score={result ? result.risk_score : null}
             decision={result?.decision}
@@ -594,6 +445,11 @@ export default function ApplicationForm({ onScored }) {
 
           {result ? (
             <div className="mt-6 space-y-4">
+              {result.scoring_engine === "surrogate" ? (
+                <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Demo formula active. This assessment was not produced by the trained ensemble.
+                </p>
+              ) : null}
               <dl className="space-y-2 text-sm">
                 <ResultRow label="Applicant" value={result.applicant_name} />
                 <ResultRow label="Business" value={result.business_name} />
@@ -626,6 +482,7 @@ export default function ApplicationForm({ onScored }) {
               ) : null}
 
               <PathToApproval path={result.explanation?.approval_path} compact />
+              <StatementResilience evidence={result.turnover_evidence} compact />
 
               <button
                 type="button"
@@ -651,16 +508,12 @@ export default function ApplicationForm({ onScored }) {
  * Fill the turnover fields from a wallet or bank statement instead of typing
  * them. Shows what the statement says and whether the form still matches it.
  */
-function StatementBox({ statement, error, values, onPick, onRemove }) {
+function StatementBox({ statement, error, values, onPick, onRemove, busy, disabled, onCancel }) {
   const summary = statement?.summary;
-  const edited =
-    summary &&
-    ["monthly_digital_payments", "cash_flow_proxy"].some(
-      (name) => Number(values[name]) !== summary[STATEMENT_FIELDS[name]],
-    );
+  const edited = statementReview(statement, values).status === "edited";
 
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3">
+    <div id="assessment-statement" tabIndex={-1} className="scroll-mt-28 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-slate-900">Fill turnover from a statement</p>
@@ -669,11 +522,13 @@ function StatementBox({ statement, error, values, onPick, onRemove }) {
             It replaces typing the turnover, which drives most of the score.
           </p>
         </div>
-        <label className="btn-secondary cursor-pointer px-3 py-1.5 text-xs">
+        <label aria-disabled={disabled} className={`btn-secondary px-3 py-1.5 text-xs ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
           {statement ? "Choose another file" : "Choose CSV file"}
-          <input type="file" accept=".csv,text/csv" className="sr-only" onChange={onPick} />
+          <input type="file" accept=".csv,text/csv" className="sr-only" onChange={onPick} disabled={disabled} />
         </label>
       </div>
+
+      {busy ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p role="status" className="flex items-center gap-2 text-xs text-brand-700"><Spinner className="h-4 w-4" />Checking statement. Financial inputs are paused until it finishes.</p><button type="button" className="btn-secondary text-xs" onClick={onCancel}>Cancel statement read</button></div> : null}
 
       {error ? (
         <p role="alert" className="mt-2 text-xs font-medium text-rose-700">
@@ -706,6 +561,7 @@ function StatementBox({ statement, error, values, onPick, onRemove }) {
           <button
             type="button"
             onClick={onRemove}
+            disabled={disabled}
             className="mt-1 text-xs font-semibold text-slate-500 underline hover:text-slate-700"
           >
             Remove statement
@@ -723,6 +579,7 @@ function FormField({ field, value, error, note, unused, onChange }) {
     <div>
       <label className="field-label" htmlFor={field.name}>
         {field.label}
+        {field.optional ? <span className="ml-1 text-xs font-normal text-slate-500">(optional)</span> : null}
         {field.currency ? (
           <span className="ml-1 text-xs font-normal text-slate-400">(PKR)</span>
         ) : null}
@@ -733,6 +590,8 @@ function FormField({ field, value, error, note, unused, onChange }) {
           name={field.name}
           value={value ?? ""}
           onChange={onChange}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${field.name}-error` : undefined}
           className="field-input"
         >
           <option value="">Not recorded</option>
@@ -747,7 +606,7 @@ function FormField({ field, value, error, note, unused, onChange }) {
           id={field.name}
           name={field.name}
           type={field.type}
-          value={value}
+          value={value ?? ""}
           onChange={onChange}
           placeholder={field.placeholder}
           min={field.min}
@@ -775,10 +634,10 @@ function FormField({ field, value, error, note, unused, onChange }) {
       {unused ? (
         <p
           className="mt-1 text-xs font-semibold text-amber-800"
-          title="Recorded on the credit file. The model serving now does not read it, so it does not change the score."
+          title={OPERATING_USES[field.name] || "Recorded on the credit file; not read by the current model."}
           data-unused-field={field.name}
         >
-          Recorded, not used by the current model — does not change this score.
+          {OPERATING_USES[field.name] ? `Active in business checks: ${OPERATING_USES[field.name].toLowerCase()}. Not in the current ML score.` : "Recorded, not used by the current model — does not change this score."}
         </p>
       ) : null}
     </div>

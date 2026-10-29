@@ -99,7 +99,10 @@ def test_the_artifact_fingerprint_follows_the_files(ml_service) -> None:
     digest = hashlib.sha256()
     for path in (MODEL_PATH, SCALER_PATH, SHAP_EXPLAINER_PATH, FEATURE_NAMES_PATH):
         digest.update(path.name.encode("utf-8"))
-        digest.update(path.read_bytes())
+        data = path.read_bytes()
+        if path.suffix == '.json':
+            data = data.replace(b'\r\n', b'\n')
+        digest.update(data)
     assert ml_service.artifact_sha256 == digest.hexdigest()
 
 
@@ -272,6 +275,7 @@ def test_a_model_that_fails_to_load_is_recorded_as_a_failed_load(
 
     # /health reports it instead of looking normal.
     health = client.get("/health").json()
+    assert health['status'] == 'degraded'
     assert health["scoring_engine"] == "surrogate"
     assert health["scoring_fallback_reason"] == "load_failed"
     assert health["model_version"] == "surrogate-linear-v1"

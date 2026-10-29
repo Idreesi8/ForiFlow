@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -39,8 +39,10 @@ export default function EWSFacilityDetail({ facilityId, refreshToken = 0 }) {
   const [timeline, setTimeline] = useState(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const requestSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const request = ++requestSequence.current;
     setIsLoading(true);
     setError(null);
     try {
@@ -49,23 +51,26 @@ export default function EWSFacilityDetail({ facilityId, refreshToken = 0 }) {
         fetchFacilityObservations(facilityId),
         fetchFacilityTimeline(facilityId),
       ]);
+      if (request !== requestSequence.current) return;
+      if (stateData.facility_id !== facilityId) throw new Error('The returned history does not match the selected facility.');
       setState(stateData);
       setRows(rowData);
       setTimeline(timelineData);
     } catch (requestError) {
-      setError(apiErrorMessage(requestError, "Could not load the facility."));
+      if (request === requestSequence.current) setError(apiErrorMessage(requestError, "Could not load the facility."));
     } finally {
-      setIsLoading(false);
+      if (request === requestSequence.current) setIsLoading(false);
     }
   }, [facilityId]);
 
   useEffect(() => {
     load();
+    return () => { requestSequence.current += 1; };
   }, [load, refreshToken]);
 
   if (isLoading) return <LoadingState label="Loading facility history…" />;
   if (error) return <ErrorState message={error} onRetry={load} />;
-  if (!state) return null;
+  if (!state || state.facility_id !== facilityId) return <LoadingState label="Loading facility history…" />;
 
   const trend = state.trend;
   const direction = trendStyle(trend.direction);

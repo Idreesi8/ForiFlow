@@ -128,7 +128,8 @@ def main() -> int:
                 field = p.locator(f"#{name}")
                 field.fill("")
                 field.fill(value)
-            p.get_by_role("button", name="Score application").click()
+            p.get_by_role("button", name="Review assessment", exact=True).click()
+            p.get_by_role("button", name="Save and score assessment", exact=True).click()
             p.get_by_text("Approved").or_(p.get_by_text("Rejected")).or_(
                 p.get_by_text("Manual Review")
             ).first.wait_for(timeout=60000)

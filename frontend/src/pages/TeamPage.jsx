@@ -1,27 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { canManageTeam, getStoredUsername } from "../api/auth.js";
-import { apiErrorMessage, createUser, fetchUsers, setUserStatus } from "../api/client.js";
+import { apiErrorMessage, createUser, fetchUsers } from "../api/client.js";
 import { ErrorState, LoadingState, Spinner } from "../components/common/States.jsx";
 import { formatDate } from "../lib/format.js";
-
-const ROLES = [
-  {
-    value: "admin",
-    label: "Admin",
-    can: "Everything a manager can, plus approving above the manager limit or against a Decline recommendation, deciding escalated cases, setting the credit policy, reading the audit trail, and creating, disabling and re-enabling officer accounts.",
-  },
-  {
-    value: "manager",
-    label: "Manager",
-    can: "Everything an analyst can, plus approving (up to the policy's manager limit), rejecting or escalating applications, and resolving alerts.",
-  },
-  {
-    value: "analyst",
-    label: "Analyst",
-    can: "Scores applications, records monthly monitoring, takes alerts for review.",
-  },
-];
+import TeamAccessDialog from '../components/TeamAccessDialog.jsx';
+import { useUnsavedWork } from '../components/UnsavedWork.jsx';
+import { filterTeam, roleLabel, TEAM_ROLES as ROLES } from '../lib/teamAccess.js';
 
 const EMPTY = { username: "", password: "", role: "analyst" };
 
@@ -38,6 +23,18 @@ export default function TeamPage() {
   const [submitError, setSubmitError] = useState(null);
   const [created, setCreated] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const creating = useRef(false);
+  const [, setAccountRevision] = useState(0);
+  const [filters, setFilters] = useState({search:'',role:'all',status:'all'});
+  const [candidate, setCandidate] = useState(null), [saved, setSaved] = useState(null);
+  const accountHeading = useRef(null);
+  useEffect(() => {if(saved)accountHeading.current?.focus();},[saved]);
+  useUnsavedWork({label:'New officer account',dirty:isAdmin && Boolean(form.username || form.password || form.role !== 'analyst'),busy:isSubmitting});
+  useEffect(() => {
+    const changed = () => setAccountRevision(value => value+1);
+    window.addEventListener('foriflow:account-updated',changed);
+    return () => window.removeEventListener('foriflow:account-updated',changed);
+  },[]);
 
   const load = useCallback(async () => {
     if (!isAdmin) return;
@@ -57,29 +54,13 @@ export default function TeamPage() {
   }, [load]);
 
   const me = getStoredUsername();
-  const [statusError, setStatusError] = useState(null);
-  const [changingId, setChangingId] = useState(null);
-
-  const toggleStatus = async (user) => {
-    const enable = !user.is_active;
-    const verb = enable ? "Re-enable" : "Disable";
-    const reason = window.prompt(
-      `${verb} ${user.username}? ${
-        enable ? "They can sign in again." : "They are signed out at once and cannot sign in."
-      }\n\nReason (recorded in the audit trail, optional):`,
-      "",
-    );
-    if (reason === null) return;
-    setChangingId(user.id);
-    setStatusError(null);
-    try {
-      await setUserStatus(user.id, enable, reason.trim());
-      await load();
-    } catch (requestError) {
-      setStatusError(apiErrorMessage(requestError, `Could not ${verb.toLowerCase()} the account.`));
-    } finally {
-      setChangingId(null);
-    }
+  const visibleUsers = filterTeam(users,filters);
+  const enabledAdmins = users.filter(user=>user.role==='admin'&&user.is_active!==false).length;
+  const openChange = (user,mode) => {setSaved(null);setCandidate({user,mode});};
+  const accessSaved = (user,mode) => {
+    setUsers(previous=>previous.map(item=>item.id===user.id?user:item));
+    setCandidate(null);
+    setSaved(`${user.username}: ${mode==='role'?`role changed to ${roleLabel(user.role)}`:user.is_active?'account re-enabled':'account disabled'}. Recorded in access history.`);
   };
 
   const handleChange = (event) => {
@@ -89,6 +70,8 @@ export default function TeamPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (creating.current) return;
+    creating.current = true;
     setIsSubmitting(true);
     setSubmitError(null);
     setCreated(null);
@@ -100,6 +83,7 @@ export default function TeamPage() {
     } catch (requestError) {
       setSubmitError(apiErrorMessage(requestError, "The account was not created."));
     } finally {
+      creating.current = false;
       setIsSubmitting(false);
     }
   };
@@ -110,7 +94,7 @@ export default function TeamPage() {
         <h2 className="text-xl font-bold text-slate-900">Team and roles</h2>
         <p className="mt-1 max-w-3xl text-sm text-slate-500">
           Three roles, each including everything below it. The role is read from the
-          database on every request, so changing it takes effect at once.
+          database on every request. Review a change before saving; its reason and history stay on file.
         </p>
       </header>
 
@@ -125,42 +109,36 @@ export default function TeamPage() {
 
       {!isAdmin ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Only an admin can see or create officer accounts.
+          Only an enabled admin can see or manage officer accounts. Ask your admin for access changes.
         </p>
       ) : (
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="card min-w-0">
+          <div className="card min-w-0 h-fit" data-testid="team-accounts">
             <div className="card-header">
-              <h3 className="card-title">Officer accounts</h3>
-              <span className="text-xs text-slate-500">{users.length} accounts</span>
+              <h3 ref={accountHeading} tabIndex={-1} className="card-title outline-none">Officer accounts</h3>
+              <button type="button" className="btn-secondary text-xs" disabled={isLoading} onClick={load}>Refresh accounts</button>
             </div>
+            {saved ? <p role="status" className="mx-5 mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">{saved}</p> : null}
             {isLoading ? (
               <LoadingState label="Loading accounts…" />
             ) : error ? (
               <ErrorState message={error} onRetry={load} />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-left text-xs tracking-wide text-slate-500 uppercase">
-                      <th className="px-5 py-3 font-medium">Username</th>
-                      <th className="px-3 py-3 font-medium">Role</th>
-                      <th className="px-3 py-3 font-medium">Status</th>
-                      <th className="px-3 py-3 font-medium">Created</th>
-                      <th className="px-5 py-3 font-medium">
-                        <span className="sr-only">Action</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {users.map((user) => {
+              <div>
+                <div className="space-y-3 border-b border-slate-200 px-5 py-4">
+                  <p className="text-xs text-slate-500">{visibleUsers.length} of {users.length} accounts · {enabledAdmins} enabled admin{enabledAdmins===1?'':'s'}</p>
+                  {enabledAdmins===1 ? <p className="text-xs text-amber-900">One enabled admin remains. Your own role and status are protected; another enabled admin is needed to change them.</p> : null}
+                  <div><label className="field-label" htmlFor="team-search">Find an officer</label><input id="team-search" type="search" className="field-input" value={filters.search} onChange={event=>setFilters({...filters,search:event.target.value})} placeholder="Search username"/></div>
+                  <div className="grid gap-3 sm:grid-cols-2"><div><label className="field-label" htmlFor="team-filter-role">Filter role</label><select id="team-filter-role" className="field-input" value={filters.role} onChange={event=>setFilters({...filters,role:event.target.value})}><option value="all">All roles</option>{ROLES.map(role=><option key={role.value} value={role.value}>{role.label}</option>)}</select></div><div><label className="field-label" htmlFor="team-filter-status">Filter status</label><select id="team-filter-status" className="field-input" value={filters.status} onChange={event=>setFilters({...filters,status:event.target.value})}><option value="all">All statuses</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></div></div>
+                  {filters.search||filters.role!=='all'||filters.status!=='all' ? <button type="button" className="btn-ghost text-xs" onClick={()=>setFilters({search:'',role:'all',status:'all'})}>Clear filters</button> : null}
+                </div>
+                <ul className="divide-y divide-slate-100" aria-label="Officer accounts">
+                    {visibleUsers.map((user) => {
                       const active = user.is_active !== false;
                       const isMe = user.username === me;
                       return (
-                        <tr key={user.id}>
-                          <td className="px-5 py-3 font-medium text-slate-900">{user.username}</td>
-                          <td className="px-3 py-3 capitalize">{user.role}</td>
-                          <td className="px-3 py-3">
+                        <li key={user.id} className="space-y-3 px-5 py-4" data-testid={`team-account-${user.id}`}>
+                          <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><p className="break-all font-semibold text-slate-900">{user.username}{isMe?' · You':''}</p><p className="mt-1 text-xs text-slate-500">{roleLabel(user.role)} · Created {formatDate(user.created_at)}</p></div>
                             <span
                               className={`badge ${
                                 active
@@ -170,32 +148,14 @@ export default function TeamPage() {
                             >
                               {active ? "Enabled" : "Disabled"}
                             </span>
-                          </td>
-                          <td className="px-3 py-3 text-slate-500">{formatDate(user.created_at)}</td>
-                          <td className="px-5 py-3 text-right">
-                            {isMe ? (
-                              <span className="text-xs text-slate-400">You</span>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn-secondary px-2.5 py-1 text-xs"
-                                disabled={changingId === user.id}
-                                onClick={() => toggleStatus(user)}
-                              >
-                                {active ? "Disable" : "Re-enable"}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
+                          </div>
+                          <div className="flex flex-wrap gap-2"><button type="button" className="btn-secondary text-xs" disabled={isMe} onClick={()=>openChange(user,'role')} aria-label={`Change role for ${user.username}`}>Change role</button><button type="button" className="btn-secondary text-xs" disabled={isMe} onClick={()=>openChange(user,'status')} aria-label={`${active?'Disable':'Re-enable'} ${user.username}`}>{active?'Disable':'Re-enable'}</button><button type="button" className="btn-ghost text-xs" onClick={()=>openChange(user,'history')} aria-label={`Access history for ${user.username}`}>Access history</button></div>
+                          {isMe ? <p className="text-xs text-slate-500">Ask another enabled admin to change your role or status.</p> : null}
+                        </li>
                       );
                     })}
-                  </tbody>
-                </table>
-                {statusError ? (
-                  <p role="alert" className="mx-5 my-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-                    {statusError}
-                  </p>
-                ) : null}
+                </ul>
+                {!visibleUsers.length ? <p className="px-5 py-6 text-sm text-slate-600">No officers match these filters. Try another username or clear the filters.</p> : null}
               </div>
             )}
           </div>
@@ -281,6 +241,7 @@ export default function TeamPage() {
           </form>
         </section>
       )}
+      {candidate ? <TeamAccessDialog candidate={candidate} onClose={()=>setCandidate(null)} onSaved={accessSaved}/> : null}
     </div>
   );
 }

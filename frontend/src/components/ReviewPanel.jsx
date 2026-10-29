@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { canDecideCredit, getStoredRole } from "../api/auth.js";
@@ -7,6 +7,11 @@ import { bandForDecision, finalDecisionOf } from "../lib/decisions.js";
 import { formatDateTime, formatPercent, formatPKR } from "../lib/format.js";
 import { FinalDecisionBadge, RecommendationBadge } from "./common/Badges.jsx";
 import { ErrorState, LoadingState, Spinner } from "./common/States.jsx";
+import StatementResilience from "./StatementResilience.jsx";
+import { useUnsavedWork } from "./UnsavedWork.jsx";
+import DecisionConfirmation from "./DecisionConfirmation.jsx";
+import ModelDiagnostics from "./ModelDiagnostics.jsx";
+import OperatingChecks from "./OperatingChecks.jsx";
 
 const NOTE_MIN = 10;
 const NOTE_MAX = 1000;
@@ -27,15 +32,20 @@ const AUTHORITY_TEXT = {
  * (`POST /score/applications/{id}/decision`). The API enforces who may do what;
  * this panel only mirrors it.
  */
-export default function ReviewPanel({ applicationId, onDecided }) {
+export default function ReviewPanel({ applicationId, onDecided, onWorkChange }) {
   const [application, setApplication] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(null);
   const [submitError, setSubmitError] = useState(null);
+  const [confirmation, setConfirmation] = useState(null);
+  const decisionInFlight = useRef(false);
   const canDecide = canDecideCredit();
   const isAdmin = getStoredRole() === "admin";
+  useUnsavedWork({ label: `Decision reason for case #${applicationId}`, dirty: note.trim().length > 0, busy: submitting !== null });
+  const reasonDirty = note.trim().length > 0;
+  useEffect(() => { onWorkChange?.({ dirty: reasonDirty, busy: submitting !== null }); }, [onWorkChange, reasonDirty, submitting]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -55,22 +65,27 @@ export default function ReviewPanel({ applicationId, onDecided }) {
     load();
   }, [load]);
 
-  const decide = async (decision) => {
-    setSubmitting(decision);
+  const decide = async (candidate) => {
+    if (decisionInFlight.current || candidate !== confirmation || candidate.applicationId !== applicationId) return;
+    decisionInFlight.current = true;
+    setSubmitting(candidate.decision);
     setSubmitError(null);
     try {
-      const updated = await decideApplication(applicationId, { decision, note: note.trim() });
+      const updated = await decideApplication(candidate.applicationId, { decision: candidate.decision, note: candidate.note });
       setApplication(updated);
       setNote("");
       onDecided?.(updated);
     } catch (requestError) {
-      setSubmitError(apiErrorMessage(requestError, "The decision was not saved."));
-      // 409: someone else acted first. Reload so the record on file shows.
-      if (requestError?.response?.status === 409) {
+      setSubmitError(requestError?.response ? apiErrorMessage(requestError, "The decision was not saved.") :
+        'The save response was not received. Check the current recorded decision before trying again.');
+      // Re-read after a conflict or lost response; never retry the decision POST.
+      if (!requestError?.response || requestError.response.status === 409) {
         await load();
       }
     } finally {
       setSubmitting(null);
+      setConfirmation(null);
+      decisionInFlight.current = false;
     }
   };
 
@@ -115,6 +130,13 @@ export default function ReviewPanel({ applicationId, onDecided }) {
           Credit memo
         </Link>
       </div>
+
+      <div className="px-5 py-4"><OperatingChecks values={application} applicationId={application.id} /></div>
+      {application.turnover_evidence?.resilience ? (
+        <div className="px-5 py-4">
+          <StatementResilience evidence={application.turnover_evidence} />
+        </div>
+      ) : null}
 
       <div className="grid gap-px bg-slate-200 text-sm lg:grid-cols-3">
         {/* 1. The model: an assessment, nothing more. */}
@@ -231,8 +253,13 @@ export default function ReviewPanel({ applicationId, onDecided }) {
         </div>
       </div>
 
+      <ModelDiagnostics applicationId={application.id} />
+
       <div className="space-y-3 border-t border-slate-200 px-5 py-5 text-sm">
         <TurnoverEvidence evidence={application.turnover_evidence} />
+
+        {submitError ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-rose-800" role="alert"><p>{submitError}</p><button type="button" className="btn-secondary mt-3 text-xs" disabled={submitting !== null} onClick={load}>Check current record</button></div> : null}
+        {(!open || !canDecide || withAdmin) && noteLength > 0 ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-4" data-testid="retained-decision-reason"><label className="field-label" htmlFor={`retained-reason-${applicationId}`}>This tab’s decision reason</label><p className="mb-3 text-xs leading-relaxed text-amber-900">Kept here after checking the current record. Compare it with the recorded reason above before clearing it. No decision is automatically retried.</p><textarea id={`retained-reason-${applicationId}`} className="field-input" rows={3} readOnly value={note} /><button type="button" className="btn-secondary mt-3 text-xs" onClick={() => setNote('')}>Clear this typed reason</button></div> : null}
 
         {!open ? null : !canDecide ? (
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
@@ -246,8 +273,9 @@ export default function ReviewPanel({ applicationId, onDecided }) {
         ) : (
           <>
             <p className="text-slate-600">
-              Read the assessment and the SHAP factors, then record your decision. It is
-              saved with your name and the time, and it cannot be changed afterwards.
+              Read the assessment and the SHAP factors, then choose an action. The next
+              screen lets you review the case and reason before confirming. A final
+              decision is saved with your name and time and cannot be changed afterwards.
             </p>
             <div>
               <label className="field-label" htmlFor={`review-note-${applicationId}`}>
@@ -258,6 +286,7 @@ export default function ReviewPanel({ applicationId, onDecided }) {
                 rows={3}
                 maxLength={NOTE_MAX}
                 value={note}
+                disabled={submitting !== null || confirmation !== null}
                 onChange={(event) => setNote(event.target.value)}
                 placeholder="e.g. Five years of clean POS receipts; facility is 28% of turnover."
                 className="field-input"
@@ -275,17 +304,11 @@ export default function ReviewPanel({ applicationId, onDecided }) {
               </p>
             ) : null}
 
-            {submitError ? (
-              <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800" role="alert">
-                {submitError}
-              </p>
-            ) : null}
-
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 disabled={!noteReady || submitting !== null || needsAdmin}
-                onClick={() => decide("Approved")}
+                onClick={() => setConfirmation({ applicationId, decision: 'Approved', note: note.trim() })}
                 className="btn bg-emerald-600 text-white hover:bg-emerald-700"
               >
                 {submitting === "Approved" ? <Spinner className="h-4 w-4 text-white" /> : null}
@@ -294,7 +317,7 @@ export default function ReviewPanel({ applicationId, onDecided }) {
               <button
                 type="button"
                 disabled={!noteReady || submitting !== null}
-                onClick={() => decide("Rejected")}
+                onClick={() => setConfirmation({ applicationId, decision: 'Rejected', note: note.trim() })}
                 className="btn bg-rose-600 text-white hover:bg-rose-700"
               >
                 {submitting === "Rejected" ? <Spinner className="h-4 w-4 text-white" /> : null}
@@ -304,7 +327,7 @@ export default function ReviewPanel({ applicationId, onDecided }) {
                 <button
                   type="button"
                   disabled={!noteReady || submitting !== null}
-                  onClick={() => decide("Escalated")}
+                  onClick={() => setConfirmation({ applicationId, decision: 'Escalated', note: note.trim() })}
                   className="btn border border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
                 >
                   {submitting === "Escalated" ? <Spinner className="h-4 w-4" /> : null}
@@ -315,6 +338,9 @@ export default function ReviewPanel({ applicationId, onDecided }) {
           </>
         )}
       </div>
+      {confirmation ? <DecisionConfirmation candidate={confirmation} submitting={submitting !== null}
+        onCancel={() => { if (!decisionInFlight.current) { setConfirmation(null); requestAnimationFrame(() => (document.getElementById(`review-note-${applicationId}`) ?? document.getElementById(`retained-reason-${applicationId}`))?.focus()); } }}
+        onConfirm={decide} onRefreshed={setApplication} /> : null}
     </section>
   );
 }

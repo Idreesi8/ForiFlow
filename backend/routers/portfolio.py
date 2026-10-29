@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import calendar
 from collections import defaultdict
-from datetime import date, datetime, timezone
-from typing import Annotated
+from datetime import date
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
-from models.database import ALERT_OPEN_STATUSES, Alert, Application, EWSTracking, get_db
+from business_time import business_date
+
+from models.database import ALERT_OPEN_STATUSES, Alert, Application, EWSTracking, User, get_db
 from schemas import (
+    ActionDeskResponse,
     Decision,
     DecisionMatrixRow,
     InstallmentStatus,
@@ -22,6 +25,7 @@ from schemas import (
     StatusExposure,
 )
 from services.auth_service import get_current_user
+from services.action_desk import build_action_desk
 
 # Superseded observations are history; every figure here uses the active row per month.
 ACTIVE_OBSERVATION = EWSTracking.record_status == "active"
@@ -49,6 +53,22 @@ PAR30_STATUSES = {
 def _final_is(decision: str):
     """SQL condition: an officer's decision on the application equals ``decision``."""
     return Application.decision_status == decision
+
+
+@router.get('/action-desk', response_model=ActionDeskResponse,
+            summary='Evidence-based officer tasks across the complete portfolio')
+def action_desk(
+    db: DbSession,
+    officer: Annotated[User, Depends(get_current_user)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    kind: Literal['alert', 'review', 'monitoring'] | None = None,
+    priority: Literal['urgent', 'attention', 'routine'] | None = None,
+    search: Annotated[str | None, Query(max_length=100)] = None,
+    actionable_only: bool = False,
+) -> ActionDeskResponse:
+    return build_action_desk(db, limit=limit, offset=offset, kind=kind, priority=priority,
+                             search=search, actionable_only=actionable_only, officer_role=officer.role)
 
 
 @router.get(
@@ -234,7 +254,7 @@ def _add_months(start: date, months: int) -> date:
 
 
 def _money(value: float) -> str:
-    return f"PKR {value:,.0f}"
+    return f"PKR {value:,.2f}"
 
 
 def _messages(
@@ -251,11 +271,11 @@ def _messages(
     if kind == "arrears":
         english = (
             f"Assalam-o-Alaikum {name}. Our records for {business} show {_money(arrears)} "
-            "still unpaid from earlier installments. Please arrange the payment or "
+            "still unpaid in recorded installments. Please arrange the payment or "
             "contact your branch. If you have already paid, please ignore this message."
         )
         urdu = (
-            f"Assalam-o-Alaikum {name}. Hamare record ke mutabiq {business} ki pichli "
+            f"Assalam-o-Alaikum {name}. Hamare record ke mutabiq {business} ki record ki gayi "
             f"qiston mein se {_money(arrears)} abhi baqi hai. Meharbani farma kar adaigi "
             "kar dein ya apni branch se rabta karein. Agar aap ada kar chuke hain to is "
             "paigham ko nazar-andaz kar dein."
@@ -273,8 +293,8 @@ def _messages(
         f"{_money(installment)}, {when} {verb_ur}."
     )
     if arrears > 0:
-        english += f" {_money(arrears)} from earlier installments is also unpaid."
-        urdu += f" Pichli qiston ke {_money(arrears)} bhi baqi hain."
+        english += f" {_money(arrears)} in recorded installments is also unpaid."
+        urdu += f" Record ki gayi qiston ke {_money(arrears)} bhi baqi hain."
     english += " If you have already paid, please ignore this message."
     urdu += " Agar aap ada kar chuke hain to is paigham ko nazar-andaz kar dein."
     return english, urdu
@@ -290,15 +310,17 @@ async def payment_reminders(db: DbSession) -> list[Reminder]:
 
     The schedule runs monthly from the day the facility was approved (ForiFlow
     stores no separate disbursement date). An installment counts as handled
-    once an officer has recorded that month under EWS monitoring. ForiFlow
-    drafts the message; it does not send anything.
+    once an officer has recorded that month under EWS monitoring. A later
+    recorded month never clears an earlier missing month. Missing payment
+    amounts are unknown, not proof of payment. ForiFlow drafts the message;
+    it does not send anything.
     """
-    today = datetime.now(timezone.utc).date()
+    today = business_date()
     has_amount = EWSTracking.amount_paid_pkr.is_not(None)
     facilities = db.execute(
         select(
             Application,
-            func.coalesce(func.max(EWSTracking.month_number), 0),
+            func.count(EWSTracking.id),
             func.count(case((has_amount, 1))),
             func.coalesce(func.sum(EWSTracking.amount_paid_pkr), 0.0),
         )
@@ -310,30 +332,21 @@ async def payment_reminders(db: DbSession) -> list[Reminder]:
         .group_by(Application.id)
     ).all()
 
-    latest_month = (
-        select(
-            EWSTracking.borrower_id.label("borrower_id"),
-            func.max(EWSTracking.month_number).label("month_number"),
-        )
-        .where(ACTIVE_OBSERVATION)
-        .group_by(EWSTracking.borrower_id)
-        .subquery()
-    )
-    latest_status = dict(
-        db.execute(
-            select(EWSTracking.borrower_id, EWSTracking.installment_status).join(
-                latest_month,
-                and_(
-                    EWSTracking.borrower_id == latest_month.c.borrower_id,
-                    EWSTracking.month_number == latest_month.c.month_number,
-                    ACTIVE_OBSERVATION,
-                ),
-            )
-        ).all()
-    )
+    recorded_months: dict[int, set[int]] = defaultdict(set)
+    latest_status: dict[int, str] = {}
+    # Two portfolio-wide queries, with no query per facility. Only active
+    # observations count, so corrections preserve the same coverage semantics.
+    for facility_id, month_number, status_label in db.execute(
+        select(EWSTracking.borrower_id, EWSTracking.month_number, EWSTracking.installment_status)
+        .join(Application, Application.id == EWSTracking.borrower_id)
+        .where(ACTIVE_OBSERVATION, _final_is(Decision.APPROVED.value))
+        .order_by(EWSTracking.month_number)
+    ):
+        recorded_months[facility_id].add(month_number)
+        latest_status[facility_id] = status_label
 
     reminders: list[Reminder] = []
-    for application, recorded_until, months_paid, paid in facilities:
+    for application, months_recorded, months_paid, paid in facilities:
         status_label = latest_status.get(application.id)
         if status_label == InstallmentStatus.DEFAULT.value:
             continue  # with remedial management, not a reminder
@@ -342,8 +355,13 @@ async def payment_reminders(db: DbSession) -> list[Reminder]:
         if arrears <= ROUNDING_TOLERANCE_PKR * months_paid:
             arrears = 0.0
 
-        approved_on = (application.reviewed_at or application.created_at).date()
-        number = recorded_until + 1 if recorded_until < application.tenure_months else None
+        approved_on = business_date(application.reviewed_at or application.created_at)
+        coverage = recorded_months[application.id]
+        recorded_until = max(coverage, default=0)
+        number = next(
+            (month for month in range(1, application.tenure_months + 1) if month not in coverage),
+            None,
+        )
         due = _add_months(approved_on, number) if number else None
         days = (due - today).days if due else None
 
@@ -378,6 +396,9 @@ async def payment_reminders(db: DbSession) -> list[Reminder]:
                 days_until_due=days if kind != "arrears" else None,
                 arrears_pkr=round(arrears, 2),
                 latest_status=status_label,
+                latest_recorded_month=recorded_until,
+                has_recording_gap=kind != 'arrears' and number is not None and number < recorded_until,
+                recorded_months_without_amount=months_recorded - months_paid,
                 message_en=english,
                 message_ur=urdu,
             )

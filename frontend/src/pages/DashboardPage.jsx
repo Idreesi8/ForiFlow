@@ -15,6 +15,7 @@ import {
 
 import { apiErrorMessage, fetchApplications, fetchPortfolioStats } from "../api/client.js";
 import ApplicationTable from "../components/ApplicationTable.jsx";
+import ActionDeskPreview from "../components/ActionDeskPreview.jsx";
 import EWSAlertFeed from "../components/EWSAlertFeed.jsx";
 import PortfolioPanel from "../components/PortfolioPanel.jsx";
 import ScoreDial from "../components/ScoreDial.jsx";
@@ -23,6 +24,7 @@ import { SCORE_BANDS, bandForDecision } from "../lib/decisions.js";
 import { bandIndexForRiskBand, describeBands } from "../lib/policyBands.js";
 import { formatPKRCompact } from "../lib/format.js";
 import { isOpenAlert } from "../lib/ews.js";
+import { getStoredUsername } from "../api/auth.js";
 
 /** Portfolio overview: origination quality on the left, surveillance below. */
 export default function DashboardPage() {
@@ -99,7 +101,15 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="relative overflow-hidden rounded-2xl border border-brand-800 bg-brand-900 p-6 text-white sm:p-8" aria-label="Workspace overview">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-32 h-80 w-80 rounded-full border-[48px] border-brand-700/30" />
+        <div className="relative flex flex-wrap items-end justify-between gap-6">
+          <div className="max-w-xl"><p className="text-xs font-semibold tracking-[0.16em] text-brand-200 uppercase">Your portfolio, in focus</p><h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">Welcome back{getStoredUsername() ? `, ${getStoredUsername()}` : ""}.</h2><p className="mt-3 text-sm leading-relaxed text-brand-100">Start an assessment or pick up the next case that needs your attention.</p></div>
+          <div className="flex flex-wrap gap-3"><Link to="/scoring" className="btn-primary border border-brand-400 bg-brand-500 hover:bg-brand-600">New assessment <span aria-hidden="true">＋</span></Link><Link to="/action-desk?actionable_only=true" className="btn-secondary border-brand-600 bg-brand-800 text-white hover:bg-brand-700">View next actions <span aria-hidden="true">→</span></Link></div>
+        </div>
+      </section>
+
+      <section className="grid gap-3 min-[360px]:grid-cols-2 sm:gap-4 xl:grid-cols-5">
         <StatCard
           label="Applications scored"
           value={portfolio.total_applications}
@@ -121,15 +131,25 @@ export default function DashboardPage() {
         <StatCard
           label="Approved exposure"
           value={formatPKRCompact(portfolio.approved_exposure_pkr)}
-          hint="Model and officer approvals"
+          hint="Recorded approved facilities"
           accent="slate"
         />
         <StatCard
           label="Open EWS alerts"
           value={openCount}
-          hint={worstOpenDrop !== null ? `Worst drop ${worstOpenDrop.toFixed(1)} pts` : "Portfolio stable"}
+          hint={worstOpenDrop !== null ? `Worst drop ${worstOpenDrop.toFixed(1)} pts` : "No open alerts recorded"}
           accent={openCount ? "rose" : "emerald"}
         />
+      </section>
+
+      <ActionDeskPreview />
+
+      <section className="grid gap-3 md:grid-cols-3" aria-label="Quick access">
+        {[
+          { to: "/applications", number: "01", title: "Find an application", detail: "Search the register and open a case for review." },
+          { to: "/alerts", number: "02", title: "Record a monitoring month", detail: "Choose a facility and review its reporting calendar." },
+          { to: "/reminders", number: "03", title: "Prepare a follow-up", detail: "Review payment evidence and reminder drafts." },
+        ].map(item => <Link key={item.to} to={item.to} className="group flex gap-4 rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-brand-300 hover:shadow-sm"><span className="pt-1 text-xs font-bold text-brand-600">{item.number}</span><div className="flex-1"><h2 className="text-sm font-bold text-slate-900 group-hover:text-brand-700">{item.title} <span aria-hidden="true">↗</span></h2><p className="mt-2 text-xs leading-relaxed text-slate-500">{item.detail}</p></div></Link>)}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-3">
@@ -268,9 +288,9 @@ function StatCard({ label, value, hint, accent = "slate" }) {
   }[accent];
 
   return (
-    <div className="card px-5 py-4">
-      <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">{label}</p>
-      <p className={`tabular mt-1 text-2xl font-bold ${accentClass}`}>{value}</p>
+    <div className="card min-w-0 px-4 py-4 min-[360px]:last:col-span-2 sm:px-5 xl:last:col-span-1">
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className={`tabular mt-1 break-words text-xl font-bold sm:text-2xl ${accentClass}`}>{value}</p>
       <p className="mt-1 text-xs text-slate-500">{hint}</p>
     </div>
   );

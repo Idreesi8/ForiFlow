@@ -36,8 +36,10 @@ export function storeSession({ access_token, username, role }) {
  * admin changes it.
  */
 export function updateStoredAccount({ username, role }) {
+  const changed = (username && username !== getStoredUsername()) || (role && role !== getStoredRole());
   if (username) window.localStorage.setItem(USER_KEY, username);
   if (role) window.localStorage.setItem(ROLE_KEY, role);
+  if (changed) window.dispatchEvent(new Event('foriflow:account-updated'));
 }
 
 export function clearSession() {

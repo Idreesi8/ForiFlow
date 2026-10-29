@@ -112,6 +112,32 @@ def test_statement_endpoint_stores_nothing(client: TestClient) -> None:
     assert client.post("/score/statement", json={"csv": "x,y\n1,2"}).status_code == 422
 
 
+@pytest.mark.parametrize(
+    "statement",
+    [
+        'date,type,amount\n2026-01-02,CR,"100000',
+        "date,type,amount\n2026-01-02,CR," + "1" * 200_000,
+        "date,type,amount\n" + "\n".join(
+            f"2026-{month}-02,CR,1e308\n2026-{month}-27,CR,1e308"
+            for month in ("01", "02", "03")
+        ),
+    ],
+    ids=["unclosed-quote", "oversized-field", "overflowing-total"],
+)
+def test_invalid_statement_returns_422_without_saving_an_application(
+    client: TestClient, statement: str
+) -> None:
+    summary = client.post("/score/statement", json={"csv": statement})
+    scored = client.post(
+        "/score", json={**STRONG_APPLICANT, "statement_csv": statement}
+    )
+
+    assert summary.status_code == scored.status_code == 422
+    assert isinstance(summary.json()["detail"], str)
+    assert "Statement:" in scored.json()["detail"]
+    assert client.get("/score/applications").json() == []
+
+
 def test_evidence_is_recomputed_by_the_api(client: TestClient) -> None:
     summary = parse_statement(SAMPLE)
     payload = {
@@ -126,6 +152,33 @@ def test_evidence_is_recomputed_by_the_api(client: TestClient) -> None:
     assert stored["turnover_evidence"]["matches_statement"] is True
     assert stored["turnover_evidence"]["transactions"] == summary.transactions
     assert "statement_csv" not in stored
+
+
+def test_quiet_months_are_kept_in_stored_turnover_evidence(client: TestClient) -> None:
+    statement = _statement([
+        (f"2026-{month}-{day}", kind, amount)
+        for month in ("01", "04", "06")
+        for day, kind, amount in (("02", "CR", 100_000), ("27", "DR", 60_000))
+    ])
+    response = client.post(
+        "/score",
+        json={
+            **STRONG_APPLICANT,
+            "monthly_digital_payments": 50_000,
+            "cash_flow_proxy": 20_000,
+            "statement_csv": statement,
+        },
+    )
+    assert response.status_code == 201
+    stored = client.get(
+        f"/score/applications/{response.json()['application_id']}"
+    ).json()
+
+    evidence = stored["turnover_evidence"]
+    assert evidence["matches_statement"] is True
+    assert evidence["full_months"] == 6
+    assert evidence["monthly_inflow_median"] == 50_000
+    assert evidence["suggested_order_consistency"] == 0
 
 
 def test_edited_figures_are_marked_as_not_matching(client: TestClient) -> None:

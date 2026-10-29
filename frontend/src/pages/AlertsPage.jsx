@@ -1,35 +1,78 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 
 import { apiErrorMessage, fetchEwsOverview } from "../api/client.js";
 import EWSAlertFeed from "../components/EWSAlertFeed.jsx";
 import EWSFacilityDetail from "../components/EWSFacilityDetail.jsx";
 import EWSOverview from "../components/EWSOverview.jsx";
 import MonitoringPanel from "../components/MonitoringPanel.jsx";
+import WorklistReturn from "../components/WorklistReturn.jsx";
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
+import { positiveInteger, worklistReturnState } from "../lib/actionDesk.js";
+import { reminderReturnState } from '../lib/reminderReview.js';
 
 /**
  * Early Warning System workspace: the portfolio position, one facility's
  * history, the month entry form and the alert queue.
  */
 export default function AlertsPage() {
+  const location = useLocation();
+  const returnState = worklistReturnState(location.state) ?? reminderReturnState(location.state);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedFacility = positiveInteger(searchParams.get("facility"));
+  const requestedMonth = positiveInteger(searchParams.get("month"));
   const [overview, setOverview] = useState(null);
   const [error, setError] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(requestedFacility);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [monitoringDirty, setMonitoringDirty] = useState(false);
+  const [monitoringBusy, setMonitoringBusy] = useState(false);
+  const [pendingFacility, setPendingFacility] = useState(null);
+  const overviewRequestSequence = useRef(0);
+
+  const commitFacility = id => {
+    setMonitoringDirty(false);
+    setPendingFacility(null);
+    setSelectedId(id);
+    if (requestedFacility) setSearchParams({ facility: String(id) }, { state: returnState });
+  };
+  const requestFacility = id => {
+    if (monitoringBusy || id === selectedId) return;
+    if (monitoringDirty) setPendingFacility(id);
+    else commitFacility(id);
+  };
+
+  useEffect(() => {
+    if (!requestedFacility || requestedFacility === selectedId) return;
+    if ((monitoringDirty || monitoringBusy) && selectedId) {
+      setPendingFacility(requestedFacility);
+      setSearchParams({ facility: String(selectedId) }, { replace: true, state: returnState });
+    } else setSelectedId(requestedFacility);
+  }, [requestedFacility, selectedId, monitoringDirty, monitoringBusy, setSearchParams]);
+
+  useEffect(() => {
+    const anchor = location.hash.slice(1);
+    if (!requestedFacility || !["monitoring", "alert-queue"].includes(anchor)) return;
+    const frame = requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ block: "start" }));
+    return () => cancelAnimationFrame(frame);
+  }, [location.hash, requestedFacility, overview]);
 
   const loadOverview = useCallback(async () => {
+    const request = ++overviewRequestSequence.current;
     setError(null);
     try {
       const data = await fetchEwsOverview();
+      if (request !== overviewRequestSequence.current) return;
       setOverview(data);
       setSelectedId((current) => current ?? data.rows[0]?.facility_id ?? null);
     } catch (requestError) {
-      setError(apiErrorMessage(requestError, "Could not load the EWS overview."));
+      if (request === overviewRequestSequence.current) setError(apiErrorMessage(requestError, "Could not load the EWS overview."));
     }
   }, []);
 
   useEffect(() => {
     loadOverview();
+    return () => { overviewRequestSequence.current += 1; };
   }, [loadOverview, refreshToken]);
 
   const refresh = () => setRefreshToken((token) => token + 1);
@@ -37,6 +80,7 @@ export default function AlertsPage() {
 
   return (
     <div className="space-y-6">
+      <WorklistReturn />
       <header>
         <h2 className="text-xl font-bold text-slate-900">Early Warning System</h2>
         <p className="mt-1 max-w-4xl text-sm text-slate-500">
@@ -46,25 +90,33 @@ export default function AlertsPage() {
         </p>
       </header>
 
+      {requestedFacility ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900"><span>Focused on case #{selectedId}. {!returnState ? <Link className="font-semibold underline" to="/action-desk">Back to action desk</Link> : null}</span><button type="button" className="btn-secondary" onClick={() => { setSearchParams({}, { state: returnState }); setPendingFacility(null); }}>Show all alerts</button></div> : null}
+      {pendingFacility ? <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950" data-testid="unsaved-facility"><p>There are unsubmitted figures for case #{selectedId}. Switching to case #{pendingFacility} clears those figures.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" onClick={() => setPendingFacility(null)}>Keep editing this facility</button><button type="button" className="btn-primary" disabled={monitoringBusy} onClick={() => commitFacility(pendingFacility)}>Switch facility and clear figures</button></div></div> : null}
+
       {error ? (
         <ErrorState message={error} onRetry={loadOverview} />
       ) : !overview ? (
         <LoadingState label="Loading the EWS overview…" />
       ) : (
-        <EWSOverview overview={overview} selectedId={selectedId} onSelect={setSelectedId} />
+        <EWSOverview overview={overview} selectedId={selectedId} onSelect={requestFacility} />
       )}
 
       {selectedId ? <EWSFacilityDetail facilityId={selectedId} refreshToken={refreshToken} /> : null}
 
-      <MonitoringPanel
+      <div id="monitoring" className="scroll-mt-24"><MonitoringPanel
         facilityId={selectedId}
+        initialMonth={requestedFacility === selectedId && requestedMonth <= 84 ? requestedMonth : null}
+        refreshToken={refreshToken}
+        onFacilityChange={requestFacility}
+        onDirtyChange={setMonitoringDirty}
+        onBusyChange={setMonitoringBusy}
         onMonitored={(response) => {
           setSelectedId(response.borrower_id);
           refresh();
         }}
-      />
+      /></div>
 
-      <EWSAlertFeed refreshToken={refreshToken} onChanged={refresh} />
+      <div id="alert-queue" className="scroll-mt-24"><EWSAlertFeed facilityId={requestedFacility ? selectedId : null} refreshToken={refreshToken} onChanged={refresh} /></div>
 
       {method ? (
         <section className="card" data-testid="ews-methodology">

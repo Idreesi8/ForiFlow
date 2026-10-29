@@ -16,8 +16,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from config import JWT_EXPIRE_MINUTES
-from models.database import User, get_db
-from schemas import LoginRequest, TokenResponse, UserCreate, UserResponse, UserStatusUpdate
+from models.database import AuditLog, User, get_db
+from schemas import LoginRequest, TokenResponse, UserCreate, UserResponse, UserStatusUpdate, UserRoleUpdate, UserAccessEvent
+from services.team_access import lock_team_change
 from services import audit_service, login_guard
 from services.audit_service import Action, Audit, client_ip
 from services.auth_service import (
@@ -230,6 +231,7 @@ async def create_user(
         validate_new_password(body.password, body.username)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
+    admin = lock_team_change(db, admin.id)
     if db.scalar(select(User).where(User.username == body.username)) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -270,9 +272,12 @@ async def set_user_status(
     An admin cannot disable their own account, and the last enabled admin
     cannot be disabled, so administration cannot be locked out.
     """
-    user = db.get(User, user_id)
+    admin = lock_team_change(db, admin.id)
+    user = db.get(User, user_id, populate_existing=True)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such officer account.")
+    if body.expected_is_active is not None and user.is_active != body.expected_is_active:
+        raise HTTPException(409, 'The account status changed since you opened it. Refresh and review again.')
     if user.is_active == body.is_active:
         return UserResponse.model_validate(user)
     if not body.is_active:
@@ -308,3 +313,43 @@ async def set_user_status(
     db.commit()
     db.refresh(user)
     return UserResponse.model_validate(user)
+
+
+@router.patch('/users/{user_id}/role', response_model=UserResponse,
+              summary='Change another officer role with an audit reason (admin only)')
+async def set_user_role(user_id: int, body: UserRoleUpdate, admin: Admin, db: DbSession, audit: Audit):
+    admin = lock_team_change(db, admin.id)
+    user = db.get(User, user_id, populate_existing=True)
+    if user is None:
+        raise HTTPException(404, 'No such officer account.')
+    if user.role != body.expected_role.value:
+        raise HTTPException(409, 'The account role changed since you opened it. Refresh the account and review again.')
+    if user.role == body.role.value:
+        return UserResponse.model_validate(user)
+    if user.id == admin.id:
+        raise HTTPException(409, 'You cannot change your own role. Ask another enabled admin.')
+    if user.role == 'admin' and user.is_active:
+        enabled = db.scalar(select(func.count()).select_from(User).where(User.role == 'admin', User.is_active.is_(True)))
+        if enabled <= 1:
+            raise HTTPException(409, 'The last enabled admin cannot be demoted.')
+    previous = {'role': user.role}
+    user.role = body.role.value
+    audit_service.record(db, action=Action.USER_ROLE_CHANGED, entity_type='user', entity_id=user.id,
+                         actor=admin, previous=previous,
+                         new={'role': user.role, 'username': user.username, 'is_active': user.is_active},
+                         details={'reason': body.reason}, context=audit)
+    db.commit()
+    db.refresh(user)
+    return UserResponse.model_validate(user)
+
+
+@router.get('/users/{user_id}/access-history', response_model=list[UserAccessEvent],
+            summary='Latest 50 recorded account access changes (admin only)')
+async def user_access_history(user_id: int, _: Admin, db: DbSession):
+    if db.get(User, user_id) is None:
+        raise HTTPException(404, 'No such officer account.')
+    events = db.scalars(select(AuditLog).where(
+        AuditLog.entity_type == 'user', AuditLog.entity_id == str(user_id),
+        AuditLog.action.in_([Action.USER_CREATED, Action.USER_ROLE_CHANGED, Action.USER_ENABLED, Action.USER_DISABLED])
+    ).order_by(AuditLog.occurred_at.desc(), AuditLog.id.desc()).limit(50)).all()
+    return [UserAccessEvent.model_validate(event) for event in events]

@@ -59,7 +59,8 @@ const SHOTS = [
         await input.fill("");
         await input.fill(String(value));
       }
-      await page.getByRole("button", { name: /Score application/i }).click();
+      await page.getByRole("button", { name: "Review assessment", exact: true }).click();
+      await page.getByRole("button", { name: "Save and score assessment", exact: true }).click();
       await page.getByText(/Approved|Rejected|Manual Review/).first().waitFor({
         timeout: 60000,
       });

@@ -10,6 +10,11 @@ import os
 os.environ.setdefault("FORIFLOW_SCORING_ENGINE", "surrogate")
 os.environ["FORIFLOW_DATABASE_URL"] = "sqlite://"
 os.environ["JWT_SECRET_KEY"] = "test-jwt-secret-foriflow-32b-min"
+# The shared client exercises development routes. A local production .env may
+# disable docs; keep it from changing which routes exist during collection.
+# Production configuration tests override these settings with monkeypatch.
+os.environ["FORIFLOW_ENV"] = "development"
+os.environ["FORIFLOW_ENABLE_DOCS"] = "true"
 
 from collections.abc import Generator
 from typing import Any

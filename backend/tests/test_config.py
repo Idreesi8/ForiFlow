@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 from config import database_url, env_flag, is_sqlite_url
 
 
@@ -34,7 +32,8 @@ def test_postgres_parts_build_url(monkeypatch) -> None:
     assert "p%40ss%3Aword" in url
 
 
-def test_env_flag_defaults() -> None:
+def test_env_flag_defaults(monkeypatch) -> None:
+    monkeypatch.delenv("FORIFLOW_ENABLE_DOCS", raising=False)
     assert env_flag("FORIFLOW_ENABLE_DOCS", "true") is True
-    os.environ.pop("FORIFLOW_ENABLE_DOCS_TEST", None)
+    monkeypatch.delenv("FORIFLOW_ENABLE_DOCS_TEST", raising=False)
     assert env_flag("FORIFLOW_ENABLE_DOCS_TEST", "false") is False

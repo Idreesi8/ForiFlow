@@ -81,7 +81,7 @@ Set these in `.env` (the backend `env_file` makes them available to
 |----------|----------|---------|---------|
 | `FORIFLOW_ADMIN_PASSWORD` | Yes for seed | none | **12 to 72 characters**, not the placeholder, not a common password or sequence, not containing the username (enforced, 2.3). **Delete it from `.env` after seeding**: `.env` is passed into the API container. The seed script reads it from the environment only — it is not accepted as a CLI flag and is never logged. |
 | `FORIFLOW_ADMIN_USERNAME` | No | `admin` | Officer username. |
-| `FORIFLOW_ADMIN_ROLE` | No | `admin` | `admin` or `analyst`. Both roles score and monitor; only `admin` can approve or reject Manual Review cases, resolve EWS alerts and create accounts (see [`api-reference.md`](api-reference.md#authentication-and-roles)). |
+| `FORIFLOW_ADMIN_ROLE` | No | `admin` | `admin`, `manager` or `analyst`. Managers and admins decide within recorded authority; only admins manage accounts. Keep the first enabled account an admin (see [`api-reference.md`](api-reference.md#authentication-and-roles)). |
 
 Placeholder only:
 

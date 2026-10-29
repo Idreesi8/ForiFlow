@@ -585,6 +585,8 @@ class MLScoringService(ScoringService):
         """
         import joblib
 
+        from ml.artifact_loader import load_inference_artifact
+
         from ml.features import (
             FEATURE_NAMES_PATH,
             MODEL_PATH,
@@ -595,9 +597,9 @@ class MLScoringService(ScoringService):
         )
 
         return cls(
-            model=joblib.load(MODEL_PATH),
+            model=load_inference_artifact(MODEL_PATH),
             scaler=joblib.load(SCALER_PATH),
-            shap_bundle=joblib.load(SHAP_EXPLAINER_PATH),
+            shap_bundle=load_inference_artifact(SHAP_EXPLAINER_PATH),
             metadata=load_feature_metadata(),
             evaluation=load_model_evaluation(),
             artifact_sha256=artifact_fingerprint(

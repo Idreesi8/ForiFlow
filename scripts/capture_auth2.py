@@ -185,7 +185,8 @@ def main() -> int:
                 field = p.locator(f"#{name}")
                 field.fill("")
                 field.fill(value)
-            p.get_by_role("button", name="Score application").click()
+            p.get_by_role("button", name="Review assessment", exact=True).click()
+            p.get_by_role("button", name="Save and score assessment", exact=True).click()
             # Wait for the "Awaiting assessment" placeholder to be gone AND a
             # decision badge to be visible, so we don't catch the SPA mid
             # route-transition (it can briefly overlay the dashboard).

@@ -10,13 +10,34 @@ const PKR_FORMATTER = new Intl.NumberFormat("en-PK", {
 });
 
 const NUMBER_FORMATTER = new Intl.NumberFormat("en-PK");
+const PKR_EXACT_FORMATTER = new Intl.NumberFormat("en-PK", {
+  style: "currency", currency: "PKR", currencyDisplay: "code",
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
+
+/** Paisa precision for principal and cash-flow scenario figures. */
+export function formatPKRExact(value) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? PKR_EXACT_FORMATTER.format(value) : "—";
+}
 
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-PK", {
   dateStyle: "medium",
   timeStyle: "short",
+  timeZone: "Asia/Karachi",
 });
 
-const DATE_FORMATTER = new Intl.DateTimeFormat("en-PK", { dateStyle: "medium" });
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeZone: "Asia/Karachi" });
+// Calendar dates are labels, not instants. Do not shift a due date by a timezone.
+const CALENDAR_DATE_FORMATTER = new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeZone: "UTC" });
+const BUSINESS_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit",
+});
+
+export function businessDate(now = new Date()) {
+  const parts = Object.fromEntries(BUSINESS_DATE_FORMATTER.formatToParts(now).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
 
 /** Format an exact PKR amount, e.g. "PKR 2,500,000". */
 export function formatPKR(value) {
@@ -62,20 +83,22 @@ export function formatCount(value) {
  * rather than as the browser's local time.
  */
 export function parseApiDate(value) {
-  if (!value) return null;
-  const hasTimezone = /(Z|[+-]\d{2}:?\d{2})$/.test(value);
-  const date = new Date(hasTimezone ? value : `${value}Z`);
+  if (typeof value !== "string" || !value) return null;
+  const calendarDate = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const hasTimezone = /(Z|[+-]\d{2}:?\d{2})$/i.test(value);
+  const date = new Date(calendarDate ? `${value}T00:00:00Z` : hasTimezone ? value : `${value}Z`);
+  if (calendarDate && !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) !== value) return null;
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export function formatDateTime(value) {
   const date = parseApiDate(value);
-  return date ? DATE_TIME_FORMATTER.format(date) : "—";
+  return date ? `${DATE_TIME_FORMATTER.format(date)} PKT` : "—";
 }
 
 export function formatDate(value) {
   const date = parseApiDate(value);
-  return date ? DATE_FORMATTER.format(date) : "—";
+  return date ? (/^\d{4}-\d{2}-\d{2}$/.test(value) ? CALENDAR_DATE_FORMATTER : DATE_FORMATTER).format(date) : "—";
 }
 
 /** Short relative age, e.g. "3h ago", used in the alert feed. */
