@@ -178,6 +178,12 @@ export const fetchEwsOverview = () => client.get("/ews/overview").then((response
 export const fetchAlertHistory = (alertId) =>
   client.get(`/ews/alerts/${alertId}/history`).then((response) => response.data);
 
+export const fetchAlert = (alertId, { signal } = {}) =>
+  client.get(`/ews/alerts/${alertId}`, { signal }).then(response => response.data);
+
+export const fetchAlertAssignees = ({ signal } = {}) =>
+  client.get('/ews/assignees', { signal }).then(response => response.data);
+
 /**
  * One lifecycle step on an alert (manager or admin): "acknowledge", "assign",
  * "due-date", "action-required", "resolve" or "dismiss".

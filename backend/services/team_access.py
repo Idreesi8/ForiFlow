@@ -10,6 +10,11 @@ TEAM_ACCESS_LOCK = 467921089
 
 
 def lock_team_change(db: Session, actor_id: int) -> User:
+    return lock_officer_change(db, actor_id, frozenset({'admin'}))
+
+
+def lock_officer_change(db: Session, actor_id: int, allowed_roles: frozenset[str]) -> User:
+    """Share the access-change lock so authority cannot change during a protected write."""
     dialect = db.get_bind().dialect.name
     if dialect == 'postgresql':
         db.execute(text('SELECT pg_advisory_xact_lock(:key)'), {'key': TEAM_ACCESS_LOCK})
@@ -21,6 +26,7 @@ def lock_team_change(db: Session, actor_id: int) -> User:
     else:
         raise HTTPException(503, 'Account changes are unsupported on this database.')
     actor = db.scalar(select(User).where(User.id == actor_id).execution_options(populate_existing=True))
-    if actor is None or not actor.is_active or actor.role != 'admin':
-        raise HTTPException(403, 'Your account no longer has enabled admin access. Refresh your session.')
+    if actor is None or not actor.is_active or actor.role not in allowed_roles:
+        roles = ' or '.join(sorted(allowed_roles))
+        raise HTTPException(403, f'Your account no longer has enabled {roles} access. Refresh your session.')
     return actor

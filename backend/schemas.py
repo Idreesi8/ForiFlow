@@ -7,6 +7,8 @@ rejected at the edge rather than silently skewing a credit decision.
 from __future__ import annotations
 
 import re
+import hashlib
+import json
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, Literal
@@ -1028,7 +1030,13 @@ class ReviewRequest(BaseModel):
     )
 
 
-class AlertResolveRequest(BaseModel):
+class AlertReviewRequest(BaseModel):
+    """Optional compare-and-set guard; legacy clients may omit it."""
+
+    expected_review_token: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+
+class AlertResolveRequest(AlertReviewRequest):
     """How an EWS alert was closed."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -1166,7 +1174,7 @@ class EWSCorrectionRequest(EWSObservationFields):
     )
 
 
-class AlertNoteRequest(BaseModel):
+class AlertNoteRequest(AlertReviewRequest):
     """An optional note on a lifecycle step."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -1174,7 +1182,7 @@ class AlertNoteRequest(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
-class AlertAssignRequest(BaseModel):
+class AlertAssignRequest(AlertReviewRequest):
     """Who follows the alert up, optionally by when."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -1184,7 +1192,7 @@ class AlertAssignRequest(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
-class AlertDueDateRequest(BaseModel):
+class AlertDueDateRequest(AlertReviewRequest):
     """When the follow-up action is due."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -1193,7 +1201,7 @@ class AlertDueDateRequest(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
-class AlertActionRequest(BaseModel):
+class AlertActionRequest(AlertReviewRequest):
     """Mark an acknowledged alert Action Required, saying what must be done."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -1248,6 +1256,15 @@ class AlertResponse(BaseModel):
     is_open: bool = True
     is_overdue: bool = False
     is_legacy: bool = False
+
+    @computed_field
+    @property
+    def review_token(self) -> str:
+        """Bind a review to stored evidence and lifecycle, excluding clock-derived flags."""
+        state = self.model_dump(mode="json", exclude={
+            "review_token", "business_name", "is_open", "is_overdue", "is_legacy",
+        })
+        return hashlib.sha256(json.dumps(state, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 class EWSTrackingResponse(BaseModel):

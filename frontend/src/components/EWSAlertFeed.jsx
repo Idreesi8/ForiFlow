@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 
 import { canDecideCredit } from "../api/auth.js";
 import {
-  alertLifecycle,
   apiErrorMessage,
   fetchAlertHistory,
   fetchAlerts,
@@ -18,17 +17,15 @@ import {
   isOpenAlert,
 } from "../lib/ews.js";
 import { formatDate, formatDateTime, formatRelative } from "../lib/format.js";
-import { useBusinessDate } from "../hooks/useBusinessDate.js";
+import AlertActionDialog from "./AlertActionDialog.jsx";
 import { AlertSeverityBadge, AlertStatusBadge } from "./common/Badges.jsx";
-import { EmptyState, ErrorState, LoadingState, Spinner } from "./common/States.jsx";
+import { EmptyState, ErrorState, LoadingState } from "./common/States.jsx";
 
 const FILTERS = [
   { key: "attention", label: "Needs attention" },
   ...ALERT_STATUSES.map((status) => ({ key: status, label: status })),
   { key: "all", label: "All" },
 ];
-const NOTE_MIN = 5;
-const EMPTY_FORM = { alertId: null, step: null, note: "", assigned_to: "", due_date: "" };
 
 /**
  * Early Warning System alert queue.
@@ -54,8 +51,7 @@ export default function EWSAlertFeed({
   const [filter, setFilter] = useState("attention");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [busyId, setBusyId] = useState(null);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [candidate, setCandidate] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [history, setHistory] = useState({});
   // The API enforces this (403 for analysts); hiding the buttons avoids dead clicks.
@@ -113,68 +109,11 @@ export default function EWSAlertFeed({
       return next;
     });
 
-  const submitStep = async (alertId, step, payload) => {
-    setBusyId(alertId);
-    setError(null);
-    try {
-      replaceAlert(await alertLifecycle(alertId, step, payload));
-      setForm(EMPTY_FORM);
-      if (expandedId === alertId) loadHistory(alertId);
-      onChanged?.();
-    } catch (requestError) {
-      setError(
-        apiErrorMessage(requestError, `Could not ${ACTION_LABELS[step].toLowerCase()} the alert.`),
-      );
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const openForm = (alert, step) => {
-    if (step === "acknowledge") {
-      submitStep(alert.id, step, {});
-      return;
-    }
-    setForm(
-      form.alertId === alert.id && form.step === step
-        ? EMPTY_FORM
-        : {
-            ...EMPTY_FORM,
-            alertId: alert.id,
-            step,
-            assigned_to: alert.assigned_to ?? "",
-            due_date: alert.action_due_date ?? "",
-          },
-    );
-  };
-
-  const formPayload = () => {
-    const note = form.note.trim();
-    const assignee = form.assigned_to.trim();
-    switch (form.step) {
-      case "assign":
-        return {
-          assigned_to: assignee,
-          ...(form.due_date ? { due_date: form.due_date } : {}),
-          ...(note ? { note } : {}),
-        };
-      case "due-date":
-        return { due_date: form.due_date, ...(note ? { note } : {}) };
-      case "action-required":
-        return {
-          action_note: note,
-          ...(assignee ? { assigned_to: assignee } : {}),
-          ...(form.due_date ? { due_date: form.due_date } : {}),
-        };
-      default:
-        return { note };
-    }
-  };
-
-  const formReady = () => {
-    if (form.step === "assign") return form.assigned_to.trim().length > 0;
-    if (form.step === "due-date") return Boolean(form.due_date);
-    return form.note.trim().length >= NOTE_MIN;
+  const savedAction = updated => {
+    replaceAlert(updated);
+    setCandidate(null);
+    if (expandedId === updated.id) loadHistory(updated.id);
+    onChanged?.();
   };
 
   const visibleAlerts = useMemo(() => {
@@ -196,6 +135,7 @@ export default function EWSAlertFeed({
 
   return (
     <section className="card" data-testid="ews-alert-feed">
+      {candidate ? <AlertActionDialog candidate={candidate} onClose={() => setCandidate(null)} onSaved={savedAction} /> : null}
       <div className="card-header">
         <div className="flex items-center gap-3">
           <h2 className="card-title">Early warning alerts</h2>
@@ -226,6 +166,7 @@ export default function EWSAlertFeed({
         </div>
       </div>
 
+      {alerts.length >= limit ? <p role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-950">Loaded the first {alerts.length} alerts in priority order. More may exist. Filters and counts cover these loaded alerts only.</p> : null}
       {!compact && alerts.length > 0 ? (
         <div className="grid gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-4">
           <FeedStat label="Open" value={counts.open} tone={counts.open ? "danger" : undefined} />
@@ -282,7 +223,6 @@ export default function EWSAlertFeed({
               {shownAlerts.map((alert) => {
                 const style = alertStatusStyle(alert.alert_status);
                 const actions = alertActions(alert, { canManage });
-                const isBusy = busyId === alert.id;
                 const expanded = expandedId === alert.id;
                 return (
                   <Fragment key={alert.id}>
@@ -344,19 +284,14 @@ export default function EWSAlertFeed({
                             <button
                               key={step}
                               type="button"
-                              disabled={isBusy}
-                              onClick={() => openForm(alert, step)}
+                              onClick={() => setCandidate({ alert, step })}
                               className={`py-1 text-xs ${
                                 step === "acknowledge" || step === "resolve"
                                   ? "btn-primary"
                                   : "btn-secondary"
                               }`}
                             >
-                              {isBusy && step === "acknowledge" ? (
-                                <Spinner className="h-3.5 w-3.5 text-white" />
-                              ) : (
-                                ACTION_LABELS[step]
-                              )}
+                              {ACTION_LABELS[step]}
                             </button>
                           ))}
                           {!canManage && isOpenAlert(alert) ? (
@@ -378,21 +313,6 @@ export default function EWSAlertFeed({
                         </div>
                       </td>
                     </tr>
-                    {form.alertId === alert.id ? (
-                      <tr className="bg-slate-50">
-                        <td colSpan={columns} className="px-5 py-3">
-                          <StepForm
-                            alert={alert}
-                            form={form}
-                            setForm={setForm}
-                            busy={isBusy}
-                            ready={formReady()}
-                            onSubmit={() => submitStep(alert.id, form.step, formPayload())}
-                            onCancel={() => setForm(EMPTY_FORM)}
-                          />
-                        </td>
-                      </tr>
-                    ) : null}
                     {expanded ? (
                       <tr className="bg-white">
                         <td colSpan={columns} className="px-5 py-4">
@@ -442,88 +362,6 @@ function FollowUp({ alert }) {
         </p>
       ) : null}
     </div>
-  );
-}
-
-const STEP_TITLES = {
-  assign: "Assign the follow-up",
-  "due-date": "Set the action due date",
-  "action-required": "What must be done?",
-  resolve: "How was it resolved?",
-  dismiss: "Why is it dismissed?",
-};
-
-function StepForm({ alert, form, setForm, busy, ready, onSubmit, onCancel }) {
-  const today = useBusinessDate();
-  const step = form.step;
-  const set = (name) => (event) =>
-    setForm((previous) => ({ ...previous, [name]: event.target.value }));
-  const noteRequired = ["action-required", "resolve", "dismiss"].includes(step);
-  return (
-    <form className="space-y-2" data-step={step} onSubmit={event => { event.preventDefault(); if (!busy && ready) onSubmit(); }}>
-      <p className="text-sm font-semibold text-slate-800">
-        {STEP_TITLES[step]} <span className="font-normal text-slate-500">Alert #{alert.id}</span>
-      </p>
-      <div className="flex flex-wrap items-end gap-3">
-        {step === "assign" || step === "action-required" ? (
-          <label className="text-xs text-slate-600">
-            Officer username{step === "assign" ? "" : " (optional)"}
-            <input
-              type="text"
-              name="assigned_to"
-              value={form.assigned_to}
-              onChange={set("assigned_to")}
-              maxLength={64}
-              className="field-input mt-1 w-44 py-1.5"
-              placeholder="e.g. zakria"
-            />
-          </label>
-        ) : null}
-        {step === "assign" || step === "due-date" || step === "action-required" ? (
-          <label className="text-xs text-slate-600">
-            Due date{step === "due-date" ? "" : " (optional)"} · PKT
-            <input
-              type="date"
-              name="due_date"
-              min={today}
-              value={form.due_date}
-              onChange={set("due_date")}
-              className="field-input mt-1 w-40 py-1.5"
-            />
-          </label>
-        ) : null}
-        <label className="min-w-64 flex-1 text-xs text-slate-600">
-          {step === "action-required" ? "Action" : "Note"}
-          {noteRequired ? ` (at least ${NOTE_MIN} characters)` : " (optional)"}
-          <input
-            type="text"
-            name="note"
-            value={form.note}
-            onChange={set("note")}
-            maxLength={1000}
-            className="field-input mt-1 py-1.5"
-            placeholder={
-              step === "action-required"
-                ? "e.g. Visit the shop and collect the June bank statement"
-                : step === "dismiss"
-                  ? "e.g. Raised on a mistyped bureau balance"
-                  : "e.g. Borrower paid the arrears on 12 Oct"
-            }
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={busy || !ready}
-          className="btn-primary py-1.5 text-xs"
-        >
-          {busy ? <Spinner className="h-3.5 w-3.5 text-white" /> : `Confirm ${ACTION_LABELS[step].toLowerCase()}`}
-        </button>
-        <button type="button" onClick={onCancel} className="btn-ghost py-1.5 text-xs">
-          Cancel
-        </button>
-      </div>
-      <p className="text-xs text-slate-500">Saved with your name in the audit trail.</p>
-    </form>
   );
 }
 
