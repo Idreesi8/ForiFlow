@@ -18,6 +18,13 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ### Added
 
+- Reviewed alert follow-up with current evidence/account checks, enabled-officer
+  selection, protected drafts and explicit confirmation for every lifecycle step.
+  Optional API review tokens reject stale lifecycle or evidence updates under
+  row locking. Access changes and alert writes share a transaction lock to
+  recheck current authority and prevent assignment to disabled officers.
+  Legacy tokenless callers retain their existing lifecycle behavior.
+
 - Reviewed credit-policy drafts and activations: fresh account/version checks,
   term comparisons, illustrative score boundaries, activation reasons, responsive
   history cards and unsaved-draft protection. Reviewed API activations reject a

@@ -68,6 +68,7 @@ from services import audit_service, ews_engine
 from services.audit_service import Action, Audit, AuditContext
 from services.auth_service import get_current_user, require_manager
 from services.ews_service import EWSService, MonitoringOutcome, get_ews_service
+from services.team_access import lock_officer_change
 
 router = APIRouter(
     prefix="/ews",
@@ -1108,6 +1109,12 @@ async def facility_timeline(facility_id: int, db: DbSession) -> FacilityTimeline
 # --- alerts -------------------------------------------------------------------------
 
 
+@router.get("/assignees", summary="Enabled officers who can receive alert follow-up")
+async def alert_assignees(db: DbSession, officer: Manager) -> list[dict[str, str]]:
+    users = db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.username)).all()
+    return [{"username": user.username, "role": user.role} for user in users]
+
+
 @router.get("/alerts", response_model=list[AlertResponse], summary="List EWS alerts")
 async def list_alerts(
     db: DbSession,
@@ -1167,14 +1174,17 @@ async def alert_history(alert_id: int, db: DbSession) -> list[AuditLogResponse]:
     return [AuditLogResponse.model_validate(entry) for entry in entries]
 
 
-def _load_open_alert(alert_id: int, db: Session) -> Alert:
+def _load_open_alert(alert_id: int, db: Session, officer: User, expected_token: str | None = None) -> Alert:
     """Fetch an alert that is still open, or raise ``404`` / ``409``."""
-    alert = db.get(Alert, alert_id, with_for_update=True)
+    lock_officer_change(db, officer.id, MANAGER_ROLES)
+    alert = db.get(Alert, alert_id, with_for_update=True, populate_existing=True)
     if alert is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Alert {alert_id} was not found.",
         )
+    if expected_token is not None and AlertResponse.model_validate(alert).review_token != expected_token:
+        raise HTTPException(409, 'This alert changed after your review. Refresh and review the latest evidence and follow-up before trying again.')
     if not alert.is_open:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1221,9 +1231,11 @@ def _check_due_date(due: date | None) -> None:
 
 def _resolve_assignee(db: Session, username: str) -> str:
     """An alert is assigned to an existing officer account only."""
-    user = db.scalars(select(User).where(User.username == username)).first()
+    user = db.scalars(select(User).where(User.username == username).execution_options(populate_existing=True)).first()
     if user is None:
         raise HTTPException(status_code=422, detail=f"No officer named {username!r}.")
+    if not user.is_active:
+        raise HTTPException(status_code=422, detail=f"Officer {username!r} is disabled. Choose an enabled officer.")
     return user.username
 
 
@@ -1239,7 +1251,7 @@ async def acknowledge_alert(
     audit: Audit,
     body: AlertNoteRequest | None = None,
 ) -> AlertResponse:
-    alert = _load_open_alert(alert_id, db)
+    alert = _load_open_alert(alert_id, db, officer, body.expected_review_token if body else None)
     if alert.alert_status != AlertStatus.OPEN.value:
         raise HTTPException(
             status_code=409,
@@ -1267,7 +1279,7 @@ async def review_alert(
     alert_id: int, db: DbSession, officer: Manager, audit: Audit
 ) -> AlertResponse:
     """Acknowledge if Open and take it, unless someone else holds it (``409``)."""
-    alert = _load_open_alert(alert_id, db)
+    alert = _load_open_alert(alert_id, db, officer)
     if alert.assigned_to not in (None, officer.username):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1298,7 +1310,7 @@ async def review_alert(
 async def assign_alert(
     alert_id: int, body: AlertAssignRequest, db: DbSession, officer: Manager, audit: Audit
 ) -> AlertResponse:
-    alert = _load_open_alert(alert_id, db)
+    alert = _load_open_alert(alert_id, db, officer, body.expected_review_token)
     assignee = _resolve_assignee(db, body.assigned_to)
     _check_due_date(body.due_date)
     before = _state(alert, _LIFECYCLE_FIELDS)
@@ -1321,7 +1333,7 @@ async def assign_alert(
 async def set_due_date(
     alert_id: int, body: AlertDueDateRequest, db: DbSession, officer: Manager, audit: Audit
 ) -> AlertResponse:
-    alert = _load_open_alert(alert_id, db)
+    alert = _load_open_alert(alert_id, db, officer, body.expected_review_token)
     _check_due_date(body.due_date)
     before = _state(alert, _LIFECYCLE_FIELDS)
     alert.action_due_date = body.due_date
@@ -1339,7 +1351,7 @@ async def set_due_date(
 async def require_action(
     alert_id: int, body: AlertActionRequest, db: DbSession, officer: Manager, audit: Audit
 ) -> AlertResponse:
-    alert = _load_open_alert(alert_id, db)
+    alert = _load_open_alert(alert_id, db, officer, body.expected_review_token)
     if alert.alert_status == AlertStatus.OPEN.value:
         raise HTTPException(status_code=409, detail=f"Acknowledge alert {alert_id} first.")
     if alert.alert_status == AlertStatus.ACTION_REQUIRED.value:
@@ -1371,8 +1383,9 @@ def _close(
     db: Session,
     officer: User,
     audit: AuditContext,
+    expected_token: str | None = None,
 ) -> AlertResponse:
-    alert = _load_open_alert(alert_id, db)
+    alert = _load_open_alert(alert_id, db, officer, expected_token)
     before = _state(alert, _LIFECYCLE_FIELDS)
     alert.alert_status = new_status.value
     alert.resolved_at = utcnow()
@@ -1396,7 +1409,7 @@ async def resolve_alert(
 ) -> AlertResponse:
     """Close an alert, recording who closed it, when and what was done. It stays listed."""
     return _close(
-        alert_id, body.note, AlertStatus.RESOLVED, Action.EWS_ALERT_RESOLVED, db, officer, audit
+        alert_id, body.note, AlertStatus.RESOLVED, Action.EWS_ALERT_RESOLVED, db, officer, audit, body.expected_review_token
     )
 
 
@@ -1409,5 +1422,5 @@ async def dismiss_alert(
     alert_id: int, body: AlertResolveRequest, db: DbSession, officer: Manager, audit: Audit
 ) -> AlertResponse:
     return _close(
-        alert_id, body.note, AlertStatus.DISMISSED, Action.EWS_ALERT_DISMISSED, db, officer, audit
+        alert_id, body.note, AlertStatus.DISMISSED, Action.EWS_ALERT_DISMISSED, db, officer, audit, body.expected_review_token
     )
