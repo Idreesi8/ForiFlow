@@ -9,9 +9,11 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+
+from business_time import business_date
 
 
 class Decision(StrEnum):
@@ -606,6 +608,10 @@ class ScoreResponse(BaseModel):
     loan_amount_pkr: float
     tenure_months: int
     monthly_installment_pkr: float
+    turnover_evidence: dict[str, Any] | None = Field(
+        default=None,
+        description='Server-computed statement evidence and principal-only cash-flow scenarios, when a statement is attached.',
+    )
     risk_score: float = Field(..., ge=0, le=100, description="0 = worst, 100 = best.")
     decision: Decision
     risk_band: RiskBand
@@ -683,6 +689,37 @@ def _bands_of(policy_evaluation: dict) -> PolicyBands:
     return PolicyBands(
         decline_max_score=low, manual_review_max_score=high, approve_above_score=high, source=source
     )
+
+
+class ApplicationRegisterItem(BaseModel):
+    """Minimal register row; private financial evidence stays in the case detail."""
+
+    id: int
+    borrower_public_id: str | None = None
+    applicant_name: str
+    business_name: str
+    loan_amount_pkr: float
+    tenure_months: int
+    risk_score: float
+    decision: Decision
+    decision_status: DecisionStatus
+    reviewed_by: str | None = None
+    created_at: datetime
+
+    @computed_field
+    @property
+    def final_decision(self) -> OfficerDecision | None:
+        if self.decision_status in (DecisionStatus.APPROVED, DecisionStatus.REJECTED):
+            return OfficerDecision(self.decision_status.value)
+        return None
+
+
+class ApplicationRegister(BaseModel):
+    items: list[ApplicationRegisterItem]
+    total: int
+    matching: int
+    offset: int
+    limit: int
 
 
 class ApplicationSummary(BaseModel):
@@ -857,13 +894,20 @@ class Reminder(BaseModel):
     contact_phone: str | None
     kind: str = Field(..., description="'overdue', 'due_soon' or 'arrears'.")
     installment_number: int | None = Field(
-        ..., description="The next installment not yet recorded; null once all are."
+        ..., description="The earliest installment without an active EWS record; null for an arrears-only reminder."
     )
     installment_pkr: float
     due_date: date | None
     days_until_due: int | None = Field(..., description="Negative when past due.")
     arrears_pkr: float = Field(..., description="Due but unpaid in recorded months.")
     latest_status: InstallmentStatus | None
+    latest_recorded_month: int = Field(default=0, ge=0)
+    has_recording_gap: bool = Field(
+        default=False, description="A later month is recorded while the reminder's month is missing."
+    )
+    recorded_months_without_amount: int = Field(
+        default=0, ge=0, description="Active recorded months with unknown payment amounts; excluded from arrears totals."
+    )
     message_en: str
     message_ur: str = Field(..., description="The same reminder in Roman Urdu.")
 
@@ -881,6 +925,43 @@ class ScoreBucket(BaseModel):
     recommendation: Recommendation | None = Field(
         default=None, description="What that band recommends under the histogram's policy."
     )
+
+
+class ActionDeskItem(BaseModel):
+    """A recorded fact needing officer attention, never a credit decision."""
+
+    id: str
+    kind: Literal['alert', 'review', 'monitoring']
+    priority: Literal['urgent', 'attention', 'routine']
+    application_id: int
+    business_name: str
+    title: str
+    reason: str
+    evidence: list[str]
+    opened_at: datetime
+    due_date: date | None = None
+    assigned_to: str | None = None
+    alert_id: int | None = None
+    first_missing_month: int | None = None
+    required_role: Literal['any_officer', 'manager_or_admin', 'admin']
+
+
+class ActionDeskResponse(BaseModel):
+    as_of: datetime
+    timezone: str = 'Asia/Karachi'
+    total_tasks: int
+    matching_tasks: int
+    application_count: int
+    officer_role: UserRole | None = None
+    actionable_only: bool = False
+    actionable_tasks: int = 0
+    counts_by_kind: dict[str, int]
+    counts_by_priority: dict[str, int]
+    offset: int
+    limit: int
+    items: list[ActionDeskItem]
+    ordering: list[str]
+    notes: list[str]
 
 
 class PortfolioStats(BaseModel):
@@ -1010,7 +1091,7 @@ class EWSObservationFields(BaseModel):
     )
     observation_date: date | None = Field(
         default=None,
-        description="The date the figures were observed. Today when omitted; never in the future.",
+        description="The date the figures were observed. Today in Pakistan (Asia/Karachi) when omitted; never in the future.",
     )
     current_score: float | None = Field(
         default=None,
@@ -1043,7 +1124,7 @@ class EWSObservationFields(BaseModel):
             raise ValueError("A score override (current_score) needs an override_reason.")
         if self.override_reason and self.current_score is None:
             raise ValueError("override_reason is only accepted with a current_score override.")
-        if self.observation_date is not None and self.observation_date > date.today():
+        if self.observation_date is not None and self.observation_date > business_date():
             raise ValueError("observation_date cannot be in the future.")
         return self
 
@@ -1339,6 +1420,29 @@ class UserStatusUpdate(BaseModel):
 
     is_active: bool
     reason: str | None = Field(default=None, max_length=300)
+    expected_is_active: bool | None = None
+
+
+class UserRoleUpdate(BaseModel):
+    """Reviewed role transition; the expected role prevents stale overwrites."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    role: UserRole
+    expected_role: UserRole
+    reason: str = Field(..., min_length=3, max_length=300)
+
+
+class UserAccessEvent(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    occurred_at: datetime
+    username: str
+    action: str
+    previous_state: dict | None = None
+    new_state: dict | None = None
+    details: dict | None = None
 
 
 class ReadinessCheck(BaseModel):

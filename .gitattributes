@@ -12,3 +12,8 @@ Dockerfile text eol=lf
 
 # Trained artefacts are binary; never line-ending-normalise or diff them.
 *.pkl binary
+
+# Research provenance records exact bytes, including JSON newlines. These
+# generated model sidecars are immutable artefacts, like the pickle files.
+backend/ml/feature_names.json binary
+backend/ml/applicability_model.json binary

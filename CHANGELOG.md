@@ -6,6 +6,196 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ## [Unreleased]
 
+### Maintenance
+
+- Collect the laptop implementation, serving applicability artefacts and
+  regression tests into a reproducible source update. Keep personal documents,
+  design exports and private verification data outside the public repository.
+- Remove inactive archived frontend builds and obsolete UCI helper launchers
+  after a local source snapshot. Preserve data, serving models and useful assets.
+- Run account-management concurrency checks in a separate CI database; match
+  the register test database guard, limit workflow permissions and bound jobs.
+
+### Added
+
+- Reminder search and record-check filters, direct case/monitoring links and a
+  fresh draft review. Missing, failed or malformed current responses withhold
+  old drafts; bilingual copy feedback and safe international draft links make
+  preparation clearer without sending messages or changing recorded payments.
+- Officer role changes with current-account verification, reviewed transitions,
+  required reasons, stale-edit conflicts and append-only access history.
+  Account search/status filters, responsive cards and in-app status review
+  improve team management. Shared transactional locking rechecks admin authority
+  before role/status writes, and session displays refresh during normal use.
+- Cash-flow source-quality inspection: explicit numeric date conventions,
+  refusal of unresolved ambiguous dates, exact repeated-row candidates with
+  physical CSV line references, and separate original/parsed source hashes.
+  Repeated rows remain in the figures; changing the date setting invalidates
+  earlier results. Credit parsing, serving models and decisions are unchanged.
+- Cash-flow Intelligence: local robust statement trends and a four-method
+  forecasting comparison with distinct chronological development, calibration
+  and evaluation windows. A source-matched, unsaved workspace withholds forecasts
+  for short/incomplete sources and shows actual baseline errors and empirical
+  range misses. No new credit model, external AI service or decision is involved.
+- A train-only feature-engineering runner, four measured candidates and a
+  model-matched, authenticated research view. Five derived terms improve the
+  simple logistic ranking slightly but do not justify replacing the ensemble.
+  Sampling, input dependence, information collisions and mapping limitations
+  are reported; serving models and historical assessments are retained.
+- Business operating checks use tenure, debt, inventory turnover, consistency
+  and headcount on draft/review/saved cases. Authenticated arithmetic and
+  statement comparison never invoke credit inference or save a case. A dataset
+  acquisition/audit pipeline and Model-page coverage report distinguish exact
+  measures, semantic gaps, outcome timing and target leakage; the serving credit
+  model and its measured accuracy are unchanged.
+- An assessment review step before saving: exact submitted figures, field-specific
+  edit links, statement coverage and warnings, and explicit save confirmation.
+  Review remains unsaved, protects typed work, prevents duplicate in-flight clicks
+  and retains entries after a failed save. CNIC/NTN digit counts and listed
+  options are checked before review; the API remains authoritative.
+- Applied Action Desk filters and paging survive refresh and case navigation.
+  Review and monitoring cases carry a bounded return link to the originating
+  worklist. Dashboard next actions start with the current officer role, offer
+  an all-role view, show action authority and provide refresh/retry and a
+  direct next-task link. Navigation continues to protect unsaved notes.
+- An optional Action Desk filter for tasks the current officer role can act on.
+  The API reads the live account role, filters before pagination and retains
+  complete portfolio counts. Copied briefings identify role scope and distinguish
+  role eligibility from personal assignment and case-specific approval limits.
+- An optional unsaved model-input check on the assessment form. A strictly
+  numerical five-field endpoint uses the trained anomaly reference and shared
+  credit-input transformations without credit inference or database writes.
+  It excludes identity and document fields, rejects mismatched responses,
+  cancels stale work and preserves form entries and existing submission flow.
+- A trained 128-tree input-anomaly model, fitted only on the credit model's
+  original 19,449 training rows. Fingerprint-bound, authenticated read-only
+  diagnostics reproduce saved scores and show input transformations, learner
+  disagreement and 25 actual ensemble scenarios. The dashboard explains anomaly
+  percentiles, recorded-policy recommendations and model limitations without
+  changing the credit model, loan facts or officer decisions.
+- Read-only case/account preflight and explicit confirmation for credit actions,
+  including exact amounts/reasons, current authority, cancellation, duplicate-click
+  protection and mobile controls. Reports/memos use the existing explanation GET
+  and reject mismatched or late case evidence.
+- Consistent Pakistan calendar dates across monitoring, alert deadlines, overdue
+  flags and reminder approval anchors. PKT timestamp labels, device-independent
+  calendar dates and midnight/wake-aware input limits preserve typed values and
+  legacy observation dates while preventing future observations and past deadlines.
+- Linux image builds retain the verified serving dependency versions through
+  explicit constraints, preventing unrelated framework upgrades during app fixes.
+- Shared unsaved-work navigation and sign-out protection for assessments,
+  monitoring and decision reasons, including same-page review replacement locks.
+  Cancellable statement reads ignore stale replies and retain a valid attachment
+  after an invalid replacement. Lost decision responses are reconciled through
+  reads with the typed reason preserved and no automatic decision retry.
+- Complete application-register search and sorting over all saved assessments,
+  stable server pagination, borrower-reference lookup, officer-status filters,
+  URL-preserved searches and mobile case cards. Older cases remain visible when
+  opened in the report selector; no-match guidance no longer suggests a new case.
+- Grouped workspace navigation and keyboard-accessible workspace search,
+  dashboard shortcuts, compact mobile portfolio tiles and a redesigned sign-in
+  with password visibility and preserved return links. Assessment section
+  guidance, linked errors and explicit sample/clear confirmation protect entries.
+- A facility monitoring calendar shows recorded months, earlier gaps, unknown
+  payment amounts and retained correction versions. It selects the first
+  unrecorded month and offers explicit, role-aware correction preparation.
+- An officer Action Desk joins credit reviews, open EWS follow-ups and incomplete
+  monitoring records into a searchable, paginated worklist with published ordering,
+  recorded evidence, Pakistan-time snapshots and page-specific briefings. Dashboard
+  previews and focused case links open the relevant assessment or monitoring month,
+  including facilities outside the first 200 register rows.
+- A native Windows PostgreSQL test runner creates a private loopback cluster,
+  runs the tests, retains verification logs and stops/removes only its own
+  generated data. It uses an explicitly supplied or project-local binary runtime.
+- Payment reminders expose gaps in EWS month coverage and the count of recorded
+  months without a payment amount. The screen states the principal-only,
+  approval-date schedule assumptions and asks officers to verify actual dues.
+- Page failure recovery keeps officer navigation available when a page cannot
+  download or render, with a reload action and a reset on route changes.
+- Statement cash-flow resilience: replay each recorded full month at recorded,
+  10%, 20% and 30% lower inflows with fixed observed outflows and a new
+  principal-only payment. Store the calculation, method version, assumptions,
+  CSV-text SHA-256 and parser version with the assessment. Show the stored
+  results in intake, officer review and the credit memo. This is a sensitivity
+  check; interest and fees are excluded and it changes no credit decision.
+- Production refuses to start with an unintended missing-model or model-load
+  fallback. Development health reports these fallbacks as degraded, and the
+  assessment result labels formula-based demonstration scoring.
+
+### Changed
+
+- Load dashboard pages on demand. The main production JavaScript entry shrank
+  from 860.39 kB to 252.35 kB; route-specific code downloads separately.
+- New statement assessments require exact agreement with both suggested
+  turnover inputs before recording that scored figures match the statement.
+  Previously a 1% / PKR 1 tolerance could label small edits as matching.
+
+### Fixed
+
+- Invalid NaN/Infinity request values now return a serializable validation
+  response instead of failing while encoding the rejection. Existing password
+  and identifier redaction remains in place. The assessment form also contains
+  wide model-input tables on narrow screens.
+- Monitoring edits validate required correction fields, guard unsubmitted figures
+  on month/facility switches, clear inputs after saving, reconcile uncertain saves
+  without retrying writes, and ignore stale facility/history/alert responses.
+- Add a guarded Windows recovery script for the confirmed recurring inaccessible
+  Docker inference socket error. It requires stopped Docker and a recent matching
+  failure, previews with `-WhatIf`, and preserves the old runtime directories.
+- Exclude backend `.env` files from Docker image build contexts so local runtime
+  credentials cannot be copied into application image layers.
+- Backup/restore tools use unique file paths and validate copies before use.
+  Restores check services really stopped, distinguish safe pre-drop refusal
+  from possibly partial restoration, keep the API stopped after partial failure,
+  and report restart failures. Backup failures clean partial files.
+- Backup verification never drops a pre-existing scratch database. It compares
+  complete row-content fingerprints, includes login/revocation tables, checks
+  enabled audit guards, and treats query and cleanup failures as failures.
+- Payment reminders select the first month without an active EWS record,
+  rather than advancing past the latest recorded month. Out-of-order records
+  no longer hide earlier missing installments. Corrected observations retain
+  active-only coverage and amount calculations.
+- Reminder drafts retain paisa and describe shortfalls as unpaid in recorded
+  installments, which can be later than a missing installment.
+- Windows startup now honors `-NoBuild` and no longer advertises production
+  API documentation that is disabled.
+- Restore the shipped Linux-created XGBoost snapshots for native Windows
+  inference using their original portable Model bytes, without restoring
+  platform-specific training RNG state. Serving files, trees, model identity,
+  scoring formula, policy and published predictive metrics are unchanged.
+- Correct the artifact-fingerprint test to use the existing JSON newline
+  normalization, so Windows checkouts have the same model identity as Linux.
+- Statement-derived turnover and consistency now include calendar months with
+  no transactions between the first and last recorded transactions. Partial
+  boundary months are still excluded; quiet months no longer inflate the
+  median turnover or make irregular receipts look consistent.
+- Invalid credit/debit amounts are reported as unreadable rows instead of
+  silently treating them as zero. Non-finite amounts are excluded, and
+  overflowing totals and unreadable CSV fields return a statement validation
+  error instead of a server error.
+- Backend tests explicitly isolate their development/docs settings from a
+  developer's local `.env`; the flag-default test now clears its own inputs.
+- Frontend dependency patches: Vite 6.4.5 and follow-redirects 1.16.1, resolving
+  the two high-severity dependency findings reported by `npm audit`.
+
+## [2.3.1] - 2026-10-10
+
+Production configuration fix. Backend only; no model, SHAP, EWS, policy,
+decision, score, borrower or audit change.
+
+### Changed
+
+- **Production never serves `/docs`, `/redoc` or `/openapi.json`.** In 2.3.0
+  an explicit `FORIFLOW_ENABLE_DOCS=true` in `.env` turned them back on in
+  production (with only a warning). It is now ignored in production and
+  logged as such; `docker-compose.yml` also pins the API container's
+  `FORIFLOW_ENABLE_DOCS` to `false`. Development is unchanged (on unless set
+  to `false`).
+- `.env.example` sets `FORIFLOW_ENABLE_DOCS=false` and says to remove
+  `FORIFLOW_ADMIN_PASSWORD` once the first admin exists.
+- Tests: production keeps all three documentation endpoints at 404 for every
+  value of the flag; development still serves them.
+
 ## [2.3.0] - 2026-10-09
 
 Production and security hardening for a controlled pilot. No change to the

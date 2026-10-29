@@ -18,6 +18,7 @@ import {
   isOpenAlert,
 } from "../lib/ews.js";
 import { formatDate, formatDateTime, formatRelative } from "../lib/format.js";
+import { useBusinessDate } from "../hooks/useBusinessDate.js";
 import { AlertSeverityBadge, AlertStatusBadge } from "./common/Badges.jsx";
 import { EmptyState, ErrorState, LoadingState, Spinner } from "./common/States.jsx";
 
@@ -61,26 +62,30 @@ export default function EWSAlertFeed({
   const canManage = canDecideCredit();
 
   const onAlertsLoadedRef = useRef(onAlertsLoaded);
+  const alertRequestSequence = useRef(0);
   onAlertsLoadedRef.current = onAlertsLoaded;
 
   const loadAlerts = useCallback(async () => {
+    const request = ++alertRequestSequence.current;
     setIsLoading(true);
     setError(null);
     try {
       const params = { limit };
       if (facilityId) params.facility_id = facilityId;
       const data = await fetchAlerts(params);
+      if (request !== alertRequestSequence.current) return;
       setAlerts(data);
       onAlertsLoadedRef.current?.(data);
     } catch (requestError) {
-      setError(apiErrorMessage(requestError, "Could not load EWS alerts."));
+      if (request === alertRequestSequence.current) setError(apiErrorMessage(requestError, "Could not load EWS alerts."));
     } finally {
-      setIsLoading(false);
+      if (request === alertRequestSequence.current) setIsLoading(false);
     }
   }, [limit, facilityId]);
 
   useEffect(() => {
     loadAlerts();
+    return () => { alertRequestSequence.current += 1; };
   }, [loadAlerts, refreshToken]);
 
   const loadHistory = useCallback(async (alertId) => {
@@ -449,12 +454,13 @@ const STEP_TITLES = {
 };
 
 function StepForm({ alert, form, setForm, busy, ready, onSubmit, onCancel }) {
+  const today = useBusinessDate();
   const step = form.step;
   const set = (name) => (event) =>
     setForm((previous) => ({ ...previous, [name]: event.target.value }));
   const noteRequired = ["action-required", "resolve", "dismiss"].includes(step);
   return (
-    <div className="space-y-2" data-step={step}>
+    <form className="space-y-2" data-step={step} onSubmit={event => { event.preventDefault(); if (!busy && ready) onSubmit(); }}>
       <p className="text-sm font-semibold text-slate-800">
         {STEP_TITLES[step]} <span className="font-normal text-slate-500">Alert #{alert.id}</span>
       </p>
@@ -475,10 +481,11 @@ function StepForm({ alert, form, setForm, busy, ready, onSubmit, onCancel }) {
         ) : null}
         {step === "assign" || step === "due-date" || step === "action-required" ? (
           <label className="text-xs text-slate-600">
-            Due date{step === "due-date" ? "" : " (optional)"}
+            Due date{step === "due-date" ? "" : " (optional)"} · PKT
             <input
               type="date"
               name="due_date"
+              min={today}
               value={form.due_date}
               onChange={set("due_date")}
               className="field-input mt-1 w-40 py-1.5"
@@ -505,8 +512,7 @@ function StepForm({ alert, form, setForm, busy, ready, onSubmit, onCancel }) {
           />
         </label>
         <button
-          type="button"
-          onClick={onSubmit}
+          type="submit"
           disabled={busy || !ready}
           className="btn-primary py-1.5 text-xs"
         >
@@ -517,7 +523,7 @@ function StepForm({ alert, form, setForm, busy, ready, onSubmit, onCancel }) {
         </button>
       </div>
       <p className="text-xs text-slate-500">Saved with your name in the audit trail.</p>
-    </div>
+    </form>
   );
 }
 

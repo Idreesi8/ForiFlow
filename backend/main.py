@@ -5,7 +5,7 @@ Run locally from the ``backend`` directory:
     uvicorn main:app --reload --port 8000
 
 Interactive docs are then served at http://localhost:8000/docs (development
-mode; production turns them off unless ``FORIFLOW_ENABLE_DOCS=true``).
+mode only; production never serves them).
 
 ``FORIFLOW_ENV=production`` (set by docker-compose.yml) makes the API refuse to
 start on an unsafe configuration: see ``services.security_config`` and
@@ -15,6 +15,7 @@ SECURITY.md.
 from __future__ import annotations
 
 import logging
+import math
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -38,7 +39,7 @@ from services.http_security import BodySizeLimitMiddleware, SecurityHeadersMiddl
 from services.scoring_service import get_scoring_service
 from services.security_config import configuration_report
 
-API_VERSION = "2.3.0"
+API_VERSION = "2.3.1"
 
 logging.basicConfig(
     level=os.getenv("FORIFLOW_LOG_LEVEL", "INFO"),
@@ -79,6 +80,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "formula and are recorded as scoring_engine='surrogate'.",
             scorer.fallback_reason,
         )
+        if report.environment == 'production':
+            raise UnsafeConfiguration(
+                'The trained model is unavailable. Production cannot start with an '
+                'unintended scoring fallback; restore the serving artefacts and dependencies.'
+            )
     # Record which model is serving before the first officer scores anything.
     # Scoring registers it too, so a failure here costs the early record only.
     try:
@@ -100,6 +106,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 _PRIVATE_FIELDS = frozenset({"password", "borrower_identifier"})
+
+
+def _finite_validation_values(value):
+    """Rejected NaN/Infinity must themselves remain safe to serialize as JSON."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _finite_validation_values(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite_validation_values(item) for item in value]
+    return value
 
 
 async def validation_exception_handler(
@@ -133,7 +150,7 @@ async def validation_exception_handler(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT
         if hasattr(status, "HTTP_422_UNPROCESSABLE_CONTENT")
         else 422,
-        content={"detail": jsonable_encoder(errors)},
+        content={"detail": jsonable_encoder(_finite_validation_values(errors))},
     )
 
 
@@ -289,8 +306,9 @@ def create_app() -> FastAPI:
         """
         database_ok = _database_reachable()
         scorer = get_scoring_service()
+        model_ok = scorer.fallback_reason not in ('artifacts_missing', 'load_failed')
         return HealthResponse(
-            status="ok" if database_ok else "degraded",
+            status="ok" if database_ok and model_ok else "degraded",
             service="ForiFlow API",
             version=API_VERSION,
             database="connected" if database_ok else "unavailable",

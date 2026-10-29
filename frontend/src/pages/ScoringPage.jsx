@@ -7,6 +7,7 @@ import ShapWaterfall from "../components/ShapWaterfall.jsx";
 /** Intake workspace: score an SME and immediately read the rationale. */
 export default function ScoringPage() {
   const [lastScored, setLastScored] = useState(null);
+  const [reviewWork, setReviewWork] = useState({ dirty: false, busy: false });
 
   return (
     <div className="space-y-6">
@@ -19,7 +20,12 @@ export default function ScoringPage() {
         </p>
       </header>
 
-      <ApplicationForm onScored={setLastScored} />
+      <ApplicationForm onScored={setLastScored} reviewLocked={reviewWork.dirty || reviewWork.busy}
+        onReviewFocus={() => {
+          const field = document.getElementById(`review-note-${lastScored?.application_id}`) ?? document.getElementById(`retained-reason-${lastScored?.application_id}`);
+          field?.scrollIntoView({ block: 'center' });
+          field?.focus({ preventScroll: true });
+        }} />
 
       {lastScored?.explanation ? (
         <section className="card">
@@ -41,7 +47,7 @@ export default function ScoringPage() {
       ) : null}
 
       {lastScored ? (
-        <ReviewPanel key={lastScored.application_id} applicationId={lastScored.application_id} />
+        <ReviewPanel key={lastScored.application_id} applicationId={lastScored.application_id} onWorkChange={setReviewWork} />
       ) : null}
     </div>
   );

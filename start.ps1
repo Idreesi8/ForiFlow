@@ -97,7 +97,7 @@ function Wait-DockerEngine {
     $running = Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue
     if (-not $running) {
         Write-Step "Starting Docker Desktop. Wait for the whale icon to settle (up to $TimeoutSeconds seconds)..."
-        Start-Process -FilePath $desktop
+        Start-Process -FilePath $desktop -WindowStyle Hidden
     } else {
         Write-Step "Docker Desktop is open, but the engine is not ready yet. Waiting up to $TimeoutSeconds seconds..."
     }
@@ -154,6 +154,7 @@ if ($LASTEXITCODE -ne 0) {
 if (-not (Wait-DockerEngine)) {
     Write-Step "Docker Desktop did not become ready in time." "Red"
     Write-Step "Open Docker Desktop yourself, wait until the whale icon is idle, then double-click start.bat again."
+    Write-Step "For the known inaccessible dockerInference socket error: close Docker, run .\scripts\repair-docker-runtime.ps1, then retry. The repair refuses other conditions and preserves the old runtime folders."
     exit 1
 }
 
@@ -171,6 +172,9 @@ if ($Rebuild) {
 } else {
     Write-Step "[2/6] Starting existing images (docker compose up -d, no rebuild)..."
     $upArgs = @("up", "-d")
+}
+if ($NoBuild) {
+    $upArgs += '--no-build'
 }
 
 $upExit = Invoke-Compose $upArgs
@@ -251,7 +255,7 @@ Write-Step "[6/6] Ready." "Green"
 Write-Host ""
 Write-Host "Dashboard : $frontendUrl"
 Write-Host "API       : $backendUrl"
-Write-Host "API docs  : $backendUrl/docs"
+Write-Host "API docs  : disabled in production"
 Write-Host "Stop      : docker compose down"
 Write-Host ""
 Write-Host "Postgres, the API, and the dashboard are bound to 127.0.0.1 only."

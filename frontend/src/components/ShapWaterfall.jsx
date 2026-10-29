@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -12,7 +12,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { apiErrorMessage, explainApplication } from "../api/client.js";
+import { apiErrorMessage, fetchExplanation } from "../api/client.js";
 import { formatPKRCompact } from "../lib/format.js";
 import PathToApproval from "./PathToApproval.jsx";
 import { RecommendationBadge } from "./common/Badges.jsx";
@@ -102,7 +102,7 @@ function ValueLabel({ x, y, width, height, value }) {
  * Contributions are additive: the model reference baseline + every bar reconstructs the final
  * score, which is the identity the backend guarantees and asserts in tests.
  * Pass `explanation` to render a payload you already have, or `applicationId`
- * to fetch it from `POST /explain/{id}`.
+ * to read it from `GET /explain/{id}`.
  */
 export default function ShapWaterfall({
   applicationId,
@@ -112,18 +112,29 @@ export default function ShapWaterfall({
   const [explanation, setExplanation] = useState(providedExplanation);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const requestSequence = useRef(0);
+  const requestController = useRef(null);
 
   const loadExplanation = useCallback(async () => {
     if (!applicationId) return;
+    const request = ++requestSequence.current;
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
     setIsLoading(true);
     setError(null);
+    setExplanation(null);
     try {
-      setExplanation(await explainApplication(applicationId));
+      const data = await fetchExplanation(applicationId, { signal: controller.signal });
+      if (request !== requestSequence.current || controller.signal.aborted) return;
+      if (data.application_id !== Number(applicationId)) throw Object.assign(new Error('Wrong case'), { code: 'WRONG_CASE' });
+      setExplanation(data);
     } catch (requestError) {
-      setError(apiErrorMessage(requestError, "Could not load the SHAP explanation."));
+      if (request !== requestSequence.current || controller.signal.aborted) return;
+      setError(requestError.code === 'WRONG_CASE' ? 'The returned explanation does not match this case. Refresh before reviewing it.' : apiErrorMessage(requestError, "Could not load the SHAP explanation."));
       setExplanation(null);
     } finally {
-      setIsLoading(false);
+      if (request === requestSequence.current && !controller.signal.aborted) setIsLoading(false);
     }
   }, [applicationId]);
 
@@ -131,9 +142,11 @@ export default function ShapWaterfall({
     if (providedExplanation) {
       setExplanation(providedExplanation);
       setError(null);
-      return;
+      setIsLoading(false);
+    } else {
+      loadExplanation();
     }
-    loadExplanation();
+    return () => { requestSequence.current += 1; requestController.current?.abort(); };
   }, [providedExplanation, loadExplanation]);
 
   const chartData = useMemo(() => {
@@ -146,7 +159,7 @@ export default function ShapWaterfall({
       }));
   }, [explanation]);
 
-  if (isLoading) return <LoadingState label="Generating SHAP explanation…" />;
+  if (isLoading || (!providedExplanation && applicationId && !error && explanation?.application_id !== Number(applicationId))) return <LoadingState label="Loading SHAP explanation…" />;
   if (error) return <ErrorState message={error} onRetry={loadExplanation} />;
 
   if (!explanation) {

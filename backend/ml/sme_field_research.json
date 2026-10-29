@@ -1,0 +1,359 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-10-28T08:43:56.907642+00:00",
+  "training_ready": false,
+  "serving_model_changed": false,
+  "gate": "No source establishes all five exact intake measures paired with a time-bounded prospective Pakistani SME default outcome.",
+  "sources": [
+    {
+      "url": "https://zenodo.org/records/20560302/files/shoumyac/bd-sme-research-v2.0.zip?download=1",
+      "file": "bangladesh-sme-v2.zip",
+      "page": "https://zenodo.org/records/20560302",
+      "license": "Data CC BY 4.0; code MIT",
+      "publisher_md5": "ea158739d1096731ff0df8954c34e076",
+      "downloaded_at": "2026-10-28T08:34:26.617703+00:00",
+      "final_url": "https://zenodo.org/records/20560302/files/shoumyac/bd-sme-research-v2.0.zip?download=1",
+      "bytes": 2334772,
+      "sha256": "96268fc2fb5a8fe91f5f0c54c0c1f9dc574b4ae7b9791afa8891a181bae40993",
+      "id": "bangladesh",
+      "rows_downloaded": 1200,
+      "columns": [
+        "business_id",
+        "sector",
+        "business_age_years",
+        "legal_status",
+        "division",
+        "location_type",
+        "employees_count",
+        "monthly_revenue_bdt",
+        "monthly_profit_bdt",
+        "existing_loans",
+        "prior_loan_count",
+        "late_payment_history",
+        "loan_purpose",
+        "loan_amount_bdt",
+        "preferred_tenure_months",
+        "collateral_level",
+        "cashflow_stability",
+        "missed_payment_last_12m",
+        "repayment_confidence",
+        "owner_education",
+        "days_payable_outstanding",
+        "business_description",
+        "loan_purpose_description",
+        "repayment_plan_description",
+        "risk_factors_description",
+        "target_missed_payment",
+        "split"
+      ],
+      "csv_sha256": "aef5e8dcc4446bf83519d014a77a1cdeb470453005f46f5792941522d30fcb7a",
+      "target_counts": {
+        "0": 897,
+        "1": 303
+      },
+      "provided_split_counts": {
+        "train": 960,
+        "test": 240
+      },
+      "target_alias_identical": true,
+      "numeric_profiles": {
+        "employees_count": {
+          "finite": 1200,
+          "missing_or_nonfinite": 0,
+          "min": 2.0,
+          "max": 49.0
+        },
+        "preferred_tenure_months": {
+          "finite": 1200,
+          "missing_or_nonfinite": 0,
+          "min": 6.0,
+          "max": 36.0
+        },
+        "business_age_years": {
+          "finite": 1200,
+          "missing_or_nonfinite": 0,
+          "min": 1.0,
+          "max": 19.0
+        },
+        "cashflow_stability": {
+          "finite": 1200,
+          "missing_or_nonfinite": 0,
+          "min": 1.0,
+          "max": 5.0
+        }
+      },
+      "existing_loans_levels": [
+        "No",
+        "Yes"
+      ],
+      "missing_exact_columns": [
+        "existing_debt_pkr",
+        "inventory_turnover",
+        "order_consistency"
+      ],
+      "use": "Research only: retrospective missed payment, not verified prospective SME default.",
+      "limitations": [
+        "Missed-payment text is an exact target alias and must be excluded from predictors.",
+        "Payment history and outcome timing require clarification before prospective prediction.",
+        "Existing loans is Yes/No, not an outstanding balance.",
+        "Cash-flow stability is a 1\u20135 rating, not the intake 0\u2013100 order measure.",
+        "Employees inclusion of owners is not established; BDT amounts are not PKR."
+      ]
+    },
+    {
+      "url": "https://archive.ics.uci.edu/static/public/365/polish%2Bcompanies%2Bbankruptcy%2Bdata.zip",
+      "file": "polish-company-bankruptcy.zip",
+      "page": "https://archive.ics.uci.edu/dataset/365/polish+companies+bankruptcy+data",
+      "license": "CC BY 4.0",
+      "downloaded_at": "2026-10-28T08:38:42.220829+00:00",
+      "final_url": "https://archive.ics.uci.edu/static/public/365/polish%2Bcompanies%2Bbankruptcy%2Bdata.zip",
+      "bytes": 8834471,
+      "sha256": "17377929aa0b204bbf957e56462cf827c19fe4e2ce89f27dfbc77f9ea2bb16c9",
+      "id": "polish",
+      "cohorts": [
+        {
+          "file": "1year.arff",
+          "rows": 7027,
+          "bankruptcy_horizon_years": 5,
+          "bankrupt": 271,
+          "missing_sales_inventory_ratio": 135
+        },
+        {
+          "file": "2year.arff",
+          "rows": 10173,
+          "bankruptcy_horizon_years": 4,
+          "bankrupt": 400,
+          "missing_sales_inventory_ratio": 543
+        },
+        {
+          "file": "3year.arff",
+          "rows": 10503,
+          "bankruptcy_horizon_years": 3,
+          "bankrupt": 495,
+          "missing_sales_inventory_ratio": 592
+        },
+        {
+          "file": "4year.arff",
+          "rows": 9792,
+          "bankruptcy_horizon_years": 2,
+          "bankrupt": 515,
+          "missing_sales_inventory_ratio": 614
+        },
+        {
+          "file": "5year.arff",
+          "rows": 5910,
+          "bankruptcy_horizon_years": 1,
+          "bankrupt": 410,
+          "missing_sales_inventory_ratio": 268
+        }
+      ],
+      "microdata_downloaded": true,
+      "candidate_columns": {
+        "Attr60": "Sales / inventory",
+        "Attr47": "Inventory \u00d7 365 / cost of products sold",
+        "Attr2": "Total liabilities / total assets"
+      },
+      "use": "Financial-ratio bankruptcy research; no direct mapping to all intake fields.",
+      "limitations": [
+        "The five files have different outcome horizons and may contain recurring companies; do not pool them as independent firms.",
+        "Sales/inventory is not automatically COGS/average inventory.",
+        "A liabilities/assets ratio cannot supply a PKR debt balance.",
+        "Corporate bankruptcy is not the same outcome as a facility default."
+      ]
+    },
+    {
+      "url": "https://data.sba.gov/sites/default/files/uploaded_resources/7a_504_foia_data_dictionary.xlsx",
+      "file": "sba-foia-dictionary.xlsx",
+      "page": "https://data.sba.gov/dataset/7a-504-foia",
+      "license": "U.S. Government Works",
+      "downloaded_at": "2026-10-28T08:38:49.224906+00:00",
+      "final_url": "https://data.sba.gov/sites/default/files/uploaded_resources/7a_504_foia_data_dictionary.xlsx",
+      "bytes": 24529,
+      "sha256": "777ba97a6f92e325f79905610816cb59d41f1971cd964c54dc30ef02730a3941",
+      "id": "sba_dictionary",
+      "dictionary_downloaded": true,
+      "loan_microdata_downloaded": false,
+      "sheets": [
+        {
+          "sheet": "xl/worksheets/sheet1.xml",
+          "fields": [
+            "Field Name",
+            "AsOfDate",
+            "Program",
+            "LocationID",
+            "BorrName",
+            "BorrStreet",
+            "BorrCity",
+            "BorrState",
+            "BorrZip",
+            "BankName",
+            "BankFDICNumber",
+            "BankNCUANumber",
+            "BankStreet",
+            "BankCity",
+            "BankState",
+            "BankZip",
+            "GrossApproval",
+            "SBAGuaranteedApproval",
+            "ApprovalDate",
+            "ApprovalFY",
+            "FirstDisbursementDate",
+            "ProcessingMethod",
+            "InitialInterestRate",
+            "FixedorVariableInterestInd",
+            "TermInMonths",
+            "NaicsCode",
+            "NaicsDescription",
+            "FranchiseCode",
+            "FranchiseName",
+            "ProjectCounty",
+            "ProjectState",
+            "SBADistrictOffice",
+            "CongressionalDistrict",
+            "BusinessType",
+            "BusinessAge",
+            "LoanStatus",
+            "PaidInFullDate",
+            "ChargeOffDate",
+            "GrossChargeOffAmount",
+            "RevolverStatus",
+            "JobsSupported",
+            "CollateralInd",
+            "SoldSecMrktInd"
+          ]
+        },
+        {
+          "sheet": "xl/worksheets/sheet2.xml",
+          "fields": [
+            "Field Name",
+            "AsOfDate",
+            "Program",
+            "LocationID",
+            "BorrName",
+            "BorrStreet",
+            "BorrCity",
+            "BorrState",
+            "BorrZip",
+            "CDC_Name",
+            "CDC_Street",
+            "CDC_City",
+            "CDC_State",
+            "CDC_Zip",
+            "ThirdPartyLender_Name",
+            "ThirdPartyLender_City",
+            "ThirdPartyLender_State",
+            "ThirdPartyDollars",
+            "GrossApproval",
+            "ApprovalDate",
+            "ApprovalFY",
+            "FirstDisbursementDate",
+            "ProcessingMethod",
+            "TermInMonths",
+            "NaicsCode",
+            "NaicsDescription",
+            "FranchiseCode",
+            "FranchiseName",
+            "ProjectCounty",
+            "ProjectState",
+            "SBADistrictOffice",
+            "CongressionalDistrict",
+            "BusinessType",
+            "BusinessAge",
+            "LoanStatus",
+            "PaidInFullDate",
+            "ChargeOffDate",
+            "GrossChargeOffAmount",
+            "JobsSupported",
+            "CollateralInd"
+          ]
+        }
+      ],
+      "use": "Candidate for term/outcome research after record acquisition and cohort design.",
+      "limitations": [
+        "JobsSupported combines jobs created and retained; it is not current employee headcount.",
+        "The dictionary does not contain intake inventory turnover, order consistency or total existing debt.",
+        "Current loan status and charge-off require time/censoring design; EXEMPT cannot be labelled non-default."
+      ]
+    },
+    {
+      "url": "https://microdata.worldbank.org/metadata/export/6461/json",
+      "file": "pakistan-wbes-2022-metadata.json",
+      "page": "https://microdata.worldbank.org/catalog/6461",
+      "license": "Survey microdata terms are external; metadata is not the microdata",
+      "downloaded_at": "2026-10-28T08:38:50.909400+00:00",
+      "final_url": "https://microdata.worldbank.org/metadata/export/6461/json",
+      "bytes": 880133,
+      "sha256": "ce17dbe4223e54cc27595152225b07df393aca68ec935998669c6eb526f64ebf",
+      "id": "pakistan_metadata",
+      "reference": "PAK_2022_WBES_v01_M",
+      "metadata_downloaded": true,
+      "microdata_downloaded": false,
+      "catalogue_cases": 1300,
+      "catalogue_variables": 434,
+      "use": "Pakistan-specific business context; no prospective loan-default target established.",
+      "limitations": [
+        "Only metadata was acquired; firm-level microdata is distributed through Enterprise Surveys.",
+        "Registered firms with five or more employees; not a representative informal/microbusiness credit sample.",
+        "Survey weights and exact worker definitions are needed for peer benchmarks.",
+        "Sales, employment and credit access are not loan repayment/default outcomes."
+      ]
+    }
+  ],
+  "field_coverage": [
+    {
+      "field": "tenure_months",
+      "label": "Tenure",
+      "research_status": "candidate",
+      "sources": [
+        "bangladesh",
+        "sba_dictionary"
+      ],
+      "gap": "Preferred versus contracted term, outcome timing and cohort validation are unresolved."
+    },
+    {
+      "field": "existing_debt_pkr",
+      "label": "Existing debt",
+      "research_status": "missing_exact_measure",
+      "sources": [
+        "bangladesh",
+        "polish"
+      ],
+      "gap": "Loan presence and liabilities ratios do not provide an outstanding PKR debt balance or repayment schedule."
+    },
+    {
+      "field": "inventory_turnover",
+      "label": "Inventory turnover",
+      "research_status": "definition_mismatch",
+      "sources": [
+        "polish"
+      ],
+      "gap": "Financial-statement inventory ratios need a documented numerator, inventory period and matched default outcome."
+    },
+    {
+      "field": "order_consistency",
+      "label": "Order consistency",
+      "research_status": "missing_order_history",
+      "sources": [
+        "bangladesh"
+      ],
+      "gap": "A 1\u20135 cash-flow rating and a receipts proxy cannot replace monthly order histories and a defined 0\u2013100 measure."
+    },
+    {
+      "field": "num_employees",
+      "label": "Employees",
+      "research_status": "candidate",
+      "sources": [
+        "bangladesh",
+        "pakistan_metadata",
+        "sba_dictionary"
+      ],
+      "gap": "Owner-inclusive headcount, target timing and population alignment require verification; jobs supported is a different measure."
+    }
+  ],
+  "next_data": [
+    "Owner-inclusive headcount and consistently defined inventory measures at application time.",
+    "Monthly order/receipt history and actual existing-debt instalments.",
+    "Loan origination dates, borrower grouping, repayments and a fixed future default window.",
+    "Documented consent/licence, time-based/borrower-separated evaluation and calibration."
+  ]
+}

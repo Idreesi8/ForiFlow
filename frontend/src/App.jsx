@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { API_BASE_LABEL, fetchHealth, fetchMe, logout } from "./api/client.js";
+import { fetchHealth, fetchMe, logout } from "./api/client.js";
 import {
   clearSession,
   getStoredRole,
@@ -9,37 +9,50 @@ import {
   isLoggedIn,
   updateStoredAccount,
 } from "./api/auth.js";
-import AlertsPage from "./pages/AlertsPage.jsx";
-import ApplicationsPage from "./pages/ApplicationsPage.jsx";
-import DashboardPage from "./pages/DashboardPage.jsx";
-import LoginPage from "./pages/LoginPage.jsx";
-import MemoPage from "./pages/MemoPage.jsx";
-import ModelPage from "./pages/ModelPage.jsx";
-import NotFoundPage from "./pages/NotFoundPage.jsx";
-import RemindersPage from "./pages/RemindersPage.jsx";
-import PolicyPage from "./pages/PolicyPage.jsx";
-import TeamPage from "./pages/TeamPage.jsx";
-import ScoringPage from "./pages/ScoringPage.jsx";
-import ShapReportsPage from "./pages/ShapReportsPage.jsx";
+import { LoadingState } from "./components/common/States.jsx";
+import PageBoundary from "./components/common/PageBoundary.jsx";
+import WorkspaceFinder from "./components/WorkspaceFinder.jsx";
+import { containDialogFocus } from "./lib/dialogFocus.js";
+import { UnsavedWorkProvider, useGuardedExit } from "./components/UnsavedWork.jsx";
+
+const AlertsPage = lazy(() => import("./pages/AlertsPage.jsx"));
+const ActionDeskPage = lazy(() => import("./pages/ActionDeskPage.jsx"));
+const ApplicationsPage = lazy(() => import("./pages/ApplicationsPage.jsx"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage.jsx"));
+const LoginPage = lazy(() => import("./pages/LoginPage.jsx"));
+const MemoPage = lazy(() => import("./pages/MemoPage.jsx"));
+const ModelPage = lazy(() => import("./pages/ModelPage.jsx"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage.jsx"));
+const RemindersPage = lazy(() => import("./pages/RemindersPage.jsx"));
+const PolicyPage = lazy(() => import("./pages/PolicyPage.jsx"));
+const TeamPage = lazy(() => import("./pages/TeamPage.jsx"));
+const ScoringPage = lazy(() => import("./pages/ScoringPage.jsx"));
+const CashflowPage = lazy(() => import("./pages/CashflowPage.jsx"));
+const ShapReportsPage = lazy(() => import("./pages/ShapReportsPage.jsx"));
 
 const NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: GridIcon, end: true },
-  { to: "/scoring", label: "Credit Scoring", icon: GaugeIcon },
-  { to: "/shap", label: "SHAP Reports", icon: ChartIcon },
-  { to: "/alerts", label: "EWS Alerts", icon: BellIcon },
-  { to: "/reminders", label: "Reminders", icon: MessageIcon },
-  { to: "/applications", label: "Applications", icon: ListIcon },
-  { to: "/model", label: "Model Performance", icon: CurveIcon },
-  { to: "/policy", label: "Credit Policy", icon: ListIcon },
-  { to: "/team", label: "Team & Roles", icon: UsersIcon },
+  { to: "/", label: "Dashboard", description: "Your portfolio at a glance", group: "Your workday", icon: GridIcon, end: true },
+  { to: "/action-desk", label: "Action Desk", description: "Prioritised reviews and follow-ups", group: "Your workday", keywords: "tasks next urgent", icon: ListIcon },
+  { to: "/scoring", label: "Credit Scoring", description: "Start a new business assessment", group: "Lending", keywords: "loan applicant new", icon: GaugeIcon },
+  { to: "/applications", label: "Applications", description: "Find cases and review decisions", group: "Lending", keywords: "borrower register search", icon: ListIcon },
+  { to: "/shap", label: "SHAP Reports", description: "Understand the reasons behind a score", group: "Lending", keywords: "explain rationale", icon: ChartIcon },
+  { to: "/alerts", label: "EWS Alerts", description: "Monitor facilities and record a month", group: "Monitoring", keywords: "early warning calendar payments history", icon: BellIcon },
+  { to: "/cashflow", label: "Cash-flow Intelligence", description: "Analyse statement trends and test receipt estimates", group: "Monitoring", keywords: "statement forecast forecasting cashflow cash flow receipts trend csv technology", icon: ChartIcon },
+  { to: "/reminders", label: "Reminders", description: "Prepare payment follow-ups", group: "Monitoring", keywords: "collection message", icon: MessageIcon },
+  { to: "/model", label: "Model Performance", description: "Inspect model evidence and limitations", group: "Governance", icon: CurveIcon },
+  { to: "/policy", label: "Credit Policy", description: "Review score bands and approval limits", group: "Governance", icon: ListIcon },
+  { to: "/team", label: "Team & Roles", description: "View account access and responsibilities", group: "Governance", keywords: "users staff", icon: UsersIcon },
 ];
 
 /**
  * Application shell: persistent sidebar navigation, a status header and the
- * nine routed workspaces used by credit officers.
+ * routed workspaces used by credit officers.
  */
 export default function App() {
   return (
+    <PageBoundary>
+    <UnsavedWorkProvider>
+    <Suspense fallback={<LoadingState label="Loading ForiFlow…" />}>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
@@ -50,7 +63,9 @@ export default function App() {
         }
       >
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/action-desk" element={<ActionDeskPage />} />
         <Route path="/scoring" element={<ScoringPage />} />
+        <Route path="/cashflow" element={<CashflowPage />} />
         <Route path="/shap" element={<ShapReportsPage />} />
         <Route path="/shap/:applicationId" element={<ShapReportsPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
@@ -63,6 +78,9 @@ export default function App() {
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
+    </Suspense>
+    </UnsavedWorkProvider>
+    </PageBoundary>
   );
 }
 
@@ -75,31 +93,85 @@ function RequireAuth({ children }) {
 }
 
 function OfficerShell() {
+  const requestExit = useGuardedExit();
   const navigate = useNavigate();
+  const location = useLocation();
   const [account, setAccount] = useState({
     username: getStoredUsername(),
     role: getStoredRole(),
   });
   const { username, role } = account;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [finderOpen, setFinderOpen] = useState(false);
+  const menu = useRef(null);
+  const menuTrigger = useRef(null);
+  const main = useRef(null);
+  const currentPage = NAV_ITEMS.find(item => item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to));
   const [health, setHealth] = useState({ state: "checking", detail: null });
+
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+    menu.current.showModal();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const media = window.matchMedia("(min-width: 1024px)");
+    const resize = () => { if (media.matches) setIsSidebarOpen(false); };
+    media.addEventListener("change", resize);
+    return () => { menu.current?.close(); document.body.style.overflow = previousOverflow; media.removeEventListener("change", resize); menuTrigger.current?.focus(); };
+  }, [isSidebarOpen]);
+
+  useEffect(() => {
+    const shortcut = event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setIsSidebarOpen(false);
+        setFinderOpen(value => !value);
+      }
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  }, []);
+
+  useEffect(() => {
+    document.title = `${currentPage?.label ?? "Credit memo"} · ForiFlow`;
+    main.current?.focus({ preventScroll: true });
+  }, [location.pathname]);
 
   // The stored role is only a display hint; ask the server who this is. A
   // disabled or signed-out account gets a 401 here and the client sends it
   // back to the sign-in page.
   useEffect(() => {
     let cancelled = false;
-    fetchMe()
-      .then((me) => {
-        if (cancelled) return;
-        updateStoredAccount(me);
-        setAccount({ username: me.username, role: me.role });
-      })
-      .catch(() => {});
+    let inFlight = false;
+    const controller = new AbortController();
+    const refresh = () => {
+      if (inFlight || document.hidden) return;
+      inFlight = true;
+      fetchMe({ signal: controller.signal })
+        .then((me) => {
+          if (cancelled) return;
+          updateStoredAccount(me);
+          setAccount({ username: me.username, role: me.role });
+        })
+        .catch(() => {})
+        .finally(() => { inFlight = false; });
+    };
+    const reflect = () => setAccount({ username: getStoredUsername(), role: getStoredRole() });
+    refresh();
+    const timer = setInterval(refresh, 60000);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('storage', refresh);
+    window.addEventListener('foriflow:account-updated', reflect);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
       cancelled = true;
+      controller.abort(); clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('storage', refresh);
+      window.removeEventListener('foriflow:account-updated', reflect);
+      document.removeEventListener('visibilitychange', refresh);
     };
-  }, []);
+  }, [location.pathname]);
 
   const signOut = useCallback(async () => {
     try {
@@ -128,19 +200,18 @@ function OfficerShell() {
 
   return (
     <div className="min-h-screen lg:flex">
-      {isSidebarOpen ? (
-        <button
-          type="button"
-          aria-label="Close navigation"
-          onClick={() => setIsSidebarOpen(false)}
-          className="fixed inset-0 z-20 bg-slate-900/50 lg:hidden"
-        />
-      ) : null}
+      <a href="#main-content" className="skip-link">Skip to content</a>
+      <WorkspaceFinder items={NAV_ITEMS} open={finderOpen} onClose={() => setFinderOpen(false)} />
+      <dialog ref={menu} className="mobile-navigation" aria-label="Navigation" onCancel={() => setIsSidebarOpen(false)}
+        onKeyDown={containDialogFocus}
+        onClick={event => { if (event.target === menu.current) setIsSidebarOpen(false); }}>
+        <div className="flex items-center justify-between border-b border-brand-800 p-5"><span className="text-lg font-bold">ForiFlow</span><button type="button" className="rounded-lg px-3 py-2 text-sm hover:bg-brand-800" onClick={() => setIsSidebarOpen(false)} aria-label="Close navigation">Close ×</button></div>
+        <WorkspaceNavigation onSelect={() => setIsSidebarOpen(false)} />
+        <div className="border-t border-brand-800 p-5 text-sm"><p className="font-semibold">{username || "Officer"}</p><p className="mt-1 text-brand-200 capitalize">{role || "Signed in"}</p></div>
+      </dialog>
 
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-brand-900 text-brand-50 transition-transform lg:static lg:translate-x-0 print:hidden ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-y-auto bg-brand-900 text-brand-50 lg:flex print:hidden"
       >
         <div className="flex items-center gap-3 border-b border-brand-800 px-5 py-5">
           <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 text-lg font-black text-white">
@@ -152,60 +223,43 @@ function OfficerShell() {
           </div>
         </div>
 
-        <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Main navigation">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              onClick={() => setIsSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive
-                    ? "bg-brand-700 text-white shadow-sm"
-                    : "text-brand-100 hover:bg-brand-800 hover:text-white"
-                }`
-              }
-            >
-              <Icon className="h-5 w-5 shrink-0" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
+        <WorkspaceNavigation />
 
         <div className="border-t border-brand-800 px-5 py-4 text-xs text-brand-200">
-          <p className="font-semibold text-brand-100">On-premise explainability</p>
+          <p className="font-semibold text-brand-100">Evidence before decisions</p>
           <p className="mt-1 leading-relaxed">
-            Every decision stores its SHAP rationale. Bureau-balance fields are
-            officer-typed — there is no live ECIB feed. Not SBP-certified.
+            Review the assessment, its explanation and recorded evidence before making a credit decision.
           </p>
         </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur print:hidden">
-          <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-2 px-4 py-3 sm:gap-4 sm:px-6">
+            <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
                 onClick={() => setIsSidebarOpen(true)}
+                ref={menuTrigger}
                 aria-label="Open navigation"
+                aria-expanded={isSidebarOpen}
                 className="btn-secondary px-2.5 py-1.5 lg:hidden"
               >
                 ☰
               </button>
-              <div>
-                <h1 className="text-lg font-bold text-slate-900">
-                  Credit Officer Workspace
-                </h1>
-                <p className="text-xs text-slate-500">
-                  Alternative-data underwriting and portfolio surveillance
+              <div className="min-w-0">
+                <p className="mb-0.5 hidden text-[10px] font-semibold tracking-[0.18em] text-slate-500 uppercase sm:block">Officer workspace</p>
+                <p className="truncate text-base font-bold text-slate-900 sm:text-lg">
+                  {currentPage?.label ?? "Credit memo"}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <HealthPill state={health.state} onRetry={checkHealth} />
+            <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+              <button type="button" aria-label="Find a workspace" aria-keyshortcuts="Control+k Meta+k" onClick={() => setFinderOpen(true)} className="btn-secondary gap-2 px-3 text-xs">
+                <SearchIcon className="h-4 w-4" /><span className="hidden md:inline">Find workspace</span><kbd className="hidden rounded border border-slate-200 px-1 text-[10px] text-slate-500 xl:inline">Ctrl K</kbd>
+              </button>
+              <div className="hidden xl:block"><HealthPill state={health.state} onRetry={checkHealth} /></div>
               <div className="hidden text-right sm:block">
                 <p className="text-sm font-semibold text-slate-900">
                   {username || "Officer"}
@@ -215,7 +269,7 @@ function OfficerShell() {
               <button
                 type="button"
                 className="btn-secondary px-3 py-1.5 text-xs"
-                onClick={signOut}
+                onClick={() => requestExit(signOut)}
               >
                 Sign out
               </button>
@@ -223,31 +277,52 @@ function OfficerShell() {
           </div>
         </header>
 
-        <main className="flex-1 px-5 py-6">
-          <Outlet />
+        <main id="main-content" ref={main} tabIndex={-1} className="mx-auto w-full max-w-[1680px] flex-1 px-4 py-6 outline-none sm:px-6 lg:p-8">
+          <h1 className="sr-only">{currentPage?.label ?? "Credit memo"} workspace</h1>
+          <PageBoundary key={location.pathname}>
+          <Suspense fallback={<LoadingState label="Loading workspace…" />}>
+            <Outlet />
+          </Suspense>
+          </PageBoundary>
         </main>
 
-        <footer className="border-t border-slate-200 bg-white px-5 py-3 text-xs text-slate-500 print:hidden">
-          ForiFlow v2.3 · API {API_BASE_LABEL} · All amounts in PKR
+        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-6 py-3 text-xs text-slate-500 print:hidden">
+          <span>ForiFlow · Amounts in PKR · Dates and times in PKT (UTC+05:00)</span><HealthPill state={health.state} onRetry={checkHealth} />
         </footer>
       </div>
     </div>
   );
 }
 
+function WorkspaceNavigation({ onSelect }) {
+  return <nav className="flex-1 space-y-5 px-3 py-5" aria-label="Main navigation">
+    {["Your workday", "Lending", "Monitoring", "Governance"].map(group => <div key={group}>
+      <p className="mb-2 px-3 text-[10px] font-semibold tracking-[0.16em] text-brand-200 uppercase">{group}</p>
+      <div className="space-y-1">{NAV_ITEMS.filter(item => item.group === group).map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={onSelect}
+        className={({ isActive }) => `flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition ${isActive ? "bg-brand-700 text-white shadow-sm ring-1 ring-brand-500/40" : "text-brand-100 hover:bg-brand-800 hover:text-white"}`}>
+        <Icon className="h-5 w-5 shrink-0" /><span className="flex-1">{label}</span>
+      </NavLink>)}</div>
+    </div>)}
+  </nav>;
+}
+
+function SearchIcon({ className }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" strokeLinecap="round" /></svg>;
+}
+
 function HealthPill({ state, onRetry }) {
   const styles = {
-    checking: { dot: "bg-slate-400", text: "text-slate-600", label: "Checking API…" },
-    online: { dot: "bg-emerald-500", text: "text-emerald-700", label: "API online" },
-    degraded: { dot: "bg-amber-500", text: "text-amber-700", label: "API degraded" },
-    offline: { dot: "bg-rose-500", text: "text-rose-700", label: "API offline" },
+    checking: { dot: "bg-slate-400", text: "text-slate-600", label: "Checking service…" },
+    online: { dot: "bg-emerald-500", text: "text-emerald-700", label: "Service online" },
+    degraded: { dot: "bg-amber-500", text: "text-amber-700", label: "Service limited" },
+    offline: { dot: "bg-rose-500", text: "text-rose-700", label: "Service unavailable" },
   }[state];
 
   return (
     <button
       type="button"
       onClick={onRetry}
-      title={`Backend: ${API_BASE_LABEL}`}
+      title="Check the ForiFlow service again"
       className={`badge border border-slate-200 bg-white ${styles.text}`}
     >
       <span className={`h-2 w-2 rounded-full ${styles.dot}`} aria-hidden="true" />

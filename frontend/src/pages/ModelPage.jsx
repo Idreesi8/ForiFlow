@@ -20,6 +20,7 @@ import {
   fetchFairness,
   fetchModelCard,
   fetchModelEvaluation,
+  fetchApplicabilityModel,
 } from "../api/client.js";
 import {
   BaselineSection,
@@ -32,6 +33,9 @@ import {
   SubgroupSection,
   ThresholdsSection,
 } from "../components/ModelOverview.jsx";
+import { ApplicabilityModelCard } from "../components/ModelDiagnostics.jsx";
+import SMEFieldResearch from "../components/SMEFieldResearch.jsx";
+import FeatureEngineering from "../components/FeatureEngineering.jsx";
 import { useActivePolicy } from "../lib/useActivePolicy.js";
 import { bandForDecision } from "../lib/decisions.js";
 import { formatCount, formatPercent, formatSigned } from "../lib/format.js";
@@ -58,6 +62,7 @@ export default function ModelPage() {
   const [earlyWarning, setEarlyWarning] = useState(null);
   const [drift, setDrift] = useState(null);
   const [fairness, setFairness] = useState(null);
+  const [applicability, setApplicability] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -71,6 +76,7 @@ export default function ModelPage() {
         earlyWarningData,
         driftData,
         fairnessData,
+        applicabilityData,
       ] = await Promise.all([
         fetchModelEvaluation(),
         // The rest are optional: the page still works without them.
@@ -78,8 +84,10 @@ export default function ModelPage() {
         fetchEarlyWarningModel().catch(() => null),
         fetchDrift().catch(() => null),
         fetchFairness().catch(() => null),
+        fetchApplicabilityModel().catch(() => ({ status: 'unavailable', reason: 'Could not verify the input-anomaly model. Refresh to try again.' })),
       ]);
       setFairness(fairnessData);
+      setApplicability(applicabilityData);
       setDrift(driftData);
       setEvaluation(evaluationData);
       setCard(cardData);
@@ -115,6 +123,9 @@ export default function ModelPage() {
       </div>
 
       <DemoModelNotice card={card} />
+      <ApplicabilityModelCard data={applicability} />
+      <FeatureEngineering />
+      <SMEFieldResearch />
 
       {card ? (
         <>

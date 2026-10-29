@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { apiErrorMessage, explainApplication, fetchApplication } from "../api/client.js";
+import { apiErrorMessage, fetchExplanation, fetchApplication } from "../api/client.js";
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
 import { finalDecisionOf } from "../lib/decisions.js";
-import { formatDateTime, formatPKR, formatPercent, formatSigned } from "../lib/format.js";
+import { formatDateTime, formatPKR, formatPKRExact, formatPercent, formatSigned } from "../lib/format.js";
+import { resilienceView } from "../lib/statementView.js";
 
 /**
  * A printable credit memo for one application: what was asked, what the model
@@ -17,33 +18,44 @@ export default function MemoPage() {
   const [explanation, setExplanation] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const requestSequence = useRef(0);
+  const requestController = useRef(null);
 
   const load = useCallback(async () => {
+    const request = ++requestSequence.current;
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
     setIsLoading(true);
     setError(null);
     try {
       const [applicationData, explanationData] = await Promise.all([
-        fetchApplication(applicationId),
-        explainApplication(applicationId),
+        fetchApplication(applicationId, { signal: controller.signal }),
+        fetchExplanation(applicationId, { signal: controller.signal }),
       ]);
+      if (request !== requestSequence.current || controller.signal.aborted) return;
+      if (applicationData.id !== Number(applicationId) || explanationData.application_id !== Number(applicationId)) throw Object.assign(new Error('Wrong case'), { code: 'WRONG_CASE' });
       setApplication(applicationData);
       setExplanation(explanationData);
     } catch (requestError) {
-      setError(apiErrorMessage(requestError, "Could not load the credit memo."));
+      if (request !== requestSequence.current || controller.signal.aborted) return;
+      setError(requestError.code === 'WRONG_CASE' ? 'The returned memo details do not match this case. Refresh before printing.' : apiErrorMessage(requestError, "Could not load the credit memo."));
     } finally {
-      setIsLoading(false);
+      if (request === requestSequence.current && !controller.signal.aborted) setIsLoading(false);
     }
   }, [applicationId]);
 
   useEffect(() => {
     load();
+    return () => { requestSequence.current += 1; requestController.current?.abort(); };
   }, [load]);
 
-  if (isLoading) return <LoadingState label="Loading credit memo…" />;
+  if (isLoading || (!error && (application?.id !== Number(applicationId) || explanation?.application_id !== Number(applicationId)))) return <LoadingState label="Loading credit memo…" />;
   if (error) return <ErrorState message={error} onRetry={load} />;
 
   const final = finalDecisionOf(application);
   const evidence = application.turnover_evidence;
+  const resilience = resilienceView(evidence, true);
   const path = explanation.approval_path;
 
   return (
@@ -72,8 +84,8 @@ export default function MemoPage() {
         <Section title="Request">
           <Row label="Facility">{formatPKR(application.loan_amount_pkr)}</Row>
           <Row label="Tenure">{application.tenure_months} months</Row>
-          <Row label="Straight-line installment">
-            {formatPKR(application.loan_amount_pkr / application.tenure_months)}
+          <Row label="Principal only (excl. costs)">
+            {formatPKRExact(application.loan_amount_pkr / application.tenure_months)} per month
           </Row>
           <Row label="Assessed">
             {formatDateTime(application.created_at)} by {application.scored_by ?? "—"}
@@ -198,6 +210,30 @@ export default function MemoPage() {
             <p>Turnover was typed by the officer. No statement was attached.</p>
           )}
         </Section>
+
+        {resilience ? (
+          <Section title="Statement cash-flow resilience">
+            <Row label="New principal-only payment">
+              {formatPKRExact(resilience.monthly_principal_pkr)} per month; interest and fees excluded
+            </Row>
+            {resilience.scenarios.map((scenario) => (
+              <Row key={scenario.inflow_decline_percent} label={scenario.inflow_decline_percent === 0 ? "Recorded receipts" : `${scenario.inflow_decline_percent}% lower receipts`}>
+                {scenario.months_covering_principal} of {scenario.months_observed} months cover principal;
+                median left {formatPKRExact(scenario.median_remainder_pkr)}
+              </Row>
+            ))}
+            <p className="text-xs text-slate-500">
+              Statement months with outflows held constant. Transfers and existing repayments
+              may be included. A sensitivity check, not a forecast or an approval.
+              {!resilience.matchesStatement ? " Scored figures differ from this statement." : ""}
+            </p>
+            {resilience.sourceFingerprint ? (
+              <Row label="Statement fingerprint">
+                <span className="break-all font-mono text-xs">{resilience.sourceFingerprint}</span>
+              </Row>
+            ) : null}
+          </Section>
+        ) : null}
 
         <Section title="Credit officer decision">
           <Row label="Status">{final ?? application.decision_status}</Row>

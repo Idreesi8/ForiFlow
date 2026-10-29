@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 
-import ApplicationTable from "../components/ApplicationTable.jsx";
+import ApplicationRegister from "../components/ApplicationRegister.jsx";
 
 /** Full register of scored applications. */
 export default function ApplicationsPage() {
@@ -12,7 +12,7 @@ export default function ApplicationsPage() {
         <div>
           <h2 className="text-xl font-bold text-slate-900">Applications</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Every assessment on file. Sort any column, then open the SHAP report. Each
+            Search every saved assessment, sort the results and open a case. Each
             application is approved or rejected there by a manager or admin.
           </p>
         </div>
@@ -21,7 +21,7 @@ export default function ApplicationsPage() {
         </button>
       </header>
 
-      <ApplicationTable title="Application register" limit={200} />
+      <ApplicationRegister />
     </div>
   );
 }

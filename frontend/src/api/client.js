@@ -54,11 +54,11 @@ export function apiErrorMessage(error, fallback = "Something went wrong.") {
   if (!error) return fallback;
 
   if (error.code === "ECONNABORTED") {
-    return "The request timed out. Please check that the ForiFlow API is running.";
+    return "ForiFlow took too long to respond. If you were saving, check the record before trying again.";
   }
 
   if (!error.response) {
-    return `Cannot reach the ForiFlow API at ${API_BASE_LABEL}. Check the backend is up ("docker compose ps", or "uvicorn main:app --port 8000" for a local run).`;
+    return "Cannot reach ForiFlow. Check your connection or ask your administrator to check the service. If you were saving, check the record before trying again.";
   }
 
   const { status, data } = error.response;
@@ -93,16 +93,28 @@ export const scoreApplication = (payload) =>
 export const fetchApplications = (params = {}) =>
   client.get("/score/applications", { params }).then((response) => response.data);
 
+export const fetchApplicationRegister = (params = {}, { signal } = {}) =>
+  client.get("/score/register", { params, signal }).then(response => response.data);
+
 export const fetchPortfolioStats = () =>
   client.get("/score/stats").then((response) => response.data);
 
-export const fetchApplication = (applicationId) =>
-  client.get(`/score/applications/${applicationId}`).then((response) => response.data);
+export const fetchApplication = (applicationId, { signal } = {}) =>
+  client.get(`/score/applications/${applicationId}`, { signal }).then((response) => response.data);
 
 export const explainApplication = (applicationId, { refresh = false } = {}) =>
   client
     .post(`/explain/${applicationId}`, null, { params: { refresh } })
     .then((response) => response.data);
+
+export const fetchExplanation = (applicationId, { signal } = {}) =>
+  client.get(`/explain/${applicationId}`, { signal }).then(response => response.data);
+
+export const fetchModelDiagnostics = (applicationId, { signal } = {}) =>
+  client.get(`/model/applications/${applicationId}/diagnostics`, { signal }).then(response => response.data);
+
+export const fetchApplicabilityModel = ({ signal } = {}) =>
+  client.get('/model/applicability', { signal }).then(response => response.data);
 
 export const fetchAlerts = (params = {}) =>
   client.get("/ews/alerts", { params }).then((response) => response.data);
@@ -147,9 +159,9 @@ export const correctObservation = (observationId, payload) =>
     .post(`/ews/observations/${observationId}/correct`, payload)
     .then((response) => response.data);
 
-export const fetchFacilityObservations = (facilityId, params = {}) =>
+export const fetchFacilityObservations = (facilityId, params = {}, { signal } = {}) =>
   client
-    .get(`/ews/facilities/${facilityId}/observations`, { params })
+    .get(`/ews/facilities/${facilityId}/observations`, { params, signal })
     .then((response) => response.data);
 
 export const fetchFacilityTrend = (facilityId) =>
@@ -176,19 +188,22 @@ export const alertLifecycle = (alertId, step, payload = {}) =>
 export const fetchBorrowerHistory = (borrowerId) =>
   client.get(`/ews/borrowers/${borrowerId}/history`).then((response) => response.data);
 
-export const summariseStatement = (csv) =>
-  client.post("/score/statement", { csv }).then((response) => response.data);
+export const summariseStatement = (csv, { signal } = {}) =>
+  client.post("/score/statement", { csv }, { signal }).then((response) => response.data);
 
-export const fetchReminders = () =>
-  client.get("/portfolio/reminders").then((response) => response.data);
+export const fetchReminders = ({ signal } = {}) =>
+  client.get("/portfolio/reminders", { signal }).then((response) => response.data);
 
-export const fetchUsers = () => client.get("/auth/users").then((response) => response.data);
+export const fetchUsers = ({ signal } = {}) => client.get("/auth/users", { signal }).then((response) => response.data);
 
 export const createUser = (payload) =>
   client.post("/auth/users", payload).then((response) => response.data);
 
 export const fetchPortfolioSummary = () =>
   client.get("/portfolio/summary").then((response) => response.data);
+
+export const fetchActionDesk = (params = {}, { signal } = {}) =>
+  client.get("/portfolio/action-desk", { params, signal }).then((response) => response.data);
 
 export const fetchModelEvaluation = () =>
   client.get("/model/evaluation").then((response) => response.data);
@@ -206,6 +221,21 @@ export const fetchModelCard = () => client.get("/model/card").then((response) =>
 export const fetchFeatureContract = () =>
   client.get("/model/feature-contract").then((response) => response.data);
 
+/** Numerical analysis only: this POST creates no borrower, score or audit record. */
+export const checkModelInputs = (inputs, { signal } = {}) =>
+  client.post('/model/input-checks', inputs, { signal }).then(response => response.data);
+
+export const checkOperatingFigures = (inputs, { signal } = {}) =>
+    client.post('/model/operating-checks', inputs, { signal }).then(response => response.data);
+export const fetchOperatingFigures = (id, { signal } = {}) =>
+    client.get(`/model/applications/${id}/operating-checks`, { signal }).then(response => response.data);
+export const fetchSMEFieldResearch = ({ signal } = {}) =>
+    client.get('/model/sme-field-research', { signal }).then(response => response.data);
+export const fetchFeatureStudy = ({ signal } = {}) =>
+    client.get('/model/feature-study', { signal }).then(response => response.data);
+export const analyseCashflow = (csv, dateOrder = 'auto', { signal } = {}) =>
+    client.post('/model/cashflow-intelligence', { csv, date_order: dateOrder }, { signal }).then(response => response.data);
+
 export const fetchDataQuality = () =>
   client.get("/model/data-quality").then((response) => response.data);
 
@@ -222,12 +252,18 @@ export const login = (username, password) =>
 export const logout = () => client.post("/auth/logout").then(() => undefined);
 
 /** The signed-in account as the server sees it now (role, enabled). */
-export const fetchMe = () => client.get("/auth/me").then((response) => response.data);
+export const fetchMe = ({ signal } = {}) => client.get("/auth/me", { signal }).then((response) => response.data);
 
 /** Disable or re-enable an officer account (admin only, 2.3). */
-export const setUserStatus = (userId, isActive, reason) =>
+export const setUserStatus = (userId, isActive, reason, expectedIsActive) =>
   client
-    .patch(`/auth/users/${userId}/status`, { is_active: isActive, reason: reason || null })
+    .patch(`/auth/users/${userId}/status`, { is_active: isActive, reason: reason || null, expected_is_active: expectedIsActive })
     .then((response) => response.data);
+
+export const setUserRole = (userId, role, expectedRole, reason) =>
+  client.patch(`/auth/users/${userId}/role`, { role, expected_role: expectedRole, reason }).then(response => response.data);
+
+export const fetchUserAccessHistory = (userId, { signal } = {}) =>
+  client.get(`/auth/users/${userId}/access-history`, { signal }).then(response => response.data);
 
 export default client;

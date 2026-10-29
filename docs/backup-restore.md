@@ -15,14 +15,15 @@ scripts/backup.sh           (Linux/macOS)
 ```
 
 1. Runs `pg_dump -Fc` inside the database container.
-2. Writes `backups/foriflow-YYYYMMDD-HHMMSS.dump` (custom format, compressed).
+2. Writes `backups/foriflow-YYYYMMDD-HHMMSS-<unique-suffix>.dump` (custom format,
+   compressed). Concurrent or same-second backups do not overwrite one another.
 3. Refuses a file under 1 KB and checks it is a readable archive
    (`pg_restore --list`). On failure the partial file is deleted.
 
 The live database is only read. `backups/` is in `.gitignore`.
 
 **Recommended routine:** daily during a pilot, and always before an update
-(the `aa-update-*.bat` scripts already take `backups/before-<version>.dump`).
+(the preserved historical release scripts are not the current deployment workflow).
 Copy each dump off the laptop to encrypted storage (BitLocker-encrypted USB
 or the bank's backup share) and keep at least the last 7 daily and 4 weekly.
 
@@ -34,19 +35,28 @@ verify-backup.bat backups\foriflow-20261009-213200.dump
 scripts/verify-backup.sh [file]
 ```
 
-Restores the file into a **scratch** database (`foriflow_restore_check`),
-then compares it with the live database and drops the scratch copy:
+Restores the file into a **new, uniquely named scratch** database, then compares
+it with the live database and drops only the copy it created. An explicitly
+supplied `SCRATCH_DB` that already exists is refused; it is never dropped.
 
-- row counts of `users`, `borrowers`, `credit_policies`, `model_versions`,
-  `applications`, `ews_tracking`, `alerts`, `audit_logs`;
+- counts and SHA-256 fingerprints covering every row of `users`, `borrowers`,
+  `credit_policies`, `model_versions`, `applications`, `ews_tracking`, `alerts`,
+  `audit_logs`, `login_attempts` and `revoked_tokens`;
 - the Alembic migration version;
-- the newest audit entry (id, action, time) is identical;
-- the audit append-only triggers exist in the copy, and a `DELETE` on the
+- enabled audit append-only triggers exist on the copy's audit table, and a `DELETE` on the
   copy's audit trail is refused.
 
 It ends with `RESULT: PASS` or `RESULT: FAIL` (Windows writes
 `verify-backup-log.txt`). A fresh backup verified straight away should match
-exactly; an older one shows fewer rows where work happened since.
+exactly when no writes happened in between. An older backup can fail comparison
+because content changed, even if row counts are identical. This comparison is
+not a continuous-write snapshot of the live database. Missing tables, unreadable
+archives and cleanup failures cannot produce a pass.
+
+Each backup, verification and restore uses its own temporary container path.
+File-copy success, non-empty content and archive readability are checked before
+a verification or restore begins. Windows automation can suppress the final
+pause with `verify-backup.bat <file> --no-pause`.
 
 ## Restore (destructive)
 
@@ -58,11 +68,16 @@ scripts/restore.sh backups/foriflow-20261009-213200.dump
 1. Asks you to type `RESTORE`; anything else cancels.
 2. Takes a safety backup of the current database (`backup.bat`). If that
    fails, nothing is restored.
-3. Stops the API and dashboard.
+3. Stops the API and dashboard and confirms neither is still running. Copies
+   the chosen file to a unique container path and validates that copy.
 4. Ends any remaining connections, drops and recreates the database, restores
    the dump (`pg_restore --exit-on-error`), and prints the migration version,
    application count and audit-entry count.
-5. Starts the API and dashboard. The API applies any newer migrations on
+5. Starts the API and dashboard only after successful restore and schema checks.
+   A pre-destructive refusal leaves the database unreplaced and attempts to
+   resume services. A failure once dropping may have begun leaves both services
+   stopped; recover deliberately with the safety backup. A failed restart is
+   reported as a failure. The API applies any newer migrations on
    start, so restoring an older backup into a newer release upgrades it.
 
 Afterwards: sign in, open Applications and the newest borrower, and (as admin)
@@ -71,7 +86,21 @@ the restored database; the safety backup from step 2 still has it.
 
 Run `verify-backup.bat` on a file before you restore from it.
 
+Logical backups also restore account and revocation state as it existed at the
+backup date. These scripts do not yet enforce a global session reset. Before
+using an older backup in a live deployment, include JWT signing-key rotation
+and container recreation in the recovery procedure so later-revoked tokens
+cannot become usable again. This round tests data restoration on disposable
+databases; it does not perform a live recovery or change the signing key.
+
+Windows automation can suppress only the final pause with
+`restore.bat <file> --no-pause`; typing `RESTORE` is still required.
+
 ## Tested
+
+The [22 October database verification report](database-verification-2026-10-22.md)
+records the current native Windows PostgreSQL tests and executed Windows/Bash
+wrapper regressions. Docker engine startup remains a separate host limitation.
 
 Release 2.3.0 was checked on a copy of the pilot database (24 applications,
 20 borrowers, 160 audit entries, migration `0010_security_hardening`):

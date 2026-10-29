@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Generator
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
+
+from business_time import business_date, utc_now
 
 from sqlalchemy import (
     DDL,
@@ -67,7 +69,7 @@ SessionLocal = sessionmaker(
 
 def utcnow() -> datetime:
     """Return the current UTC time as a timezone-aware datetime."""
-    return datetime.now(timezone.utc)
+    return utc_now()
 
 
 class Base(DeclarativeBase):
@@ -688,7 +690,7 @@ class Alert(Base):
         return (
             self.is_open
             and self.action_due_date is not None
-            and self.action_due_date < utcnow().date()
+            and self.action_due_date < business_date()
         )
 
     @property

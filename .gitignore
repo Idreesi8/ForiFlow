@@ -83,3 +83,17 @@ foriflow-scratch-archive/
 
 # --- Database dumps taken before an update (real data; never commit) ---
 backups/
+
+# Consolidated local releases, QA evidence, recovery drafts and private notes.
+archive/
+.local/
+docs/project-notes/
+
+# Personal study material and large design exports stay on this laptop.
+docs/academic/
+docs/presentations/
+docs/assets/
+docs/ForiFlow-Poster-*
+linkedin/assets/
+# An unreviewed local capture is not a public demonstration screenshot.
+docs/screenshots/04-shap-panel.png

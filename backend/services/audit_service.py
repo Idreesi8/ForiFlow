@@ -48,6 +48,7 @@ class Action:
     USER_CREATED = "user.created"
     USER_DISABLED = "user.disabled"
     USER_ENABLED = "user.enabled"
+    USER_ROLE_CHANGED = "user.role_changed"
     BORROWER_CREATED = "borrower.created"
     BORROWER_UPDATED = "borrower.updated"
     APPLICATION_CREATED = "application.created"

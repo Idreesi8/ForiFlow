@@ -152,15 +152,23 @@ def cors_origins() -> list[str]:
     return origins
 
 
+def docs_requested() -> bool:
+    """True when ``FORIFLOW_ENABLE_DOCS`` is set to a true value."""
+    return env_flag("FORIFLOW_ENABLE_DOCS", "false")
+
+
 def docs_enabled() -> bool:
     """Interactive docs (/docs, /redoc, /openapi.json).
 
-    An explicit ``FORIFLOW_ENABLE_DOCS`` wins; otherwise on in development and
-    off in production.
+    Production: always off (2.3.1). ``FORIFLOW_ENABLE_DOCS=true`` is ignored
+    there and a start-up warning says so; the API description is not public
+    in a pilot. Development: on unless ``FORIFLOW_ENABLE_DOCS`` is set false.
     """
+    if is_production():
+        return False
     if os.getenv("FORIFLOW_ENABLE_DOCS", "").strip():
         return env_flag("FORIFLOW_ENABLE_DOCS")
-    return not is_production()
+    return True
 
 
 DEFAULT_MAX_BODY_BYTES = 3 * 1024 * 1024

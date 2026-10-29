@@ -3,23 +3,117 @@
 from __future__ import annotations
 
 from typing import Annotated, Any
+import json
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from models.database import Application, ModelVersion, get_db
+from diagnostic_schemas import CaseDiagnostics, ModelInputRequest, ModelInputReport
 from schemas import ModelVersionResponse
 from services.auth_service import get_current_user
 from services import feature_contract
 from services.drift_service import drift_report
 from services.scoring_service import ScoringService, get_scoring_service
+from services import applicability_service
+from services.model_diagnostics import build_diagnostics
+from services.input_checks import check_inputs
+from operating_schemas import OperatingFigures, OperatingRequest, OperatingReport
+from services.operating_checks import check_operating_figures
+from services.statement_service import parse_statement, StatementError
+from services.feature_study import StudySummary, load_study
+from cashflow_schemas import CashflowRequest, CashflowReport
+from services.cashflow_intelligence import analyse_csv as analyse_cashflow
 
 router = APIRouter(
     prefix="/model",
     tags=["Model"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+@router.post('/cashflow-intelligence', response_model=CashflowReport,
+             summary='Local statement trend and chronologically tested receipt estimates')
+def cashflow_intelligence(inputs: CashflowRequest, response: Response) -> CashflowReport:
+    response.headers['Cache-Control'] = 'no-store'
+    try:
+        return analyse_cashflow(inputs.csv, inputs.date_order)
+    except StatementError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+
+
+@router.get('/feature-study', response_model=StudySummary,
+            summary='Measured train-only feature engineering research')
+def feature_study(response: Response,
+                  scorer: Annotated[ScoringService, Depends(get_scoring_service)]) -> StudySummary:
+    response.headers['Cache-Control'] = 'no-store'
+    try:
+        return load_study(scorer)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail='No completed feature study has been published.') from None
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        raise HTTPException(status_code=409, detail='Feature research could not be verified against the active credit model. Results are withheld.') from None
+
+
+@router.post('/operating-checks', response_model=OperatingReport,
+             summary='Use operating figures without scoring or saving an assessment')
+def operating_checks(inputs: OperatingRequest, response: Response) -> OperatingReport:
+    response.headers['Cache-Control'] = 'no-store'
+    try:
+        summary = parse_statement(inputs.statement_csv).as_dict() if inputs.statement_csv else None
+    except StatementError as error:
+        raise HTTPException(status_code=422, detail=f'Statement: {error}') from None
+    figures = OperatingFigures(**inputs.model_dump(exclude={'statement_csv'}))
+    return check_operating_figures(figures, summary)
+
+
+@router.get('/applications/{application_id}/operating-checks', response_model=OperatingReport,
+            summary='Calculate operating checks from the recorded case figures')
+def saved_operating_checks(application_id: int, response: Response,
+                           db: Annotated[Session, Depends(get_db)]) -> OperatingReport:
+    response.headers['Cache-Control'] = 'no-store'
+    application = db.get(Application, application_id)
+    if application is None:
+        raise HTTPException(status_code=404, detail='The requested assessment was not found.')
+    try:
+        figures = OperatingFigures(**{name: getattr(application, name) for name in OperatingFigures.model_fields})
+    except ValueError:
+        raise HTTPException(status_code=409, detail='Recorded figures do not support these operating checks.') from None
+    return check_operating_figures(figures, application.turnover_evidence, application_id)
+
+
+@router.get('/sme-field-research', summary='Verified acquisition and fit of candidate SME datasets')
+def sme_field_research() -> dict:
+    path = Path(__file__).resolve().parents[1] / 'ml' / 'sme_field_research.json'
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404, detail='SME dataset research has not been recorded.') from None
+
+
+@router.get('/applicability', summary='The trained input-anomaly reference and its provenance')
+def applicability_model(scorer: Annotated[ScoringService, Depends(get_scoring_service)]) -> dict:
+    return applicability_service.summary(scorer)
+
+
+@router.post('/input-checks', response_model=ModelInputReport,
+             summary='Inspect five unsaved model inputs without creating a credit assessment')
+def unsaved_input_checks(inputs: ModelInputRequest, response: Response,
+                         scorer: Annotated[ScoringService, Depends(get_scoring_service)]) -> ModelInputReport:
+    response.headers['Cache-Control'] = 'no-store'
+    return check_inputs(inputs, scorer)
+
+
+@router.get('/applications/{application_id}/diagnostics', response_model=CaseDiagnostics,
+            summary='Read-only, source-verified ensemble and sensitivity checks for a saved case')
+def application_diagnostics(application_id: int, db: Annotated[Session, Depends(get_db)],
+                            scorer: Annotated[ScoringService, Depends(get_scoring_service)]) -> CaseDiagnostics:
+    application = db.get(Application, application_id)
+    if application is None:
+        raise HTTPException(status_code=404, detail='The requested assessment was not found.')
+    return build_diagnostics(db, application, scorer)
 
 
 def _require(payload: dict[str, Any] | None, command: str) -> dict[str, Any]:

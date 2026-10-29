@@ -5,7 +5,7 @@ strip `/api` before FastAPI). Direct access: `http://localhost:8000`.
 
 Interactive docs: [http://localhost:8000/docs](http://localhost:8000/docs) in
 development mode. Since 2.3 production mode (the Docker stack) turns `/docs`,
-`/redoc` and `/openapi.json` off unless `FORIFLOW_ENABLE_DOCS=true`. Security
+`/redoc` and `/openapi.json` off, and since 2.3.1 they stay off even with `FORIFLOW_ENABLE_DOCS=true`. Security
 behaviour in full: [SECURITY.md](../SECURITY.md).
 
 All amounts are PKR. Timestamps are UTC ISO-8601.

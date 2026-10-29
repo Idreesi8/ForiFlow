@@ -1,14 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { apiErrorMessage, fetchReminders } from "../api/client.js";
 import { EmptyState, ErrorState, LoadingState } from "../components/common/States.jsx";
-import { formatDate, formatPKR } from "../lib/format.js";
-
-const KIND = {
-  overdue: { label: "Overdue", className: "bg-rose-100 text-rose-800 ring-1 ring-rose-200" },
-  arrears: { label: "Arrears", className: "bg-amber-100 text-amber-800 ring-1 ring-amber-200" },
-  due_soon: { label: "Due soon", className: "bg-sky-100 text-sky-800 ring-1 ring-sky-200" },
-};
+import { formatDate, formatDateTime, formatPKRExact } from "../lib/format.js";
+import ReminderReview from '../components/ReminderReview.jsx';
+import { filterReminders, readReminderFilters, reminderFilterQuery, validReminders, REMINDER_KINDS as KIND } from '../lib/reminderReview.js';
 
 /**
  * Payment reminders for approved facilities: installments past due, due within
@@ -20,33 +17,31 @@ export default function RemindersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [language, setLanguage] = useState("ur");
-  const [copiedId, setCopiedId] = useState(null);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      setReminders(await fetchReminders());
-    } catch (requestError) {
-      setError(apiErrorMessage(requestError, "Could not load the reminders."));
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const [params,setParams]=useSearchParams(),filters=readReminderFilters(params);
+  const [candidate,setCandidate]=useState(null),[checkedAt,setCheckedAt]=useState(null);
+  const [revision,setRevision]=useState(0);
+  const requestSequence=useRef(0);
+  const update=changes=>setParams(current=>{
+    const next=new URLSearchParams(current);
+    for(const [key,value] of Object.entries(changes)){if(!value||value==='all')next.delete(key);else next.set(key,value);}
+    return next;
+  },{replace:true});
 
   useEffect(() => {
-    load();
-  }, [load]);
-
-  const copy = async (reminder, message) => {
-    try {
-      await navigator.clipboard.writeText(message);
-      setCopiedId(reminder.application_id);
-      setTimeout(() => setCopiedId(null), 2000);
-    } catch {
-      setCopiedId(null);
-    }
-  };
+    const controller=new AbortController(),request=++requestSequence.current;
+    setIsLoading(true);
+    setError(null);
+    fetchReminders({signal:controller.signal}).then(rows=>{
+      if(controller.signal.aborted||request!==requestSequence.current)return;
+      if(!validReminders(rows))throw Object.assign(new Error('Invalid reminders'),{code:'INVALID_REMINDERS'});
+      setReminders(rows);setCheckedAt(new Date().toISOString());
+    }).catch(failure=>{if(!controller.signal.aborted&&request===requestSequence.current)setError(failure.code==='INVALID_REMINDERS'?'The returned reminders could not be verified. Refresh the list.':apiErrorMessage(failure,'Could not load the reminders.'));})
+      .finally(()=>{if(!controller.signal.aborted&&request===requestSequence.current)setIsLoading(false);});
+    return()=>controller.abort();
+  },[revision]);
+  const reconciled=useCallback((rows,time)=>{setReminders(rows);setCheckedAt(time);setError(null);},[]);
+  const visible=filterReminders(reminders,filters);
+  const returnState={reminderSearch:reminderFilterQuery(filters)};
 
   return (
     <div className="space-y-6">
@@ -54,10 +49,9 @@ export default function RemindersPage() {
         <div>
           <h2 className="text-xl font-bold text-slate-900">Payment reminders</h2>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
-            Installments that are overdue, due within 7 days, or unpaid from earlier
-            months. The schedule runs monthly from the day a facility was approved, and
-            an installment is cleared once its month is recorded under EWS Alerts.
-            ForiFlow only drafts the message. You send it.
+            Principal-only installments that are overdue, due within 7 days, or unpaid
+            in recorded months. The first month without an EWS record is checked;
+            later records do not clear earlier missing months. ForiFlow drafts the message. You send it.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -80,31 +74,41 @@ export default function RemindersPage() {
               {label}
             </button>
           ))}
-          <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={load}>
+          <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={()=>setRevision(value=>value+1)}>
             Refresh
           </button>
         </div>
       </header>
 
+      <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        Indicative schedule: monthly from the recorded approval date in Pakistan time (PKT), with interest
+        and fees excluded. Verify the agreed dates, actual amount due and payment
+        receipts before sending. An EWS record alone does not prove payment.
+      </p>
+
+      <section className="card space-y-4 p-5" aria-label="Find a reminder">
+        <div className="grid gap-3 md:grid-cols-3"><div><label htmlFor="reminder-search" className="field-label">Find a case</label><input id="reminder-search" type="search" className="field-input" value={filters.search} maxLength={100} placeholder="Business, applicant or exact case #" onChange={event=>update({search:event.target.value})}/></div><div><label htmlFor="reminder-kind" className="field-label">Reminder type</label><select id="reminder-kind" className="field-input" value={filters.kind} onChange={event=>update({kind:event.target.value})}><option value="all">All types</option>{Object.entries(KIND).map(([value,item])=><option key={value} value={value}>{item.label}</option>)}</select></div><div><label htmlFor="reminder-coverage" className="field-label">Record checks</label><select id="reminder-coverage" className="field-input" value={filters.coverage} onChange={event=>update({coverage:event.target.value})}><option value="all">All records</option><option value="gap">Missing monitoring months</option><option value="unknown">Unknown payment amounts</option><option value="no_contact">No usable contact number</option></select></div></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><p role="status" className="text-xs text-slate-600">{isLoading?'Refreshing reminders…':error?'Reminder list unavailable':`${visible.length} of ${reminders.length} reminders`}{!isLoading&&!error&&checkedAt?` · Checked ${formatDateTime(checkedAt)}`:''}</p>{filters.search||filters.kind!=='all'||filters.coverage!=='all'?<button type="button" className="btn-ghost text-xs" onClick={()=>setParams({})}>Clear filters</button>:null}</div>
+        <p className="text-xs text-slate-500">Review a draft to recheck the latest record before copying or opening WhatsApp. Filters stay in the URL when you return.</p>
+      </section>
+
       {isLoading ? (
         <LoadingState label="Loading reminders…" />
       ) : error ? (
-        <ErrorState message={error} onRetry={load} />
-      ) : reminders.length === 0 ? (
+        <ErrorState message={error} onRetry={()=>setRevision(value=>value+1)} />
+      ) : visible.length === 0 ? (
         <div className="card">
           <EmptyState
-            title="No reminders today"
-            description="No approved facility has an installment overdue, due within 7 days, or unpaid from earlier months."
+            title={reminders.length?'No reminders match these filters':'No reminders in the current list'}
+            description={reminders.length?'Try another case, type or record check, or clear the filters.':'No approved facility currently meets the reminder rules. This does not prove every payment has been received.'}
           />
         </div>
       ) : (
         <ul className="space-y-4">
-          {reminders.map((reminder) => {
+          {visible.map((reminder) => {
             const kind = KIND[reminder.kind];
-            const message = language === "ur" ? reminder.message_ur : reminder.message_en;
-            const phone = reminder.contact_phone?.replace(/^\+/, "");
             return (
-              <li key={reminder.application_id} className="card px-5 py-4">
+              <li key={reminder.application_id} className="card px-5 py-4" data-testid={`reminder-${reminder.application_id}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-900">
@@ -115,58 +119,55 @@ export default function RemindersPage() {
                     </p>
                     <p className="tabular mt-0.5 text-xs text-slate-500">
                       {reminder.installment_number
-                        ? `Installment ${reminder.installment_number} of ${formatPKR(
+                        ? `Principal installment ${reminder.installment_number} of ${formatPKRExact(
                             reminder.installment_pkr,
                           )}, due ${formatDate(reminder.due_date)}`
-                        : `Installment ${formatPKR(reminder.installment_pkr)}`}
+                        : `Principal installment ${formatPKRExact(reminder.installment_pkr)}`}
                       {reminder.days_until_due !== null
                         ? reminder.days_until_due < 0
                           ? ` · ${-reminder.days_until_due} days late`
                           : ` · in ${reminder.days_until_due} days`
                         : ""}
                       {reminder.arrears_pkr > 0
-                        ? ` · ${formatPKR(reminder.arrears_pkr)} unpaid from earlier months`
+                        ? ` · ${formatPKRExact(reminder.arrears_pkr)} unpaid in recorded months`
                         : ""}
                     </p>
                   </div>
                   <span className={`badge ${kind.className}`}>{kind.label}</span>
                 </div>
 
-                <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
-                  {message}
-                </p>
+                {reminder.has_recording_gap ? (
+                  <p className="mt-3 text-sm font-medium text-amber-800">
+                    Missing month {reminder.installment_number}: later EWS records exist
+                    up to month {reminder.latest_recorded_month}. Check the gap and
+                    payment receipts before sending.
+                  </p>
+                ) : null}
+                {reminder.recorded_months_without_amount > 0 ? (
+                  <p className="mt-2 text-xs text-slate-600">
+                    {reminder.recorded_months_without_amount} recorded month(s) have no
+                    payment amount. Those amounts are unknown and excluded from arrears.
+                  </p>
+                ) : null}
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     className="btn-secondary px-3 py-1.5 text-xs"
-                    onClick={() => copy(reminder, message)}
+                    onClick={() => setCandidate(reminder)}
+                    aria-label={`Review draft for case ${reminder.application_id}`}
                   >
-                    {copiedId === reminder.application_id ? "Copied" : "Copy message"}
+                    Review draft
                   </button>
-                  {phone ? (
-                    <a
-                      className="btn-primary px-3 py-1.5 text-xs"
-                      href={`https://wa.me/${phone}?text=${encodeURIComponent(message)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open in WhatsApp
-                    </a>
-                  ) : (
-                    <span className="text-xs text-slate-500">
-                      No contact number on file for this borrower.
-                    </span>
-                  )}
-                  {phone ? (
-                    <span className="tabular text-xs text-slate-500">{reminder.contact_phone}</span>
-                  ) : null}
+                  <Link className="btn-secondary text-xs" to={`/alerts?facility=${reminder.application_id}`} state={returnState}>Open monitoring</Link>
+                  <Link className="btn-ghost text-xs" to={`/shap/${reminder.application_id}`} state={returnState}>View case</Link>
                 </div>
               </li>
             );
           })}
         </ul>
       )}
+      {candidate?<ReminderReview candidate={candidate} language={language} onLanguage={setLanguage} onClose={()=>setCandidate(null)} onRefreshed={reconciled} returnState={returnState}/>:null}
     </div>
   );
 }

@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
+from business_time import business_date
+
 from models.database import Alert, Application, AuditLog, EWSTracking, User
 from services.audit_service import Action
 from services.auth_service import hash_password
@@ -80,7 +82,7 @@ def test_an_observation_records_who_when_and_in_which_request(
     assert row["created_by"] == "ana"
     assert row["created_at"] is not None
     assert row["request_id"]
-    assert row["observation_date"] == date.today().isoformat()
+    assert row["observation_date"] == business_date().isoformat()
     assert row["record_status"] == "active"
     assert row["score_source"] == "ews_rule_adjusted"
     assert row["rule_score"] == row["monthly_score"]
@@ -159,7 +161,7 @@ def test_days_late_must_fit_the_bucket_and_dates_cannot_be_future(
     assert client.post(
         "/ews/monitor", json=_month(facility, 1, installment_status="Default", days_late=95)
     ).status_code == 201
-    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    tomorrow = (business_date() + timedelta(days=1)).isoformat()
     assert client.post(
         "/ews/monitor", json=_month(facility, 2, observation_date=tomorrow)
     ).status_code == 422
@@ -283,7 +285,7 @@ def test_overview_counts_states_and_lists_facilities(client: TestClient, facilit
     worst, calm = body["rows"]
     assert worst["facility_id"] == second["id"] and worst["state"] == "CRITICAL"
     assert worst["active_alerts"] == 1 and worst["trend_direction"] == "Insufficient Data"
-    assert worst["last_observation_date"] == date.today().isoformat()
+    assert worst["last_observation_date"] == business_date().isoformat()
     assert calm["state"] == "NORMAL" and calm["active_alerts"] == 0
     assert body["methodology"]["score_drop_warning"] == 15
 
@@ -356,13 +358,13 @@ def test_the_full_lifecycle_is_recorded(
     assert ack.json()["acknowledged_at"] is not None
     assert client.post(f"{url}/acknowledge").status_code == 409
 
-    due = (date.today() + timedelta(days=2)).isoformat()
+    due = (business_date() + timedelta(days=2)).isoformat()
     assigned = client.post(f"{url}/assign", json={"assigned_to": "ana", "due_date": due})
     assert assigned.status_code == 200
     assert assigned.json()["assigned_to"] == "ana" and assigned.json()["assigned_by"] == "admin"
     assert assigned.json()["action_due_date"] == due
     assert client.post(f"{url}/assign", json={"assigned_to": "nobody"}).status_code == 422
-    past = (date.today() - timedelta(days=1)).isoformat()
+    past = (business_date() - timedelta(days=1)).isoformat()
     assert client.post(f"{url}/due-date", json={"due_date": past}).status_code == 422
 
     action = client.post(f"{url}/action-required", json={"action_note": "Collect three statements."})
@@ -416,7 +418,7 @@ def test_an_overdue_action_is_flagged(
         db.execute(
             update(Alert)
             .where(Alert.id == alert["id"])
-            .values(action_due_date=date.today() - timedelta(days=3))
+            .values(action_due_date=business_date() - timedelta(days=3))
         )
         db.commit()
     finally:
@@ -447,7 +449,7 @@ def test_an_analyst_records_and_reads_but_does_not_manage_alerts(
     for method, path, body in (
         ("post", f"{url}/acknowledge", None),
         ("post", f"{url}/assign", {"assigned_to": "ana"}),
-        ("post", f"{url}/due-date", {"due_date": date.today().isoformat()}),
+        ("post", f"{url}/due-date", {"due_date": business_date().isoformat()}),
         ("post", f"{url}/action-required", {"action_note": "Do something."}),
         ("post", f"{url}/resolve", {"note": "Closing it myself."}),
         ("post", f"{url}/dismiss", {"note": "Closing it myself."}),

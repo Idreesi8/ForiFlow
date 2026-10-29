@@ -256,9 +256,11 @@ SHA-256 `ce3c6d2167717bf1627d1c0c81cbccd28323cd4aa7b96d542599366d5ff6aac8`.
 
 ## 22. Model artifact hash
 
-Combined fingerprint `2b2b350c8a8a74ec9459005dc182236a28595f74345d361080dc426bae0d239d`.
-Files: `foriflow_model.pkl` `0a596a02…`, `scaler.pkl` `04bf59cc…`,
-`shap_explainer.pkl` `a89e5047…`, `feature_names.json` `906e8fb0…`.
+Current serving fingerprint
+`15a24f14f148b513bddf75c5eafb55f873af8d57f42988970fc51247686ff43d`,
+using the LF-normalised metadata convention described at the top of this card.
+The earlier `2b2b350c…` value predated that metadata correction. Credit files:
+`foriflow_model.pkl`, `scaler.pkl`, `shap_explainer.pkl`, `feature_names.json`.
 
 ## 23. Decision-policy separation
 
@@ -280,3 +282,19 @@ validation on a time-separated test set, a fairness review on attributes the
 lender holds, calibration to the lender's portfolio, and independent model
 risk review. The data needed is listed in
 [sme_data_requirements.md](sme_data_requirements.md).
+
+## 25. Additional input-anomaly reference (27 October 2026)
+
+A separate 128-tree Isolation Forest uses the original 19,449 training rows,
+without SMOTE or credit-score clipping. It detects unusual combinations of the
+same three proxy features. Its training 95th-percentile threshold flags 973
+training rows and 314 of 6,483 validation rows (4.84%). This rate is **not
+detection accuracy**; no labelled anomaly validation or SME validation has been
+performed. Final-test values and outcomes were not used for this addition.
+
+The credit model and its final-test AUROC of 0.7748 are unchanged. Input
+applicability, learner disagreement and 25 hypothetical model responses are
+available on demand for saved cases whose model artefacts and score can be
+reproduced. They do not change recorded assessments or officer decisions.
+Training, serving safeguards, provenance and verification are documented in
+[the implementation report](ml-diagnostics-2026-10-27.md).

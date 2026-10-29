@@ -9,6 +9,10 @@
 .dockerignore
 Dockerfile
 
+# Local credentials are injected at runtime, never baked into an image.
+.env
+.env.*
+
 __pycache__/
 *.py[cod]
 *.egg-info/

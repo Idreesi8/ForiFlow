@@ -13,7 +13,9 @@ bureau record (default on file or not), which a statement cannot show.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import math
 import re
 import statistics
 from collections import defaultdict
@@ -21,6 +23,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 
 MAX_STATEMENT_CHARS = 2_000_000
+STATEMENT_PARSER_VERSION = 'statement-v2'
 MIN_FULL_MONTHS = 3
 # A boundary month is kept only if the statement covers it from at least this
 # early / to at least this late; otherwise it would understate the month.
@@ -85,6 +88,10 @@ class StatementSummary:
     suggested_cash_flow_proxy: float
     suggested_order_consistency: float
     warnings: list[str] = field(default_factory=list)
+    unreadable_transactions: int = 0
+    months_without_transactions: list[str] = field(default_factory=list)
+    source_sha256: str = ''
+    parser_version: str = STATEMENT_PARSER_VERSION
 
     def as_dict(self) -> dict:
         """Plain dict for JSON storage and API responses."""
@@ -109,6 +116,8 @@ def _amount(text: str) -> float | None:
         value = float(text.strip("()"))
     except ValueError:
         return None
+    if not math.isfinite(value):
+        return None
     return -value if negative else value
 
 
@@ -127,7 +136,17 @@ def parse_statement(csv_text: str) -> StatementSummary:
     """Read a statement CSV and summarise turnover by full calendar month."""
     if len(csv_text) > MAX_STATEMENT_CHARS:
         raise StatementError("The statement is larger than 2 MB. Export a shorter period.")
-    reader = csv.DictReader(io.StringIO(csv_text.lstrip("﻿")))
+    try:
+        return _parse_statement(csv_text)
+    except csv.Error as exc:
+        raise StatementError(
+            "The CSV could not be read. Check its format and export it again."
+        ) from exc
+
+
+def _parse_statement(csv_text: str) -> StatementSummary:
+    """Parse CSV rows; the public entry point translates CSV format errors."""
+    reader = csv.DictReader(io.StringIO(csv_text.lstrip("﻿")), strict=True)
     header = reader.fieldnames or []
 
     date_column = _find(header, DATE_COLUMNS)
@@ -173,8 +192,13 @@ def parse_statement(csv_text: str) -> StatementSummary:
                     unreadable += 1
                     continue
         else:
-            credit = _amount(row.get(credit_column, "")) or 0.0
-            debit = _amount(row.get(debit_column, "")) or 0.0
+            credit_text = (row.get(credit_column) or "").strip()
+            debit_text = (row.get(debit_column) or "").strip()
+            credit = 0.0 if credit_text in ("", "-") else _amount(credit_text)
+            debit = 0.0 if debit_text in ("", "-") else _amount(debit_text)
+            if credit is None or debit is None:
+                unreadable += 1
+                continue
             value = abs(credit) - abs(debit)
         if value != 0:
             rows.append((when, value))
@@ -195,7 +219,14 @@ def parse_statement(csv_text: str) -> StatementSummary:
         else:
             outflow[key] += -value
 
-    keys = sorted(count)
+    # Every calendar month inside the observed period belongs in the median.
+    # Omitting a quiet month would overstate turnover and payment consistency.
+    first_month = start.year * 12 + start.month - 1
+    last_month = end.year * 12 + end.month - 1
+    keys = [
+        f"{index // 12:04d}-{index % 12 + 1:02d}"
+        for index in range(first_month, last_month + 1)
+    ]
     if keys and start.day > FULL_MONTH_STARTS_BY_DAY:
         keys = keys[1:]
     if keys and end.day < FULL_MONTH_ENDS_FROM_DAY:
@@ -213,6 +244,8 @@ def parse_statement(csv_text: str) -> StatementSummary:
     inflows = [month.inflow for month in months]
     nets = [month.inflow - month.outflow for month in months]
     total_in, total_out = sum(inflows), sum(month.outflow for month in months)
+    if not all(math.isfinite(value) for value in (total_in, total_out)):
+        raise StatementError("The statement totals are too large. Check the transaction amounts.")
     if total_in <= 0:
         raise StatementError("The statement shows no money coming in.")
 
@@ -220,10 +253,20 @@ def parse_statement(csv_text: str) -> StatementSummary:
     variation = statistics.pstdev(inflows) / mean_inflow if mean_inflow > 0 else 0.0
     median_inflow = statistics.median(inflows)
     median_net = statistics.median(nets)
+    inflow_to_outflow = total_in / total_out if total_out > 0 else None
+    if inflow_to_outflow is not None and not math.isfinite(inflow_to_outflow):
+        raise StatementError("The statement ratio is too large. Check the transaction amounts.")
 
     warnings: list[str] = []
+    quiet_months = [month.month for month in months if month.transactions == 0]
+    if quiet_months:
+        warnings.append(
+            f"{len(quiet_months)} month(s) have no readable transactions. "
+            'Confirm the export is complete; zero receipts are included for those months.'
+        )
+    full_month_keys = set(keys)
     in_window = [
-        value for when, value in rows if f"{when.year:04d}-{when.month:02d}" in keys
+        value for when, value in rows if f"{when.year:04d}-{when.month:02d}" in full_month_keys
     ]
     largest = max((value for value in in_window if value > 0), default=0.0)
     if largest / total_in > LARGE_INFLOW_SHARE:
@@ -254,9 +297,12 @@ def parse_statement(csv_text: str) -> StatementSummary:
         monthly_inflow_median=round(median_inflow, 2),
         monthly_net_median=round(median_net, 2),
         inflow_variation=round(variation, 4),
-        inflow_to_outflow=round(total_in / total_out, 4) if total_out > 0 else None,
+        inflow_to_outflow=round(inflow_to_outflow, 4) if inflow_to_outflow is not None else None,
         suggested_monthly_digital_payments=float(round(median_inflow)),
         suggested_cash_flow_proxy=float(round(max(median_net, 0.0))),
         suggested_order_consistency=float(round(100.0 * (1.0 - min(variation, 1.0)))),
         warnings=warnings,
+        unreadable_transactions=unreadable,
+        months_without_transactions=quiet_months,
+        source_sha256=hashlib.sha256(csv_text.encode('utf-8')).hexdigest(),
     )

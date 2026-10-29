@@ -24,6 +24,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from business_time import business_date
+
 from models.database import (
     ALERT_OPEN_STATUSES,
     Alert,
@@ -239,8 +241,12 @@ def _observation_date(
     payload: EWSObservationFields, borrower: Application, fallback: date | None
 ) -> date:
     """The date the figures were observed: given, else the fallback, else today."""
-    observed = payload.observation_date or fallback or utcnow().date()
-    created = borrower.created_at.date() if borrower.created_at is not None else None
+    observed = payload.observation_date or fallback or business_date()
+    # Corrections can retain a legacy recorded date without rewriting history.
+    # Older rows used UTC's calendar day, possibly before the PKT scoring day.
+    if fallback is not None and observed == fallback:
+        return observed
+    created = business_date(borrower.created_at) if borrower.created_at is not None else None
     if created is not None and observed < created:
         raise HTTPException(
             status_code=422,
@@ -1209,7 +1215,7 @@ def _transition(
 
 
 def _check_due_date(due: date | None) -> None:
-    if due is not None and due < utcnow().date():
+    if due is not None and due < business_date():
         raise HTTPException(status_code=422, detail="The due date cannot be in the past.")
 
 

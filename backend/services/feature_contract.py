@@ -17,6 +17,7 @@ hand-weighted fallback formula every scoring field is used.
 from __future__ import annotations
 
 from typing import Any
+from services.operating_checks import FIELD_USES
 
 # The intake fields that can carry a score. Identity and reporting fields
 # (names, CNIC/NTN, phone, sector) are never model inputs.
@@ -47,6 +48,8 @@ MODEL_FEATURE_SOURCES: dict[str, dict[str, Any]] = {
         "label": "Facility size vs annual turnover",
         "intake_fields": ["loan_amount_pkr", "monthly_digital_payments", "cash_flow_proxy"],
         "formula": "loan amount / (12 x max(monthly digital payments, monthly cash flow))",
+        "training_source": "Consumer loan amount / annual personal income",
+        "semantic_limit": "Digital receipts and net cash flow are not equivalent to annual personal income. This SME proxy mapping is not validated.",
     },
     "installment_to_income": {
         "label": "Installment affordability vs turnover",
@@ -62,11 +65,15 @@ MODEL_FEATURE_SOURCES: dict[str, dict[str, Any]] = {
         "label": "Repayment history (officer-entered)",
         "intake_fields": ["payment_history_score"],
         "formula": "read as clean (above the midpoint of the two trained levels) or adverse",
+        "training_source": "Binary prior-default-on-file flag, encoded as 25 or 80",
+        "semantic_limit": "An officer estimate is not a verified credit-bureau observation; intermediate estimates add no model resolution within a category.",
     },
     "years_in_operation": {
         "label": "Years in operation",
         "intake_fields": ["years_in_operation"],
         "formula": "as entered, clipped to the training range",
+        "training_source": "Personal employment length in years",
+        "semantic_limit": "Employment duration is not business age. Transfer of this relationship to SMEs is not validated.",
     },
     "tenure_months": {
         "label": "Requested tenure",
@@ -132,6 +139,8 @@ def contract(scorer: Any) -> dict:
         "model_features": model_features,
         "used_intake_fields": sorted(used),
         "collected_unused": unused,
+        "operating_check_fields": [{"name": name, "use": use} for name, use in FIELD_USES.items()],
+        "operating_check_note": "These fields power separate operating arithmetic/evidence checks; this does not add trained credit features.",
         "identity_and_reporting_fields": IDENTITY_AND_REPORTING_FIELDS,
         "future_sme_features": FUTURE_SME_FEATURES,
         "future_note": (

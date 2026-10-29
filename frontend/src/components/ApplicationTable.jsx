@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { canDecideCredit } from "../api/auth.js";
 import { apiErrorMessage, fetchApplications } from "../api/client.js";
@@ -53,6 +53,10 @@ export default function ApplicationTable({
   showFilters = true,
   title = "Applications",
   refreshToken = 0,
+  sort: controlledSort = null,
+  onSortChange,
+  summary,
+  mobileCards = false,
 }) {
   const navigate = useNavigate();
   const canDecide = canDecideCredit();
@@ -61,7 +65,8 @@ export default function ApplicationTable({
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [decisionFilter, setDecisionFilter] = useState("All");
-  const [sort, setSort] = useState({ key: "created_at", direction: "desc" });
+  const [localSort, setSort] = useState({ key: "created_at", direction: "desc" });
+  const sort = controlledSort ?? localSort;
 
   const loadApplications = useCallback(async () => {
     setIsLoading(true);
@@ -85,6 +90,7 @@ export default function ApplicationTable({
   }, [providedApplications, loadApplications, refreshToken]);
 
   const visibleApplications = useMemo(() => {
+    if (controlledSort) return applications;
     const term = search.trim().toLowerCase();
     const column = COLUMNS.find((item) => item.key === sort.key) ?? COLUMNS[0];
 
@@ -110,9 +116,14 @@ export default function ApplicationTable({
         const result = compareValues(sortValue(a, sort.key), sortValue(b, sort.key), column);
         return sort.direction === "asc" ? result : -result;
       });
-  }, [applications, search, decisionFilter, sort]);
+  }, [applications, search, decisionFilter, sort, controlledSort]);
 
   const toggleSort = (key) => {
+    if (onSortChange) {
+      onSortChange({ key, direction: sort.key === key ? (sort.direction === 'asc' ? 'desc' : 'asc') :
+        (['created_at', 'risk_score', 'id', 'loan_amount_pkr'].includes(key) ? 'desc' : 'asc') });
+      return;
+    }
     setSort((previous) =>
       previous.key === key
         ? { key, direction: previous.direction === "asc" ? "desc" : "asc" }
@@ -126,7 +137,7 @@ export default function ApplicationTable({
         <div>
           <h2 className="card-title">{title}</h2>
           <p className="mt-1 text-sm text-slate-500">
-            {visibleApplications.length} of {applications.length} assessments
+            {summary ?? `${visibleApplications.length} of ${applications.length} assessments`}
           </p>
         </div>
 
@@ -189,7 +200,16 @@ export default function ApplicationTable({
           }
         />
       ) : (
-        <div className="overflow-x-auto">
+        <div>
+        {mobileCards ? <ul className="divide-y divide-slate-200 md:hidden" aria-label="Application cases">
+          {visibleApplications.map(application => <li key={application.id} className="space-y-4 px-5 py-5">
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold text-brand-700">Case #{application.id}{application.borrower_public_id ? ` · ${application.borrower_public_id}` : ''}</p><h3 className="mt-1 break-words text-base font-bold text-slate-900">{application.business_name}</h3><p className="mt-1 break-words text-sm text-slate-500">{application.applicant_name}</p></div><span className={`tabular text-lg font-bold ${bandForDecision(application.decision).textClass}`}>{application.risk_score.toFixed(1)}<span className="block text-[10px] font-normal text-slate-500">out of 100</span></span></div>
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm"><span className="font-semibold text-slate-800">{formatPKRCompact(application.loan_amount_pkr)}</span><span className="text-slate-500">{application.tenure_months} months</span></div>
+            <div className="flex flex-wrap gap-x-6 gap-y-3"><div><p className="mb-1 text-[11px] text-slate-500">Recommendation</p><RecommendationBadge decision={application.decision} /></div><div><p className="mb-1 text-[11px] text-slate-500">Officer decision</p><FinalDecisionBadge application={application} /></div></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-slate-500">{formatDateTime(application.created_at)}</p><button type="button" className="btn-secondary text-xs" onClick={() => navigate(`/shap/${application.id}`)} aria-label={`Open case ${application.id}`}>Open case →</button></div>
+          </li>)}
+        </ul> : null}
+        <div className={`overflow-x-auto ${mobileCards ? 'hidden md:block' : ''}`}>
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="table-head">
               <tr>
@@ -244,7 +264,8 @@ export default function ApplicationTable({
                     {/* The only wrapping column, so it needs a floor to stop
                         the nowrap columns from squeezing it. */}
                     <td className="min-w-[190px] px-5 py-3 text-slate-600">
-                      {application.business_name}
+                      <Link to={`/shap/${application.id}`} className="font-semibold text-brand-700 hover:underline">{application.business_name}</Link>
+                      {application.borrower_public_id ? <p className="mt-1 text-xs text-slate-500">{application.borrower_public_id}</p> : null}
                     </td>
                     <td className="tabular px-5 py-3 text-right whitespace-nowrap text-slate-900">
                       {formatPKRCompact(application.loan_amount_pkr)}
@@ -289,6 +310,7 @@ export default function ApplicationTable({
               })}
             </tbody>
           </table>
+        </div>
         </div>
       )}
     </section>
