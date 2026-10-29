@@ -57,5 +57,13 @@ removed.
   are limited to reading repository contents and jobs have time limits.
 - Existing `v7` GitHub action refs were checked against their official repositories.
 
+The first complete Linux surrogate run passed 958 tests and skipped 14, but
+one offline research-publication test failed: Git had converted the new JSON
+sidecar's CRLF line endings to LF, breaking its recorded raw-byte provenance.
+The two serving JSON sidecars now disable Git text conversion explicitly.
+Their exact laptop bytes and research-recorded hashes are preserved across
+checkouts; no measured report, model parameter or data value was rewritten to
+hide the mismatch. The updated commit's CI supersedes that failed run.
+
 Local logs and removal manifests are intentionally excluded from Git. Remote
 check results are authoritative on the commit's GitHub Actions page.
