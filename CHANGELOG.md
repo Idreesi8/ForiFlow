@@ -18,6 +18,13 @@ All notable changes to ForiFlow are recorded here. The format follows
 
 ### Added
 
+- Reviewed credit-policy drafts and activations: fresh account/version checks,
+  term comparisons, illustrative score boundaries, activation reasons, responsive
+  history cards and unsaved-draft protection. Reviewed API activations reject a
+  changed active policy under the shared administrative transaction lock and
+  record their reason atomically with both policy transitions. Legacy bodyless
+  callers remain compatible.
+
 - Reminder search and record-check filters, direct case/monitoring links and a
   fresh draft review. Missing, failed or malformed current responses withhold
   old drafts; bilingual copy feedback and safe international draft links make

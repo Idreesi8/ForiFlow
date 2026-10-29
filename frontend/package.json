@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/policyBands.test.js src/lib/ews.test.js src/lib/modelView.test.js src/lib/statementView.test.js src/lib/actionDesk.test.js src/lib/monitoringCoverage.test.js src/lib/format.test.js src/lib/modelInputs.test.js src/lib/assessmentIntake.test.js src/lib/operatingChecks.test.js src/lib/featureStudy.test.js src/lib/cashflowIntelligence.test.js src/lib/teamAccess.test.js src/lib/reminderReview.test.js",
+    "test": "node --test src/lib/policyBands.test.js src/lib/ews.test.js src/lib/modelView.test.js src/lib/statementView.test.js src/lib/actionDesk.test.js src/lib/monitoringCoverage.test.js src/lib/format.test.js src/lib/modelInputs.test.js src/lib/assessmentIntake.test.js src/lib/operatingChecks.test.js src/lib/featureStudy.test.js src/lib/cashflowIntelligence.test.js src/lib/teamAccess.test.js src/lib/reminderReview.test.js src/lib/policyReview.test.js",
     "capture": "node ../scripts/capture-screenshots.js"
   },
   "dependencies": {

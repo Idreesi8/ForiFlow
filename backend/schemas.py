@@ -1653,6 +1653,14 @@ class PolicyCreate(BaseModel):
         return self
 
 
+class PolicyActivation(BaseModel):
+    """Reviewed activation; old clients may still omit the whole request body."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+    expected_active_id: int | None = Field(..., ge=1, strict=True)
+    reason: str = Field(..., min_length=3, max_length=300)
+
+
 class PolicyResponse(BaseModel):
     """One version of the credit policy."""
 
