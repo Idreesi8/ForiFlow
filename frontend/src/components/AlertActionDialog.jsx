@@ -86,7 +86,7 @@ export default function AlertActionDialog({ candidate, onClose, onSaved }) {
             <p className="text-xs text-slate-500">Checked {formatDateTime(view.checkedAt)} · {view.actor.username} · {view.actor.role}. The server checks current authority and refuses changed alerts when saving.</p>
           </> : null}
           {error ? <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-900">{error} Your draft is preserved. Refresh and inspect current records before another attempt.</p> : null}
-          {review ? <button type="button" className="btn-secondary text-xs" disabled={busy || view.loading} onClick={refresh}>Refresh review</button> : null}
+          <button type="button" className="btn-secondary text-xs" disabled={busy || view.loading} onClick={refresh}>{review ? 'Refresh review' : 'Refresh current details'}</button>
         </>}
       </div>
       <footer className="flex shrink-0 flex-wrap gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4">
