@@ -33,6 +33,11 @@ hashes. Source, build logs, screenshots and verification reports remain.
 Three obsolete, unreferenced UCI download/preparation helpers were also removed;
 their originals remain recoverable in the source snapshot. Dependencies,
 serving models, data backups, Office drafts and unique artwork were retained.
+After testing, ten Python/test cache directories (137 files, 3,912,958 bytes)
+and an empty misplaced evidence directory were also removed. Together with the
+three helpers (1,719 bytes), the cleanup removed 645 files totalling 22,517,169
+bytes. This is removed file size, not net disk savings: the recovery snapshot
+and new verification logs also occupy space.
 
 Cleanup targets were resolved under this project and checked for reparse points.
 No Docker volumes, running application containers or unrelated projects were
@@ -43,7 +48,9 @@ removed.
 - Frontend: 101 tests passed; production build passed.
 - The complete native Windows backend run stalled in its backup-wrapper helper
   after the preceding test groups passed. It was stopped and is not reported
-  as a complete pass. A separate run excludes that wrapper module.
+  as a complete pass. The separate run passed 856 tests, with 87 deselected,
+  excluding PostgreSQL/ML-marked cases and the wrapper module. It reported one
+  dependency deprecation warning; no dependency upgrade is implied.
 - GitHub CI runs both backend engines and the frontend. Its PostgreSQL database
   now meets the register tests' disposable-database guard. A separate database
   enables the three overlapping account-management tests. Workflow permissions
