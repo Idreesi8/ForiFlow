@@ -133,14 +133,14 @@ export const decideApplication = (applicationId, payload) =>
 export const fetchActivePolicy = () =>
   client.get("/policy/active").then((response) => response.data);
 
-export const fetchPolicyVersions = () =>
-  client.get("/policy/versions").then((response) => response.data);
+export const fetchPolicyVersions = (options = {}) =>
+  client.get("/policy/versions", options).then((response) => response.data);
 
 export const createPolicyVersion = (payload) =>
   client.post("/policy/versions", payload).then((response) => response.data);
 
-export const activatePolicyVersion = (policyId) =>
-  client.post(`/policy/versions/${policyId}/activate`).then((response) => response.data);
+export const activatePolicyVersion = (policyId, review) =>
+  client.post(`/policy/versions/${policyId}/activate`, review).then((response) => response.data);
 
 // --- Early Warning System (2.1) ---------------------------------------------------
 // The backend is authoritative for every EWS fact: state, trend, severity and

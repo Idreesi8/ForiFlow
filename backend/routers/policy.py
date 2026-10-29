@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models.database import CreditPolicy, User, get_db
-from schemas import PolicyCreate, PolicyResponse
+from schemas import PolicyActivation, PolicyCreate, PolicyResponse
 from services import policy_service
 from services.audit_service import Audit
 from services.auth_service import get_current_user, require_admin
+from services.team_access import lock_team_change
 
 router = APIRouter(
     prefix="/policy",
@@ -81,15 +82,25 @@ async def create_policy_version(
     summary="Make a policy version the active one (admin)",
 )
 async def activate_policy_version(
-    policy_id: int, db: DbSession, admin: Admin, audit: Audit
+    policy_id: int, db: DbSession, admin: Admin, audit: Audit,
+    body: PolicyActivation | None = None,
 ) -> PolicyResponse:
     """Activate a version and retire the one it replaces.
 
     Only assessments made from now on use it. Applications already assessed
     keep the version, recommendation and authority rule they were given.
     """
+    # Share the administrative transaction lock with role/status changes:
+    # verify authority and the reviewed active version before locking a target.
+    admin = lock_team_change(db, admin.id)
+    if body is not None:
+        current = db.scalar(select(CreditPolicy).where(CreditPolicy.status == "active")
+                            .execution_options(populate_existing=True))
+        if (current.id if current is not None else None) != body.expected_active_id:
+            raise HTTPException(409, "The active policy changed. Refresh and review the comparison again.")
     policy = policy_service.get(db, policy_id, for_update=True)
-    policy_service.activate(db, policy, actor=admin, context=audit)
+    policy_service.activate(db, policy, actor=admin, context=audit,
+                           reason=body.reason if body is not None else None)
     db.commit()
     db.refresh(policy)
     return _response(policy, policy_service.applications_assessed(db))

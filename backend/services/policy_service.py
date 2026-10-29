@@ -274,7 +274,8 @@ def create_version(
 
 
 def activate(
-    db: Session, policy: CreditPolicy, *, actor: User, context: AuditContext | None
+    db: Session, policy: CreditPolicy, *, actor: User, context: AuditContext | None,
+    reason: str | None = None,
 ) -> CreditPolicy:
     """Make ``policy`` the active version and retire the one it replaces.
 
@@ -303,6 +304,7 @@ def activate(
             actor=actor,
             previous={"status": "active"},
             new={"status": "retired", "replaced_by": policy.version},
+            details={"reason": reason} if reason is not None else None,
             context=context,
         )
     previous_status = policy.status
@@ -322,6 +324,7 @@ def activate(
             "active": current.version if current is not None else None,
         },
         new={**policy_state(policy), "active": policy.version},
+        details={"reason": reason} if reason is not None else None,
         context=context,
     )
     return policy
