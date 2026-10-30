@@ -33,12 +33,13 @@ import { ErrorState, LoadingState } from "./common/States.jsx";
  * One facility under monitoring: state and why, the score history, every
  * recorded month (corrections included) and the stored timeline.
  */
-export default function EWSFacilityDetail({ facilityId, refreshToken = 0 }) {
+export default function EWSFacilityDetail({ facilityId, refreshToken = 0, onReady }) {
   const [state, setState] = useState(null);
   const [rows, setRows] = useState([]);
   const [timeline, setTimeline] = useState(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [settledFacilityId, setSettledFacilityId] = useState(null);
   const requestSequence = useRef(0);
 
   const load = useCallback(async () => {
@@ -59,7 +60,7 @@ export default function EWSFacilityDetail({ facilityId, refreshToken = 0 }) {
     } catch (requestError) {
       if (request === requestSequence.current) setError(apiErrorMessage(requestError, "Could not load the facility."));
     } finally {
-      if (request === requestSequence.current) setIsLoading(false);
+      if (request === requestSequence.current) { setSettledFacilityId(facilityId); setIsLoading(false); }
     }
   }, [facilityId]);
 
@@ -67,6 +68,10 @@ export default function EWSFacilityDetail({ facilityId, refreshToken = 0 }) {
     load();
     return () => { requestSequence.current += 1; };
   }, [load, refreshToken]);
+
+  useEffect(() => {
+    if (!isLoading && settledFacilityId === facilityId && (error || state?.facility_id === facilityId)) onReady?.(facilityId);
+  }, [isLoading, settledFacilityId, error, state, facilityId, onReady]);
 
   if (isLoading) return <LoadingState label="Loading facility history…" />;
   if (error) return <ErrorState message={error} onRetry={load} />;
@@ -107,7 +112,7 @@ export default function EWSFacilityDetail({ facilityId, refreshToken = 0 }) {
               a direction needs {trend.min_observations}.
             </p>
           ) : null}
-          <div className="mt-3 h-64">
+          <div className="mt-3 h-64 overflow-hidden">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 10, right: 16, bottom: 4, left: -8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -292,7 +297,7 @@ function PointTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
   return (
-    <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs shadow">
+    <div className="max-w-48 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs shadow">
       <p className="font-semibold text-slate-900">
         {point.label}: {point.score.toFixed(1)}
       </p>

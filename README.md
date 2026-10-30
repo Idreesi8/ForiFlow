@@ -189,6 +189,9 @@ older cases, whole-register sorting, mobile case cards and retained search conte
 The [complete monitoring lookup report](docs/complete-alert-queue-2026-10-30.md)
 describes whole-queue alert filters and counts, paged approved-facility search,
 and display handling for missing figures and invalid dates.
+
+The [guided monitoring workspace](docs/monitoring-workspace-2026-10-30.md)
+adds section shortcuts, mobile facility cards and a visible draft-switch review.
 The [work protection report](docs/work-protection-2026-10-26.md) covers unsaved
 entries, statement-read races and decision-response reconciliation.
 The [Pakistan time report](docs/pakistan-time-2026-10-26.md) covers consistent

@@ -53,7 +53,7 @@ const initialForm = () => ({
  * always shown as an officer override.
  */
 export default function MonitoringPanel({ onMonitored, facilityId = null, initialMonth = null,
-  refreshToken = 0, onFacilityChange, onDirtyChange, onBusyChange }) {
+  refreshToken = 0, onFacilityChange, onDirtyChange, onBusyChange, onReady }) {
   const today = useBusinessDate();
   const baseline = useRef(initialForm());
   const [borrowers, setBorrowers] = useState([]);
@@ -151,6 +151,14 @@ export default function MonitoringPanel({ onMonitored, facilityId = null, initia
 
   const selectedBorrower =
     borrowers.find((borrower) => String(borrower.id) === String(form.borrower_id)) ?? null;
+
+  useEffect(() => {
+    if (borrowersLoading || (facilityId && Number(form.borrower_id) !== facilityId)) return;
+    if (!borrowerError && selectedBorrower && (coverage.facilityId !== form.borrower_id ||
+      !['ready', 'error'].includes(coverage.state))) return;
+    onReady?.(facilityId || Number(form.borrower_id) || null);
+  }, [borrowersLoading, borrowerError, facilityId, form.borrower_id,
+    selectedBorrower?.id, coverage.facilityId, coverage.state, onReady]);
 
   useEffect(() => {
     const id = form.borrower_id;
