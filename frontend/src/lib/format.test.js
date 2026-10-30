@@ -1,7 +1,35 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { test } from "node:test";
-import { businessDate, formatDate, formatDateTime, parseApiDate } from "./format.js";
+import { businessDate, formatDate, formatDateTime, parseApiDate, formatPKR, formatPKRCompact, formatNumber, formatPercent, formatCount, formatSigned, formatRelative } from "./format.js";
+
+test('missing, nonnumeric and non-finite figures never become zero or infinity', () => {
+  for (const format of [formatPKR, formatPKRCompact, formatNumber, formatPercent, formatCount, formatSigned]) {
+    for (const value of ['', '   ', true, false, [], {}, Infinity, -Infinity, NaN, 'Infinity', '0x10'])
+      assert.equal(format(value), '—', `${format.name} accepted ${JSON.stringify(value)}`);
+    assert.notEqual(format(0), '—');
+    assert.equal(format('0'), format(0));
+    assert.equal(format(' 12.5 '), format(12.5));
+  }
+});
+
+test('impossible calendar dates in timestamps stay unknown instead of rolling forward', () => {
+  for (const value of ['2026-02-29T12:30:00Z', '2026-04-31T05:00:00+05:00', '2026-02-30T00:00:00']) {
+    assert.equal(parseApiDate(value), null);
+    assert.equal(formatDateTime(value), '—');
+  }
+  assert.ok(parseApiDate('2028-02-29T12:30:00Z'));
+});
+
+test('future timestamps are labelled as future, never falsely just now', () => {
+  const now = Date.parse('2026-10-30T00:00:00Z');
+  assert.equal(formatRelative('2026-10-30T02:00:00Z', now), 'in 2h');
+  assert.equal(formatRelative('2026-10-29T22:00:00Z', now), '2h ago');
+});
+
+test('percentage conversion cannot overflow into a displayed Infinity', () => {
+  assert.equal(formatPercent(1e308), '—');
+});
 
 test("Pakistan calendar rolls over at 19:00 UTC, including month, year and leap day", () => {
   for (const [instant, expected] of [

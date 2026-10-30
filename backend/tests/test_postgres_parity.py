@@ -27,6 +27,37 @@ pytestmark = pytest.mark.postgres
 POSTGRES_URL = os.getenv("FORIFLOW_TEST_POSTGRES_URL", "").strip()
 
 
+def test_complete_alert_queue_has_sqlite_postgres_parity(db_session_factory, postgres_session_factory):
+    from datetime import datetime, timezone
+    from models.database import Alert
+    from services.alert_queue import build_alert_queue
+    from tests.test_application_register import add_case
+
+    def results(factory):
+        with factory() as db:
+            case = add_case(db, name='Queue parity 100%_!', status='Approved')
+            instant = datetime(2026, 10, 30, 0, tzinfo=timezone.utc)
+            for number in range(207):
+                db.add(Alert(borrower_id=case.id, baseline_score=80, current_score=50, score_drop=30,
+                    estimated_days_to_default=30, alert_status='Open' if number == 0 else 'Resolved',
+                    severity=None if number % 2 else 'CRITICAL', triggered_at=instant))
+            db.flush()
+            pages = [build_alert_queue(db, facility_id=case.id, search='100%_!', limit=100, offset=offset)
+                     for offset in (0, 100, 200)]
+            filtered = build_alert_queue(db, facility_id=case.id, alert_status='Resolved')
+            return {
+                'pages': [(page['matching'], page['total'], page['counts'],
+                           [(row.alert_status, row.severity, row.score_drop) for row in page['items']])
+                          for page in pages],
+                'resolved': (filtered['matching'], filtered['counts']),
+            }
+
+    sqlite, postgres = results(db_session_factory), results(postgres_session_factory)
+    assert sqlite == postgres
+    assert sum(len(page[3]) for page in sqlite['pages']) == 207
+    assert sqlite['resolved'][0] == 206
+
+
 def _score_fields(body: dict) -> dict:
     explanation = body.get("explanation") or {}
     contributions = [

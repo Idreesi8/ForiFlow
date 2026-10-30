@@ -185,6 +185,10 @@ The [workspace usability report](docs/user-experience-2026-10-24.md) covers the
 new dashboard, workspace search, mobile navigation and guided assessment form.
 The [complete register report](docs/complete-register-2026-10-26.md) covers finding
 older cases, whole-register sorting, mobile case cards and retained search context.
+
+The [complete monitoring lookup report](docs/complete-alert-queue-2026-10-30.md)
+describes whole-queue alert filters and counts, paged approved-facility search,
+and display handling for missing figures and invalid dates.
 The [work protection report](docs/work-protection-2026-10-26.md) covers unsaved
 entries, statement-read races and decision-response reconciliation.
 The [Pakistan time report](docs/pakistan-time-2026-10-26.md) covers consistent

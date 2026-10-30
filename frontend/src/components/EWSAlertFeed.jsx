@@ -1,11 +1,11 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { canDecideCredit } from "../api/auth.js";
 import {
   apiErrorMessage,
   fetchAlertHistory,
-  fetchAlerts,
+  fetchAlertQueue,
 } from "../api/client.js";
 import {
   ACTION_LABELS,
@@ -30,14 +30,14 @@ const FILTERS = [
 /**
  * Early Warning System alert queue.
  *
- * Reads `GET /ews/alerts` (open first, worst severity first). Severity,
+ * Reads `GET /ews/alert-queue` (open first, worst severity first). Severity,
  * reasons and evidence are the API's; nothing is recomputed here. Managers
  * and admins acknowledge, assign, set a due date, mark Action Required,
  * resolve or dismiss; every step is written to the audit trail by the API.
  * Closed alerts stay listed.
  */
 export default function EWSAlertFeed({
-  limit = 200,
+  limit = 25,
   maxRows = null,
   compact = false,
   showFilters = true,
@@ -49,6 +49,9 @@ export default function EWSAlertFeed({
   const navigate = useNavigate();
   const [alerts, setAlerts] = useState([]);
   const [filter, setFilter] = useState("attention");
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [queue, setQueue] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [candidate, setCandidate] = useState(null);
@@ -59,36 +62,55 @@ export default function EWSAlertFeed({
 
   const onAlertsLoadedRef = useRef(onAlertsLoaded);
   const alertRequestSequence = useRef(0);
+  const activeRequest = useRef(null);
+  const historyRequests = useRef({});
   onAlertsLoadedRef.current = onAlertsLoaded;
+  const pageSize = maxRows || limit;
+  const requestKey = JSON.stringify([facilityId, filter, search.trim(), page, pageSize]);
+  const ready = queue?.key === requestKey;
 
   const loadAlerts = useCallback(async () => {
     const request = ++alertRequestSequence.current;
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
     setIsLoading(true);
     setError(null);
     try {
-      const params = { limit };
+      const params = { limit: pageSize, offset: page * pageSize, search: search.trim() };
       if (facilityId) params.facility_id = facilityId;
-      const data = await fetchAlerts(params);
+      if (filter === 'attention') params.open_only = true;
+      else if (filter !== 'all') params.alert_status = filter;
+      const data = await fetchAlertQueue(params, { signal: controller.signal });
       if (request !== alertRequestSequence.current) return;
-      setAlerts(data);
-      onAlertsLoadedRef.current?.(data);
+      if (page > 0 && page * pageSize >= data.matching) {
+        setPage(Math.max(0, Math.ceil(data.matching / pageSize) - 1));
+        return;
+      }
+      setQueue({ ...data, key: requestKey });
+      setAlerts(data.items);
+      onAlertsLoadedRef.current?.(data.items, data.counts);
     } catch (requestError) {
       if (request === alertRequestSequence.current) setError(apiErrorMessage(requestError, "Could not load EWS alerts."));
     } finally {
       if (request === alertRequestSequence.current) setIsLoading(false);
     }
-  }, [limit, facilityId]);
+  }, [pageSize, facilityId, filter, search, page, requestKey]);
 
   useEffect(() => {
     loadAlerts();
-    return () => { alertRequestSequence.current += 1; };
+    return () => { alertRequestSequence.current += 1; activeRequest.current?.abort(); };
   }, [loadAlerts, refreshToken]);
 
   const loadHistory = useCallback(async (alertId) => {
+    const request = (historyRequests.current[alertId] || 0) + 1;
+    historyRequests.current[alertId] = request;
     try {
       const entries = await fetchAlertHistory(alertId);
+      if (request !== historyRequests.current[alertId]) return;
       setHistory((previous) => ({ ...previous, [alertId]: entries }));
     } catch (requestError) {
+      if (request !== historyRequests.current[alertId]) return;
       setHistory((previous) => ({
         ...previous,
         [alertId]: { error: apiErrorMessage(requestError, "Could not load the history.") },
@@ -102,35 +124,17 @@ export default function EWSAlertFeed({
     if (next !== null) loadHistory(next);
   };
 
-  const replaceAlert = (updated) =>
-    setAlerts((previous) => {
-      const next = previous.map((alert) => (alert.id === updated.id ? updated : alert));
-      onAlertsLoadedRef.current?.(next);
-      return next;
-    });
-
   const savedAction = updated => {
-    replaceAlert(updated);
+    loadAlerts();
     setCandidate(null);
     if (expandedId === updated.id) loadHistory(updated.id);
     onChanged?.();
   };
 
-  const visibleAlerts = useMemo(() => {
-    if (filter === "all") return alerts;
-    if (filter === "attention") return alerts.filter(isOpenAlert);
-    return alerts.filter((alert) => alert.alert_status === filter);
-  }, [alerts, filter]);
-  const counts = useMemo(() => {
-    const open = alerts.filter(isOpenAlert);
-    return {
-      open: open.length,
-      critical: open.filter((alert) => alert.severity === "CRITICAL").length,
-      overdue: open.filter((alert) => alert.is_overdue).length,
-      closed: alerts.length - open.length,
-    };
-  }, [alerts]);
-  const shownAlerts = maxRows ? visibleAlerts.slice(0, maxRows) : visibleAlerts;
+  const visibleAlerts = ready && !error ? alerts : [];
+  const counts = ready && !error ? queue.counts : { open: 0, critical: 0, overdue: 0, closed: 0 };
+  const matching = ready && !error ? queue.matching : 0;
+  const shownAlerts = visibleAlerts;
   const columns = 9;
 
   return (
@@ -149,7 +153,8 @@ export default function EWSAlertFeed({
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setFilter(key)}
+                  onClick={() => { setFilter(key); setPage(0); }}
+                  aria-pressed={filter === key}
                   className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
                     filter === key
                       ? "bg-brand-600 text-white"
@@ -166,8 +171,14 @@ export default function EWSAlertFeed({
         </div>
       </div>
 
-      {alerts.length >= limit ? <p role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-950">Loaded the first {alerts.length} alerts in priority order. More may exist. Filters and counts cover these loaded alerts only.</p> : null}
-      {!compact && alerts.length > 0 ? (
+      {showFilters ? <div className="border-b border-slate-200 px-5 py-3">
+        <label className="field-label" htmlFor="alert-search">Search all alerts</label>
+        <input id="alert-search" type="search" maxLength={120} value={search}
+          onChange={event => { setSearch(event.target.value); setPage(0); }}
+          className="field-input" placeholder="Business, applicant or facility #" />
+        <p className="mt-1 text-xs text-slate-500">Counts cover every matching alert, across all statuses. Results below use the selected status.</p>
+      </div> : null}
+      {!compact && ready && !error ? (
         <div className="grid gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-4">
           <FeedStat label="Open" value={counts.open} tone={counts.open ? "danger" : undefined} />
           <FeedStat
@@ -184,22 +195,16 @@ export default function EWSAlertFeed({
         </div>
       ) : null}
 
-      {error && !isLoading && alerts.length > 0 ? (
-        <p role="alert" className="border-b border-rose-200 bg-rose-50 px-5 py-2 text-sm text-rose-700">
-          {error}
-        </p>
-      ) : null}
-
-      {isLoading ? (
+      {isLoading || (!ready && !error) ? (
         <LoadingState label="Loading alerts…" />
-      ) : error && alerts.length === 0 ? (
+      ) : error ? (
         <ErrorState message={error} onRetry={loadAlerts} />
       ) : visibleAlerts.length === 0 ? (
         <EmptyState
           title="No alerts in this view"
           description={
-            alerts.length === 0
-              ? "No facility has reached the WARNING or CRITICAL state."
+            search.trim() ? "No alerts match this search and status. Try another name or choose All."
+              : queue?.total === 0 ? "No facility has reached the WARNING or CRITICAL state."
               : "Nothing with this status. Closed alerts stay under Resolved and Dismissed."
           }
         />
@@ -325,9 +330,9 @@ export default function EWSAlertFeed({
               })}
             </tbody>
           </table>
-          {shownAlerts.length < visibleAlerts.length ? (
+          {maxRows && shownAlerts.length < matching ? (
             <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-              Showing {shownAlerts.length} of {visibleAlerts.length}.{" "}
+              Showing {shownAlerts.length} of {matching}.{" "}
               <button
                 type="button"
                 onClick={() => navigate("/alerts")}
@@ -339,6 +344,11 @@ export default function EWSAlertFeed({
           ) : null}
         </div>
       )}
+      {!maxRows && ready && !error && matching > 0 ? <nav aria-label="Alert result pages" className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-3 text-sm">
+        <p role="status">{page * pageSize + 1}–{page * pageSize + shownAlerts.length} of {matching} alerts</p>
+        <div className="flex gap-2"><button type="button" className="btn-secondary" disabled={isLoading || page === 0} onClick={() => setPage(value => value - 1)}>Previous</button>
+          <button type="button" className="btn-secondary" disabled={isLoading || (page + 1) * pageSize >= matching} onClick={() => setPage(value => value + 1)}>Next</button></div>
+      </nav> : null}
     </section>
   );
 }

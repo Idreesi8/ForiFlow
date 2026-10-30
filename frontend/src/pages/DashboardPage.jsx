@@ -23,7 +23,6 @@ import { ErrorState, LoadingState } from "../components/common/States.jsx";
 import { SCORE_BANDS, bandForDecision } from "../lib/decisions.js";
 import { bandIndexForRiskBand, describeBands } from "../lib/policyBands.js";
 import { formatPKRCompact } from "../lib/format.js";
-import { isOpenAlert } from "../lib/ews.js";
 import { getStoredUsername } from "../api/auth.js";
 
 /** Portfolio overview: origination quality on the left, surveillance below. */
@@ -31,7 +30,7 @@ export default function DashboardPage() {
   const [applications, setApplications] = useState([]);
   const [portfolio, setPortfolio] = useState(null);
   // null until the alert feed has loaded; the stats snapshot is used until then.
-  const [openAlerts, setOpenAlerts] = useState(null);
+  const [alertSummary, setAlertSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -58,9 +57,8 @@ export default function DashboardPage() {
     loadPortfolio();
   }, [loadPortfolio]);
 
-  const handleAlertsLoaded = useCallback((alerts) => {
-    // Open = Open, Acknowledged or Action Required (the API's is_open).
-    setOpenAlerts(alerts.filter(isOpenAlert));
+  const handleAlertsLoaded = useCallback((_alerts, counts) => {
+    setAlertSummary(counts);
   }, []);
 
   const decisionData = useMemo(
@@ -89,12 +87,8 @@ export default function DashboardPage() {
   );
 
   const latest = applications[0] ?? null;
-  const openCount = openAlerts ? openAlerts.length : (portfolio?.open_alerts ?? 0);
-  const worstOpenDrop = openAlerts
-    ? openAlerts.length
-      ? Math.max(...openAlerts.map((alert) => alert.score_drop))
-      : null
-    : (portfolio?.worst_open_drop ?? null);
+  const openCount = alertSummary ? alertSummary.open : (portfolio?.open_alerts ?? 0);
+  const worstOpenDrop = alertSummary ? alertSummary.worst_open_drop : (portfolio?.worst_open_drop ?? null);
 
   if (isLoading) return <LoadingState label="Loading portfolio…" />;
   if (error) return <ErrorState message={error} onRetry={loadPortfolio} />;
