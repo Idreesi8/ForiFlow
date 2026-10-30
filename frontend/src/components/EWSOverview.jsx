@@ -57,11 +57,11 @@ export default function EWSOverview({ overview, selectedId, onSelect, onRecord, 
         />
       ) : (
         <>
-        <ul aria-label="Monitored facilities" className="divide-y divide-slate-200 md:hidden">
+        <ul aria-label="Monitored facilities" className="grid gap-px overflow-hidden rounded-b-2xl bg-slate-200 md:grid-cols-2 2xl:hidden">
           {overview.rows.map(row => {
             const selected = row.facility_id === selectedId;
             const trend = trendStyle(row.trend_direction);
-            return <li key={row.facility_id} data-facility-id={row.facility_id} className={`p-4 ${selected ? 'bg-brand-50/70' : ''}`}>
+            return <li key={row.facility_id} data-facility-id={row.facility_id} className={`p-4 md:p-5 ${selected ? 'bg-brand-50' : 'bg-white'}`}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1"><h3 className="break-words text-sm font-semibold text-slate-900">{row.business_name}</h3>
                   <p className="mt-1 text-xs text-slate-500">Case #{row.facility_id}{selected ? ' · Selected' : ''}</p></div>
@@ -84,11 +84,11 @@ export default function EWSOverview({ overview, selectedId, onSelect, onRecord, 
             </li>;
           })}
         </ul>
-        <div className="hidden overflow-x-auto md:block">
+        <div className="hidden overflow-x-auto 2xl:block">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="table-head">
               <tr>
-                <th className="px-4 py-3 text-left">Facility</th>
+                <th className="min-w-52 px-4 py-3 text-left">Facility</th>
                 <th className="px-4 py-3 text-left">State</th>
                 <th className="px-4 py-3 text-right">Baseline</th>
                 <th className="px-4 py-3 text-right">Current</th>
