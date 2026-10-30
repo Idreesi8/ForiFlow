@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import { apiErrorMessage, fetchEwsOverview } from "../api/client.js";
 import EWSAlertFeed from "../components/EWSAlertFeed.jsx";
 import EWSFacilityDetail from "../components/EWSFacilityDetail.jsx";
 import EWSOverview from "../components/EWSOverview.jsx";
+import FacilitySwitchDialog from "../components/FacilitySwitchDialog.jsx";
 import MonitoringPanel from "../components/MonitoringPanel.jsx";
+import MonitoringWorkspaceNav from "../components/MonitoringWorkspaceNav.jsx";
 import WorklistReturn from "../components/WorklistReturn.jsx";
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
 import { positiveInteger, worklistReturnState } from "../lib/actionDesk.js";
 import { reminderReturnState } from '../lib/reminderReview.js';
+import { MONITORING_SECTIONS, revealMonitoringSection } from '../lib/monitoringWorkspace.js';
 
 /**
  * Early Warning System workspace: the portfolio position, one facility's
@@ -17,6 +20,7 @@ import { reminderReturnState } from '../lib/reminderReview.js';
  */
 export default function AlertsPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const returnState = worklistReturnState(location.state) ?? reminderReturnState(location.state);
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedFacility = positiveInteger(searchParams.get("facility"));
@@ -29,15 +33,35 @@ export default function AlertsPage() {
   const [monitoringBusy, setMonitoringBusy] = useState(false);
   const [pendingFacility, setPendingFacility] = useState(null);
   const overviewRequestSequence = useRef(0);
+  const pendingSection = useRef(null);
+  const scrolledLocation = useRef(null);
+  const [historyReadyId, setHistoryReadyId] = useState();
+  const [monitoringReadyId, setMonitoringReadyId] = useState();
 
   const commitFacility = id => {
     setMonitoringDirty(false);
     setPendingFacility(null);
+    setHistoryReadyId(undefined);
+    setMonitoringReadyId(undefined);
     setSelectedId(id);
-    if (requestedFacility) setSearchParams({ facility: String(id) }, { state: returnState });
+    const section = pendingSection.current;
+    if (requestedFacility || section) navigate({ pathname: location.pathname,
+      search: requestedFacility ? `?facility=${id}` : location.search,
+      hash: section ? `#${section}` : location.hash }, { state: returnState ?? location.state, preventScrollReset: true });
+    if (section) revealMonitoringSection(section);
+    pendingSection.current = null;
   };
-  const requestFacility = id => {
-    if (monitoringBusy || id === selectedId) return;
+  const requestFacility = (id, section = null) => {
+    if (monitoringBusy) return;
+    if (id === selectedId) {
+      if (section) {
+        navigate({ pathname: location.pathname, search: location.search, hash: `#${section}` },
+          { state: location.state, preventScrollReset: true });
+        revealMonitoringSection(section);
+      }
+      return;
+    }
+    pendingSection.current = section;
     if (monitoringDirty) setPendingFacility(id);
     else commitFacility(id);
   };
@@ -45,17 +69,28 @@ export default function AlertsPage() {
   useEffect(() => {
     if (!requestedFacility || requestedFacility === selectedId) return;
     if ((monitoringDirty || monitoringBusy) && selectedId) {
+      pendingSection.current = MONITORING_SECTIONS.some(section => `#${section.id}` === location.hash) ? location.hash.slice(1) : null;
       setPendingFacility(requestedFacility);
       setSearchParams({ facility: String(selectedId) }, { replace: true, state: returnState });
-    } else setSelectedId(requestedFacility);
+    } else {
+      setHistoryReadyId(undefined);
+      setMonitoringReadyId(undefined);
+      setSelectedId(requestedFacility);
+    }
   }, [requestedFacility, selectedId, monitoringDirty, monitoringBusy, setSearchParams]);
 
   useEffect(() => {
     const anchor = location.hash.slice(1);
-    if (!requestedFacility || !["monitoring", "alert-queue"].includes(anchor)) return;
-    const frame = requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ block: "start" }));
-    return () => cancelAnimationFrame(frame);
-  }, [location.hash, requestedFacility, overview]);
+    if ((!overview && !error) || pendingFacility ||
+      (requestedFacility && requestedFacility !== selectedId) || scrolledLocation.current === location.key ||
+      !MONITORING_SECTIONS.some(section => section.id === anchor)) return;
+    // Loading history above the editor changes its position. Finish the jump
+    // once the selected history and calendar have settled, including errors.
+    if (['monitoring', 'alert-queue'].includes(anchor) &&
+      (monitoringReadyId !== selectedId || (selectedId && historyReadyId !== selectedId))) return;
+    scrolledLocation.current = location.key;
+    revealMonitoringSection(anchor);
+  }, [location.key, location.hash, overview, error, requestedFacility, pendingFacility, selectedId, historyReadyId, monitoringReadyId]);
 
   const loadOverview = useCallback(async () => {
     const request = ++overviewRequestSequence.current;
@@ -90,33 +125,44 @@ export default function AlertsPage() {
         </p>
       </header>
 
-      {requestedFacility ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900"><span>Focused on case #{selectedId}. {!returnState ? <Link className="font-semibold underline" to="/action-desk">Back to action desk</Link> : null}</span><button type="button" className="btn-secondary" onClick={() => { setSearchParams({}, { state: returnState }); setPendingFacility(null); }}>Show all alerts</button></div> : null}
-      {pendingFacility ? <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950" data-testid="unsaved-facility"><p>There are unsubmitted figures for case #{selectedId}. Switching to case #{pendingFacility} clears those figures.</p><div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" onClick={() => setPendingFacility(null)}>Keep editing this facility</button><button type="button" className="btn-primary" disabled={monitoringBusy} onClick={() => commitFacility(pendingFacility)}>Switch facility and clear figures</button></div></div> : null}
+      <MonitoringWorkspaceNav selectedId={selectedId} overview={overview} dirty={monitoringDirty} busy={monitoringBusy} />
 
+      {requestedFacility ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900"><span>Focused on case #{selectedId}. {!returnState ? <Link className="font-semibold underline" to="/action-desk">Back to action desk</Link> : null}</span><button type="button" className="btn-secondary" onClick={() => { setSearchParams({}, { state: returnState }); setPendingFacility(null); }}>Show all alerts</button></div> : null}
+      {pendingFacility ? <FacilitySwitchDialog fromId={selectedId} toId={pendingFacility} busy={monitoringBusy}
+        onCancel={() => { setPendingFacility(null); pendingSection.current = null; }}
+        onConfirm={() => commitFacility(pendingFacility)} /> : null}
+
+      <div id="portfolio-monitoring" role="region" aria-label="Portfolio monitoring" tabIndex={-1} className="monitoring-section">
       {error ? (
         <ErrorState message={error} onRetry={loadOverview} />
       ) : !overview ? (
         <LoadingState label="Loading the EWS overview…" />
       ) : (
-        <EWSOverview overview={overview} selectedId={selectedId} onSelect={requestFacility} />
+        <EWSOverview overview={overview} selectedId={selectedId} disabled={monitoringBusy}
+          onSelect={id => requestFacility(id, 'facility-history')}
+          onRecord={id => requestFacility(id, 'monitoring')} />
       )}
+      </div>
 
-      {selectedId ? <EWSFacilityDetail facilityId={selectedId} refreshToken={refreshToken} /> : null}
+      <div id="facility-history" role="region" aria-label="Selected facility history" tabIndex={-1} className="monitoring-section">
+        {selectedId ? <EWSFacilityDetail facilityId={selectedId} refreshToken={refreshToken} onReady={setHistoryReadyId} /> : <div className="card p-5 text-sm text-slate-500"><h2 className="card-title">Choose a facility to review</h2><p className="mt-2">Select a monitored facility above, or find an approved facility under Record a month.</p></div>}
+      </div>
 
-      <div id="monitoring" className="scroll-mt-24"><MonitoringPanel
+      <div id="monitoring" role="region" aria-label="Monitoring month editor" tabIndex={-1} className="monitoring-section"><MonitoringPanel
         facilityId={selectedId}
         initialMonth={requestedFacility === selectedId && requestedMonth <= 84 ? requestedMonth : null}
         refreshToken={refreshToken}
-        onFacilityChange={requestFacility}
+        onFacilityChange={id => requestFacility(id, selectedId ? 'monitoring' : null)}
         onDirtyChange={setMonitoringDirty}
         onBusyChange={setMonitoringBusy}
+        onReady={setMonitoringReadyId}
         onMonitored={(response) => {
           setSelectedId(response.borrower_id);
           refresh();
         }}
       /></div>
 
-      <div id="alert-queue" className="scroll-mt-24"><EWSAlertFeed facilityId={requestedFacility ? selectedId : null} refreshToken={refreshToken} onChanged={refresh} /></div>
+      <div id="alert-queue" role="region" aria-label="Alert queue" tabIndex={-1} className="monitoring-section"><EWSAlertFeed facilityId={requestedFacility ? selectedId : null} refreshToken={refreshToken} onChanged={refresh} /></div>
 
       {method ? (
         <section className="card" data-testid="ews-methodology">
