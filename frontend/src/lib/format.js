@@ -10,6 +10,15 @@ const PKR_FORMATTER = new Intl.NumberFormat("en-PK", {
 });
 
 const NUMBER_FORMATTER = new Intl.NumberFormat("en-PK");
+// Accept decimal API strings, while keeping absent or malformed evidence unknown.
+function finiteDecimal(value) {
+  if (typeof value === "string") {
+    value = value.trim();
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value)) return null;
+    value = Number(value);
+  }
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
 const PKR_EXACT_FORMATTER = new Intl.NumberFormat("en-PK", {
   style: "currency", currency: "PKR", currencyDisplay: "code",
   minimumFractionDigits: 2, maximumFractionDigits: 2,
@@ -41,8 +50,8 @@ export function businessDate(now = new Date()) {
 
 /** Format an exact PKR amount, e.g. "PKR 2,500,000". */
 export function formatPKR(value) {
-  const amount = Number(value);
-  if (value === null || value === undefined || Number.isNaN(amount)) return "—";
+  const amount = finiteDecimal(value);
+  if (amount === null) return "—";
   return PKR_FORMATTER.format(amount);
 }
 
@@ -51,29 +60,29 @@ export function formatPKR(value) {
  * 25,000,000 becomes "PKR 2.50 Cr" and 250,000 becomes "PKR 2.50 L".
  */
 export function formatPKRCompact(value) {
-  const amount = Number(value);
-  if (value === null || value === undefined || Number.isNaN(amount)) return "—";
+  const amount = finiteDecimal(value);
+  if (amount === null) return "—";
   if (Math.abs(amount) >= 1e7) return `PKR ${(amount / 1e7).toFixed(2)} Cr`;
   if (Math.abs(amount) >= 1e5) return `PKR ${(amount / 1e5).toFixed(2)} L`;
   return PKR_FORMATTER.format(amount);
 }
 
 export function formatNumber(value, fractionDigits = 0) {
-  const amount = Number(value);
-  if (value === null || value === undefined || Number.isNaN(amount)) return "—";
+  const amount = finiteDecimal(value);
+  if (amount === null) return "—";
   return amount.toFixed(fractionDigits);
 }
 
 /** Format a 0-1 share as a percentage, e.g. 0.1687 becomes "16.9%". */
 export function formatPercent(value, fractionDigits = 1) {
-  const share = Number(value);
-  if (value === null || value === undefined || Number.isNaN(share)) return "—";
+  const share = finiteDecimal(value);
+  if (share === null || !Number.isFinite(share * 100)) return "—";
   return `${(share * 100).toFixed(fractionDigits)}%`;
 }
 
 export function formatCount(value) {
-  const amount = Number(value);
-  if (value === null || value === undefined || Number.isNaN(amount)) return "—";
+  const amount = finiteDecimal(value);
+  if (amount === null) return "—";
   return NUMBER_FORMATTER.format(amount);
 }
 
@@ -84,6 +93,10 @@ export function formatCount(value) {
  */
 export function parseApiDate(value) {
   if (typeof value !== "string" || !value) return null;
+  const calendarPart = value.match(/^\d{4}-\d{2}-\d{2}(?=$|[T ])/);
+  if (!calendarPart) return null;
+  const midnight = new Date(`${calendarPart[0]}T00:00:00Z`);
+  if (!Number.isFinite(midnight.getTime()) || midnight.toISOString().slice(0, 10) !== calendarPart[0]) return null;
   const calendarDate = /^\d{4}-\d{2}-\d{2}$/.test(value);
   const hasTimezone = /(Z|[+-]\d{2}:?\d{2})$/i.test(value);
   const date = new Date(calendarDate ? `${value}T00:00:00Z` : hasTimezone ? value : `${value}Z`);
@@ -102,23 +115,26 @@ export function formatDate(value) {
 }
 
 /** Short relative age, e.g. "3h ago", used in the alert feed. */
-export function formatRelative(value) {
+export function formatRelative(value, now = Date.now()) {
   const date = parseApiDate(value);
   if (!date) return "—";
 
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return "just now";
+  const elapsed = (now - date.getTime()) / 1000;
+  const future = elapsed < 0;
+  const seconds = Math.round(Math.abs(elapsed));
+  const label = duration => future ? `in ${duration}` : `${duration} ago`;
+  if (seconds < 60) return future ? "in less than a minute" : "just now";
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return label(`${minutes}m`);
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return label(`${hours}h`);
   const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
+  if (days < 30) return label(`${days}d`);
   return formatDate(value);
 }
 
 export function formatSigned(value, fractionDigits = 2) {
-  const amount = Number(value);
-  if (value === null || value === undefined || Number.isNaN(amount)) return "—";
+  const amount = finiteDecimal(value);
+  if (amount === null) return "—";
   return `${amount >= 0 ? "+" : ""}${amount.toFixed(fractionDigits)}`;
 }

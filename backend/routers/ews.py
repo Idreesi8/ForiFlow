@@ -43,6 +43,7 @@ from schemas import (
     AlertNoteRequest,
     AlertResolveRequest,
     AlertResponse,
+    AlertQueue,
     AlertSeverity,
     AlertStatus,
     AuditLogResponse,
@@ -69,6 +70,7 @@ from services.audit_service import Action, Audit, AuditContext
 from services.auth_service import get_current_user, require_manager
 from services.ews_service import EWSService, MonitoringOutcome, get_ews_service
 from services.team_access import lock_officer_change
+from services.alert_queue import alert_page, alert_scope, build_alert_queue
 
 router = APIRouter(
     prefix="/ews",
@@ -1128,26 +1130,27 @@ async def list_alerts(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[AlertResponse]:
     """Open alerts first, then worst severity and largest drop. Closed alerts stay listed."""
-    statement = select(Alert).options(selectinload(Alert.borrower))
-    if alert_status is not None:
-        statement = statement.where(Alert.alert_status == alert_status.value)
-    if severity is not None:
-        statement = statement.where(Alert.severity == severity.value)
-    if facility_id is not None:
-        statement = statement.where(Alert.borrower_id == facility_id)
-    if open_only:
-        statement = statement.where(Alert.alert_status.in_(ALERT_OPEN_STATUSES))
-    alerts = list(db.scalars(statement).all())
-    alerts.sort(
-        key=lambda a: (
-            0 if a.is_open else 1,
-            -_severity_rank(a.severity),
-            -(a.score_drop or 0.0),
-            -a.triggered_at.timestamp(),
-            -a.id,
-        )
-    )
-    return [AlertResponse.model_validate(alert) for alert in alerts[offset : offset + limit]]
+    statement = alert_scope(severity=severity.value if severity else None, facility_id=facility_id)
+    items, _ = alert_page(db, statement, alert_status=alert_status.value if alert_status else None,
+                          open_only=open_only, limit=limit, offset=offset)
+    return items
+
+
+@router.get("/alert-queue", response_model=AlertQueue, summary="Search the complete alert queue")
+async def alert_queue(
+    db: DbSession,
+    search: Annotated[str, Query(max_length=120)] = '',
+    alert_status: Annotated[AlertStatus | None, Query()] = None,
+    severity: Annotated[AlertSeverity | None, Query()] = None,
+    facility_id: Annotated[int | None, Query(gt=0)] = None,
+    open_only: Annotated[bool, Query()] = False,
+    limit: Annotated[int, Query(ge=1, le=200)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict:
+    """Counts cover the search/facility/severity scope, independently of status filters."""
+    return build_alert_queue(db, search=search, severity=severity.value if severity else None,
+        facility_id=facility_id, alert_status=alert_status.value if alert_status else None,
+        open_only=open_only, limit=limit, offset=offset)
 
 
 @router.get("/alerts/{alert_id}", response_model=AlertResponse, summary="One alert")

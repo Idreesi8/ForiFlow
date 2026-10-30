@@ -4,7 +4,7 @@ import { canDecideCredit } from "../api/auth.js";
 import {
   apiErrorMessage,
   correctObservation,
-  fetchApplications,
+  fetchApplicationRegister,
   fetchApplication,
   fetchFacilityObservations,
   recordObservation,
@@ -68,6 +68,11 @@ export default function MonitoringPanel({ onMonitored, facilityId = null, initia
   const [borrowerRevision, setBorrowerRevision] = useState(0);
   const [borrowerError, setBorrowerError] = useState(null);
   const [borrowersLoading, setBorrowersLoading] = useState(true);
+  const [facilitySearch, setFacilitySearch] = useState('');
+  const [facilityPage, setFacilityPage] = useState(0);
+  const [facilityChoices, setFacilityChoices] = useState(null);
+  const choiceKey = JSON.stringify([facilityId, facilitySearch.trim(), facilityPage]);
+  const choicesReady = facilityChoices?.key === choiceKey && !borrowersLoading && !borrowerError;
   const [pendingMonth, setPendingMonth] = useState(null);
   const preferred = useRef(null);
   const lastLink = useRef('');
@@ -96,13 +101,22 @@ export default function MonitoringPanel({ onMonitored, facilityId = null, initia
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     setBorrowersLoading(true);
     setBorrowerError(null);
-    fetchApplications({ final_decision: DECISION_APPROVED, limit: 200 })
-      .then(async (data) => {
-        // A deep-linked facility can be older than the register's first page.
-        if (facilityId && !data.some(item => item.id === facilityId)) {
-          const focused = await fetchApplication(facilityId);
+    fetchApplicationRegister({ status: DECISION_APPROVED, search: facilitySearch.trim(),
+      limit: 25, offset: facilityPage * 25 }, { signal: controller.signal })
+      .then(async (register) => {
+        if (cancelled) return;
+        if (facilityPage > 0 && facilityPage * 25 >= register.matching) {
+          setFacilityPage(Math.max(0, Math.ceil(register.matching / 25) - 1));
+          return;
+        }
+        let data = register.items;
+        // Keep the selected facility available while searching other pages.
+        const selectedId = facilityId || Number(formRef.current.borrower_id);
+        if (selectedId && !data.some(item => item.id === selectedId)) {
+          const focused = await fetchApplication(selectedId, { signal: controller.signal });
           data = [...data, focused];
         }
         if (cancelled) return;
@@ -111,17 +125,20 @@ export default function MonitoringPanel({ onMonitored, facilityId = null, initia
           (application) => finalDecisionOf(application) === DECISION_APPROVED,
         );
         setBorrowers(monitorable);
+        setFacilityChoices({ key: choiceKey, matching: register.matching, count: register.items.length,
+          pinned: Boolean(selectedId && !register.items.some(item => item.id === selectedId)) });
         if (!facilityId && monitorable.length && !formRef.current.borrower_id) {
           if (onFacilityChange) onFacilityChange(monitorable[0].id);
           else resetSelection(monitorable[0].id, null);
         }
       })
-      .catch(failure => { if (!cancelled) { setBorrowers([]); setBorrowerError(apiErrorMessage(failure, 'Could not load approved facilities.')); } })
+      .catch(failure => { if (!cancelled) setBorrowerError(apiErrorMessage(failure, 'Could not load approved facilities.')); })
       .finally(() => { if (!cancelled) setBorrowersLoading(false); });
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [facilityId, borrowerRevision]);
+  }, [facilityId, borrowerRevision, facilitySearch, facilityPage, choiceKey]);
 
   useEffect(() => {
     if (!facilityId) return;
@@ -296,6 +313,21 @@ export default function MonitoringPanel({ onMonitored, facilityId = null, initia
         <div className="mt-3 flex flex-wrap gap-2"><button type="button" className="btn-secondary" onClick={() => setPendingMonth(null)}>Keep editing this month</button><button type="button" className="btn-primary" onClick={() => resetSelection(form.borrower_id, pendingMonth)}>Switch month and clear figures</button></div>
       </div> : null}
 
+      <div className="border-b border-slate-200 px-5 py-3">
+        <label className="field-label" htmlFor="monitoring-facility-search">Find an approved facility</label>
+        <input id="monitoring-facility-search" type="search" maxLength={120} className="field-input"
+          value={facilitySearch} disabled={isSubmitting}
+          onChange={event => { setFacilitySearch(event.target.value); setFacilityPage(0); }}
+          placeholder="Search every approved case by business, applicant or case #" />
+        {choicesReady ? <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <p role="status">{facilityChoices.matching ? `${facilityPage * 25 + 1}–${facilityPage * 25 + facilityChoices.count} of ${facilityChoices.matching} matching facilities` : 'No approved facilities match this search.'}
+            {facilityChoices.pinned ? ' Your selected facility remains available below.' : ''}</p>
+          <nav aria-label="Approved facility pages" className="flex gap-2">
+            <button type="button" className="btn-secondary" disabled={isSubmitting || facilityPage === 0} onClick={() => setFacilityPage(value => value - 1)}>Previous facilities</button>
+            <button type="button" className="btn-secondary" disabled={isSubmitting || (facilityPage + 1) * 25 >= facilityChoices.matching} onClick={() => setFacilityPage(value => value + 1)}>Next facilities</button>
+          </nav>
+        </div> : !borrowerError ? <p role="status" className="mt-2 text-xs text-slate-500">Searching approved facilities…</p> : null}
+      </div>
       <form ref={editorElement} onSubmit={handleSubmit} className="grid gap-4 px-5 py-5 md:grid-cols-3">
         <div className="md:col-span-1">
           <label className="field-label" htmlFor="borrower_id">
@@ -306,7 +338,7 @@ export default function MonitoringPanel({ onMonitored, facilityId = null, initia
             name="borrower_id"
             value={form.borrower_id}
             onChange={handleChange}
-            disabled={isSubmitting || borrowersLoading}
+            disabled={isSubmitting || !choicesReady}
             required
             className="field-input"
           >
@@ -320,7 +352,7 @@ export default function MonitoringPanel({ onMonitored, facilityId = null, initia
               </option>
             ))}
           </select>
-          {borrowers.length === 0 && !borrowersLoading && !borrowerError ? (
+          {borrowers.length === 0 && choicesReady && !facilitySearch.trim() ? (
             <p className="mt-1 text-xs text-slate-500">
               No approved facility yet. An application becomes a facility when a manager or admin
               approves it.

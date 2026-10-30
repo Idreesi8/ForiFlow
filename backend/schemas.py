@@ -1267,6 +1267,23 @@ class AlertResponse(BaseModel):
         return hashlib.sha256(json.dumps(state, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+class AlertQueueCounts(BaseModel):
+    open: int
+    critical: int
+    overdue: int
+    closed: int
+    worst_open_drop: float | None
+
+
+class AlertQueue(BaseModel):
+    items: list[AlertResponse]
+    total: int
+    matching: int
+    counts: AlertQueueCounts
+    limit: int
+    offset: int
+
+
 class EWSTrackingResponse(BaseModel):
     """A stored monthly EWS observation.
 

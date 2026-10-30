@@ -119,6 +119,9 @@ export const fetchApplicabilityModel = ({ signal } = {}) =>
 export const fetchAlerts = (params = {}) =>
   client.get("/ews/alerts", { params }).then((response) => response.data);
 
+export const fetchAlertQueue = (params = {}, { signal } = {}) =>
+  client.get("/ews/alert-queue", { params, signal }).then(response => response.data);
+
 export const reviewApplication = (applicationId, { decision, note }) =>
   client
     .post(`/score/applications/${applicationId}/review`, { decision, note })
