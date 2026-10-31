@@ -2,6 +2,9 @@
 
 28 October 2026, Pakistan time.
 
+The later [save recovery update](assessment-save-recovery-2026-10-31.md) adds
+server idempotency and replaces the network-loss behavior described below.
+
 The intake form previously saved and scored immediately after validation. It now
 offers **Review assessment**, followed by an unsaved, read-only summary of every
 field in the submitted payload. **Save and score assessment** is a separate,

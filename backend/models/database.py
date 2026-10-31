@@ -27,6 +27,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
     event,
     text,
@@ -831,6 +832,21 @@ class User(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debugging helper
         return f"<User id={self.id} username={self.username!r} role={self.role!r}>"
+
+
+class ScoreSubmission(Base):
+    """One officer's assessment-save intent, committed with its original receipt."""
+
+    __tablename__ = "score_submissions"
+    __table_args__ = (UniqueConstraint('user_id', 'submission_key', name='uq_score_submission_owner_key'),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='RESTRICT'), nullable=False)
+    submission_key: Mapped[str] = mapped_column(String(36), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    application_id: Mapped[int | None] = mapped_column(ForeignKey('applications.id', ondelete='RESTRICT'), nullable=True)
+    response_json: Mapped[dict | None] = mapped_column(JsonColumn, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 class LoginAttempt(Base):

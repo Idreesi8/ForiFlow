@@ -225,8 +225,38 @@ def test_real_backup_verifies_all_content_and_removes_only_its_scratch(pg_backup
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'content applications: identical' in result.stdout
     assert 'content revoked_tokens: identical' in result.stdout
+    assert 'content score_submissions: identical' in result.stdout
     assert 'scratch database dropped:' in result.stdout
     assert 'RESULT: PASS' in result.stdout
+
+
+@pytest.mark.postgres
+def test_real_verification_detects_changed_save_receipts_with_identical_counts(pg_backup):
+    import asyncio
+    from fastapi import Response
+    from sqlalchemy import select, text
+    from sqlalchemy.orm import Session
+    from models.database import User
+    from routers.score import score_application
+    from schemas import SMEApplicant
+    from services.audit_service import AuditContext
+    from services.scoring_service import ScoringService
+    from tests.conftest import STRONG_APPLICANT
+
+    env, engine, dump, run, _ = pg_backup
+    with Session(engine) as db:
+        asyncio.run(score_application(applicant=SMEApplicant.model_validate(STRONG_APPLICANT),
+            db=db, scorer=ScoringService(), officer=db.scalars(select(User)).one(),
+            audit=AuditContext(), response=Response(), include_explanation=True,
+            idempotency_key=uuid.uuid4()))
+    subprocess.run(['pg_dump', '-Fc', '-d', env['POSTGRES_DB'], '-f', str(dump)],
+        env=env, check=True, capture_output=True)
+    with engine.begin() as db:
+        db.execute(text("UPDATE score_submissions SET payload_hash = :digest"), {'digest': '0' * 64})
+    result = run('scripts/db/verify-restore.sh')
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert 'content differs for score_submissions' in result.stdout
+    assert 'scratch database dropped:' in result.stdout
 
 
 @pytest.mark.postgres

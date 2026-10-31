@@ -87,8 +87,9 @@ export function apiErrorMessage(error, fallback = "Something went wrong.") {
   return `${fallback} (HTTP ${status})`;
 }
 
-export const scoreApplication = (payload) =>
-  client.post("/score", payload).then((response) => response.data);
+export const scoreApplication = (payload, { submissionKey } = {}) =>
+  client.post("/score", payload, { headers: submissionKey ? { 'Idempotency-Key': submissionKey } : undefined })
+    .then((response) => response.data);
 
 export const fetchApplications = (params = {}) =>
   client.get("/score/applications", { params }).then((response) => response.data);

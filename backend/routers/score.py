@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from typing import Annotated, Literal
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -51,6 +52,7 @@ from services.scoring_service import ScoringService, get_scoring_service
 from services.statement_service import StatementError, parse_statement
 from services.statement_resilience import assess_statement_resilience
 from services.application_register import build_register
+from services.score_submissions import claim_submission, finish_submission
 
 router = APIRouter(
     prefix="/score",
@@ -76,9 +78,11 @@ async def score_application(
     scorer: Scorer,
     officer: Officer,
     audit: Audit,
+    response: Response,
     include_explanation: Annotated[
         bool, Query(description="Embed the SHAP explanation in the response.")
     ] = True,
+    idempotency_key: Annotated[UUID | None, Header(alias='Idempotency-Key')] = None,
 ) -> ScoreResponse:
     """Assess an SME application and return a recommendation. Nothing is decided here.
 
@@ -99,7 +103,22 @@ async def score_application(
     a new application is stored, the earlier one is kept unchanged and marked
     Superseded, and the audit trail records who re-scored it and which inputs
     changed.
+
+    Send an optional UUID ``Idempotency-Key`` to make retries safe. A key is
+    scoped to the signed-in officer and the parsed input plus explanation flag.
+    Matching retries return the original 201 receipt without another case or
+    audit event, even if policy or officer decision changed afterwards. A key
+    reused with different inputs returns 409. ``Idempotency-Replayed`` says
+    whether the receipt was recovered. Clients without a key keep the existing
+    one-new-assessment-per-request contract.
     """
+    submission = None
+    if idempotency_key is not None:
+        submission, saved = claim_submission(db, officer_id=officer.id, key=idempotency_key,
+            applicant=applicant, include_explanation=include_explanation)
+        response.headers['Idempotency-Replayed'] = 'true' if saved is not None else 'false'
+        if saved is not None:
+            return saved
     evidence = _turnover_evidence(applicant)
 
     previous: Application | None = None
@@ -288,11 +307,11 @@ async def score_application(
     if previous is not None:
         decision_service.supersede(db, previous, application, officer=officer, context=audit)
 
-    db.commit()
+    db.flush()
     db.refresh(application)
     summary = ApplicationSummary.model_validate(application)
 
-    return ScoreResponse(
+    receipt = ScoreResponse(
         application_id=application.id,
         applicant_name=application.applicant_name,
         business_name=application.business_name,
@@ -322,6 +341,10 @@ async def score_application(
         scored_by=application.scored_by,
         turnover_evidence=evidence,
     )
+    if submission is not None:
+        finish_submission(submission, receipt)
+    db.commit()
+    return receipt
 
 
 @router.get('/register', response_model=ApplicationRegister, summary='Search the complete application register')

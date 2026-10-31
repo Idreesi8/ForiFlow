@@ -211,6 +211,7 @@ TABLE_ORDER = (
     "model_versions",
     "credit_policies",
     "applications",
+    "score_submissions",
     # Since 0008 an alert points at the observations it rests on.
     "ews_tracking",
     "alerts",
@@ -219,6 +220,7 @@ TABLE_ORDER = (
 
 # Present on SQLite after Step 2 create_all; absent on a pre-auth file.
 OPTIONAL: dict[str, tuple[str, ...]] = {
+    "score_submissions": ('id', 'user_id', 'submission_key', 'payload_hash', 'application_id', 'response_json', 'created_at'),
     "users": (
         "id",
         "username",
