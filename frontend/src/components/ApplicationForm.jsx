@@ -9,6 +9,7 @@ import {
 } from "../api/client.js";
 import { FIELD_GROUPS, ALL_FIELDS, validateAssessment, assessmentPayload, assessmentKey, statementReview } from "../lib/assessmentIntake.js";
 import AssessmentReview from "./AssessmentReview.jsx";
+import { assessmentIntent, assessmentReceiptMatches, assessmentSaveUncertain } from '../lib/assessmentSave.js';
 import { contractSummary, unusedFieldNames } from "../lib/featureContract.js";
 import { formatPKR, formatPKRCompact, formatPercent } from "../lib/format.js";
 import PathToApproval from "./PathToApproval.jsx";
@@ -130,6 +131,7 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitting = useRef(false);
   const [review, setReview] = useState(null);
+  const [saveUncertain, setSaveUncertain] = useState(false);
   const reviewHeading = useRef(null);
   const resultHeading = useRef(null);
   const [result, setResult] = useState(null);
@@ -145,10 +147,10 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
   const requiredFields = ALL_FIELDS.filter(field => !field.optional);
   const filledRequired = requiredFields.filter(field => String(values[field.name] ?? "").trim()).length;
   const hasEntries = Boolean(statement) || Object.values(values).some(value => String(value ?? "").trim());
-  const fingerprint = JSON.stringify(ALL_FIELDS.map(field => String(values[field.name] ?? '')));
-  useUnsavedWork({ label: 'New credit assessment', dirty: hasEntries &&
-    (fingerprint !== savedFingerprint?.fields || (statement?.csv ?? null) !== savedFingerprint?.csv),
-    busy: isSubmitting || isReadingStatement });
+  const unchangedSaved = Boolean(result && savedFingerprint?.intent === assessmentIntent(values, statement) && !Object.keys(validateAssessment(values)).length);
+  useUnsavedWork({ label: saveUncertain ? 'Assessment save outcome unverified' : 'New credit assessment', dirty: saveUncertain || (hasEntries && !unchangedSaved),
+    busy: isSubmitting || isReadingStatement,
+    leaveWarning: saveUncertain ? 'The server may already have saved this assessment. Leaving loses this tab’s retry reference and does not cancel that save. Recover its result before starting another assessment.' : null });
   const cancelStatement = () => {
     statementRequest.current += 1;
     statementController.current?.abort();
@@ -161,13 +163,14 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
     element?.focus({ preventScroll: true });
   };
   const editReview = (id = "assessment-applicant") => {
-    if (submitting.current) return;
+    if (submitting.current || saveUncertain) return;
     setReview(null);
     setSubmitError(null);
     requestAnimationFrame(() => focusField(id));
   };
   useEffect(() => { if (review) { reviewHeading.current?.scrollIntoView({ block: "start" }); reviewHeading.current?.focus({ preventScroll: true }); } }, [review]);
   useEffect(() => { if (result) { resultHeading.current?.scrollIntoView({ block: "start" }); resultHeading.current?.focus({ preventScroll: true }); } }, [result]);
+  useEffect(() => { if (saveUncertain) { reviewHeading.current?.scrollIntoView({ block: 'start' }); reviewHeading.current?.focus({ preventScroll: true }); } }, [saveUncertain]);
   useEffect(() => { if (pendingReplacement) replacementNotice.current?.focus(); }, [pendingReplacement]);
   useEffect(() => { if (Object.keys(errors).length) errorSummary.current?.focus(); }, [submitError]);
   // Which fields the model serving now actually reads (GET /model/feature-contract).
@@ -192,6 +195,7 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
   };
 
   const handleChange = (event) => {
+    if (submitting.current || saveUncertain) return;
     const { name, value } = event.target;
     setReview(null);
     setValues((previous) => ({ ...previous, [name]: value }));
@@ -204,6 +208,7 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
   };
 
   const applySample = (sample) => {
+    if (submitting.current || saveUncertain) return;
     setReview(null);
     cancelStatement();
     setValues({ ...EMPTY_FORM, ...sample.values });
@@ -221,7 +226,7 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (isSubmitting) return;
+    if (isSubmitting || saveUncertain) return;
     setReview(null);
     const request = ++statementRequest.current;
     statementController.current?.abort();
@@ -253,7 +258,7 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
   };
 
   const handleReset = () => {
-    if (reviewLocked) return;
+    if (reviewLocked || submitting.current || saveUncertain) return;
     cancelStatement();
     setReview(null);
     setStatement(null);
@@ -262,13 +267,15 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
     setErrors({});
     setSubmitError(null);
     setResult(null);
+    setSavedFingerprint(null);
     setPendingReplacement(null);
     onScored?.(null);
+    requestAnimationFrame(() => focusField('assessment-applicant'));
   };
 
   const requestReplacement = change => {
-    if (isSubmitting) return;
-    if (hasEntries) setPendingReplacement(change);
+    if (isSubmitting || saveUncertain) return;
+    if (hasEntries && !unchangedSaved) setPendingReplacement(change);
     else if (change.sample) applySample(change.sample);
     else handleReset();
   };
@@ -276,6 +283,7 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
   const handleReview = (event) => {
     event.preventDefault();
     if (submitting.current || isReadingStatement || reviewLocked || review) return;
+    if (unchangedSaved) { resultHeading.current?.scrollIntoView({ block: 'start' }); resultHeading.current?.focus({ preventScroll: true }); return; }
     const validationErrors = validateAssessment(values);
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) {
@@ -285,7 +293,7 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
     }
     setSubmitError(null);
     setPendingReplacement(null);
-    setReview({ key: assessmentKey(values, statement), payload: assessmentPayload(values), statement });
+    setReview({ key: assessmentKey(values, statement), submissionKey: crypto.randomUUID(), payload: assessmentPayload(values), statement });
   };
 
   const handleConfirm = async () => {
@@ -301,13 +309,20 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
       const scored = await scoreApplication({
         ...review.payload,
         ...(review.statement ? { statement_csv: review.statement.csv } : {}),
-      });
+      }, { submissionKey: review.submissionKey });
+      if (!assessmentReceiptMatches(scored, review.payload)) {
+        const failure = new Error('The save receipt could not be matched to these reviewed figures.');
+        failure.code = 'UNVERIFIED_ASSESSMENT';
+        throw failure;
+      }
       setResult(scored);
+      setSaveUncertain(false);
       setReview(null);
-      setSavedFingerprint({ fields: fingerprint, csv: statement?.csv ?? null });
+      setSavedFingerprint({ intent: assessmentIntent(values, statement) });
       onScored?.(scored);
     } catch (error) {
-      setSubmitError(apiErrorMessage(error, "The application could not be scored."));
+      setSaveUncertain(previous => previous || assessmentSaveUncertain(error));
+      setSubmitError(error.code === 'UNVERIFIED_ASSESSMENT' ? error.message : apiErrorMessage(error, "The assessment save could not be verified."));
     } finally {
       submitting.current = false;
       setIsSubmitting(false);
@@ -315,7 +330,7 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-3">
+    <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-3">
       <form onSubmit={handleReview} noValidate className="card min-w-0 xl:col-span-2">
         <div className="card-header">
           <div>
@@ -398,34 +413,34 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
           {!review ? <OperatingChecks values={values} statement={statement} disabled={isSubmitting || isReadingStatement} onFixField={focusField} /> : null}
         </div>
         {review ? <>
-          <AssessmentReview review={review} headingRef={reviewHeading} unusedFields={unusedFields} onEdit={editReview} disabled={isSubmitting} />
+          <AssessmentReview review={review} headingRef={reviewHeading} unusedFields={unusedFields} onEdit={editReview} disabled={isSubmitting || saveUncertain} saveUncertain={saveUncertain} onRetry={handleConfirm} retryDisabled={isSubmitting || isReadingStatement || reviewLocked} />
           {reviewLocked ? <p role="alert" className="mx-5 mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Finish the decision reason below before saving another assessment.</p> : null}
           {submitError ? <p role="alert" className="mx-5 mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{submitError}</p> : null}
         </> : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4">
           <p className="text-xs text-slate-500">
-            {review ? "Saving creates a new assessment on-premise. It does not approve or disburse a loan." : "Next: review your entries before creating a saved assessment. Not SBP-certified."}
+            {review ? saveUncertain ? "Retry recovers or completes the original save. It does not approve or disburse a loan." : "Saving creates a new assessment on-premise. It does not approve or disburse a loan." : unchangedSaved ? "These figures are already saved. View their result or start another assessment." : "Next: review your entries before creating a saved assessment. Not SBP-certified."}
           </p>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => review ? editReview() : requestReplacement({ clear: true })} disabled={isSubmitting || reviewLocked} className="btn-secondary">
-              {review ? "Back to editing" : "Clear"}
+          <div className="flex min-w-0 flex-wrap gap-2">
+            <button type="button" onClick={() => review ? editReview() : requestReplacement({ clear: true })} disabled={isSubmitting || reviewLocked || saveUncertain} className="btn-secondary">
+              {review ? "Back to editing" : unchangedSaved ? "Start new assessment" : "Clear"}
             </button>
-            <button type={review ? "button" : "submit"} onClick={review ? handleConfirm : undefined} className="btn-primary" disabled={isSubmitting || isReadingStatement || reviewLocked}>
+            <button type={review || unchangedSaved ? "button" : "submit"} onClick={review ? handleConfirm : unchangedSaved ? () => { resultHeading.current?.scrollIntoView({ block: 'start' }); resultHeading.current?.focus({ preventScroll: true }); } : undefined} className="btn-primary" disabled={isSubmitting || isReadingStatement || reviewLocked}>
               {isSubmitting ? (
                 <>
                   <Spinner className="h-4 w-4 text-white" />
-                  Scoring…
+                  Saving assessment…
                 </>
               ) : (
-                review ? "Save and score assessment" : "Review assessment"
+                review ? saveUncertain ? "Retry same assessment" : "Save and score assessment" : unchangedSaved ? "View saved assessment" : "Review assessment"
               )}
             </button>
           </div>
         </div>
       </form>
 
-      <aside className="card h-fit xl:sticky xl:top-28">
+      <aside className="card h-fit min-w-0 xl:sticky xl:top-28">
         <div className="card-header">
           <h2 ref={resultHeading} tabIndex={-1} className="card-title scroll-mt-28">Assessment result</h2>
           {result ? (
@@ -434,14 +449,15 @@ export default function ApplicationForm({ onScored, reviewLocked = false, onRevi
         </div>
 
         <div className="px-5 py-6">
-          {result ? <p className="mb-4 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">Last saved assessment #{result.application_id}. Editing this form does not update that record. Score again to create a new assessment.</p> : null}
-          <ScoreDial
+          {result ? <p className="mb-4 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">Last saved assessment #{result.application_id}. Editing these figures does not update that record. Changed figures need a new review and save.</p> : null}
+          {saveUncertain ? <p role="status" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Waiting for a verified save result. Recover the assessment using its original submission reference.</p> : null}
+          {result || !saveUncertain ? <ScoreDial
             score={result ? result.risk_score : null}
             decision={result?.decision}
             riskBand={result?.risk_band}
             bands={result ? result.policy?.bands : activePolicy}
             size={260}
-          />
+          /> : null}
 
           {result ? (
             <div className="mt-6 space-y-4">

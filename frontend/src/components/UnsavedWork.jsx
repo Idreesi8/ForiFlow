@@ -64,7 +64,7 @@ export function UnsavedWorkProvider({ children }) {
         <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-xl text-amber-800" aria-hidden="true">↩</span>
         <h2 id="unsaved-work-title" className="text-xl font-bold text-slate-900">{busy ? 'Work is still in progress' : exit ? 'Sign out and discard your entries?' : 'Leave this page?'}</h2>
         <p className="mt-3 text-sm leading-relaxed text-slate-600">{busy ? 'Wait for the current operation to finish. Stay here to check its result or cancel a statement read.' : 'There are unsaved figures or notes on this page. Stay here to keep editing, or leave and discard these entries.'}</p>
-        <ul className="my-4 space-y-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-800">{work.map((item, index) => <li key={index}>• {item.label}{item.busy ? ' — in progress' : ''}</li>)}</ul>
+        <ul className="my-4 space-y-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-800">{work.map((item, index) => <li key={index}>• {item.label}{item.busy ? ' — in progress' : ''}{item.leaveWarning ? <p className="mt-2 text-sm leading-relaxed text-amber-950">{item.leaveWarning}</p> : null}</li>)}</ul>
         <p className="text-xs leading-relaxed text-slate-500">Entries stay only in this tab. This does not create a saved draft or recover work after a browser crash. Existing saved records stay on file.</p>
         <div className="mt-6 flex flex-wrap gap-3"><button ref={stay} type="button" className="btn-primary" onClick={cancel}>Stay here</button><button type="button" className="btn-secondary" disabled={busy} onClick={proceed}>{exit ? 'Sign out and discard' : 'Leave and discard'}</button></div>
       </div>
@@ -72,13 +72,13 @@ export function UnsavedWorkProvider({ children }) {
   </WorkContext.Provider>;
 }
 
-export function useUnsavedWork({ label, dirty, busy = false }) {
+export function useUnsavedWork({ label, dirty, busy = false, leaveWarning = null }) {
   const id = useId();
   const { register } = useContext(WorkContext);
   useEffect(() => {
-    register(id, { label, dirty, busy });
+    register(id, { label, dirty, busy, leaveWarning });
     return () => register(id, null);
-  }, [register, id, label, dirty, busy]);
+  }, [register, id, label, dirty, busy, leaveWarning]);
 }
 
 export function useGuardedExit() {

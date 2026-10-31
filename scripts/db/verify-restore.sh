@@ -42,6 +42,13 @@ created=1
 pg_restore -U "$USER_NAME" -d "$SCRATCH" --no-owner --no-privileges --exit-on-error "$DUMP" || fail 'pg_restore reported an error'
 echo 'restore: ok'
 
+# 0011 receipts are durable business state. Older matching schemas may omit
+# them, but a current backup must preserve both their presence and contents.
+live_receipts=$(q "$LIVE" "SELECT to_regclass('public.score_submissions') IS NOT NULL") || fail 'cannot inspect live receipts'
+copy_receipts=$(q "$SCRATCH" "SELECT to_regclass('public.score_submissions') IS NOT NULL") || fail 'cannot inspect restored receipts'
+[ "$live_receipts" = "$copy_receipts" ] || fail 'assessment receipt table presence differs'
+if [ "$live_receipts" = t ]; then TABLES="$TABLES score_submissions"; fi
+
 for table in $TABLES; do
     # Hash every row, sort row hashes (including duplicates), then hash the
     # sequence. Counts alone cannot detect edited balances or earlier audits.

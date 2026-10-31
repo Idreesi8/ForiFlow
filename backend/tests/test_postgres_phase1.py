@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from uuid import uuid4
 from collections.abc import Generator
 from pathlib import Path
 
@@ -28,6 +29,7 @@ POSTGRES_URL = os.getenv("FORIFLOW_TEST_POSTGRES_URL", "").strip()
 ENSEMBLE = "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26"
 TABLES = (
     "alembic_version",
+    "score_submissions",
     # 0010 security state.
     "login_attempts",
     "revoked_tokens",
@@ -507,9 +509,12 @@ def test_copying_a_current_sqlite_file_keeps_borrowers_models_and_audit(
     pg_engine, tmp_path: Path, client: TestClient, db_session_factory
 ) -> None:
     """Score on SQLite with today's schema, copy it, and find the same records."""
+    submission_key = uuid4()
+    payload = {**STRONG_APPLICANT, "borrower_identifier_type": "NTN", "borrower_identifier": "7654321"}
     first = client.post(
         "/score",
-        json={**STRONG_APPLICANT, "borrower_identifier_type": "NTN", "borrower_identifier": "7654321"},
+        json=payload,
+        headers={"Idempotency-Key": str(submission_key)},
     ).json()
     client.post("/score", json={**MID_APPLICANT, "borrower_public_id": first["borrower_public_id"]})
 
@@ -528,6 +533,16 @@ def test_copying_a_current_sqlite_file_keeps_borrowers_models_and_audit(
     copied = migrate(source, POSTGRES_URL)
     assert copied["borrowers"] == 1 and copied["applications"] == 2
     assert copied["model_versions"] == 1 and copied["audit_logs"] >= 7
+    assert copied["score_submissions"] == 1
+
+    from schemas import SMEApplicant
+    from services.score_submissions import claim_submission
+
+    with Session(pg_engine) as db:
+        row, receipt = claim_submission(db, officer_id=1, key=submission_key,
+            applicant=SMEApplicant.model_validate(payload), include_explanation=True)
+        assert row.application_id == first["application_id"]
+        assert receipt.model_dump(mode="json") == first
 
     with pg_engine.connect() as connection:
         links = connection.execute(
@@ -549,3 +564,40 @@ def test_copying_a_current_sqlite_file_keeps_borrowers_models_and_audit(
     assert tuple(borrower) == (first["borrower_public_id"], "NTN", "7654321")
     assert [entry["scoring_engine"] for entry in scored] == ["surrogate", "surrogate"]
     assert isinstance(model.feature_set, list) and model.metrics is None
+
+
+def test_save_receipt_migration_preserves_existing_cases_and_audit(pg_engine):
+    import asyncio
+    from fastapi import Response
+    from sqlalchemy import select
+    from models.database import User
+    from routers.score import score_application
+    from schemas import SMEApplicant
+    from services.audit_service import AuditContext
+    from services.scoring_service import ScoringService
+
+    _reset(pg_engine)
+    _alembic("0010_security_hardening")
+    with Session(pg_engine) as db:
+        seed_test_admin(db)
+        actor = db.scalars(select(User)).one()
+        asyncio.run(score_application(applicant=SMEApplicant.model_validate(STRONG_APPLICANT),
+            db=db, scorer=ScoringService(), officer=actor, audit=AuditContext(),
+            response=Response(), include_explanation=True, idempotency_key=None))
+
+    def rows(table):
+        with pg_engine.connect() as connection:
+            return connection.execute(text(f"SELECT row_to_json(t) FROM {table} t ORDER BY id")).scalars().all()
+
+    before = {table: rows(table) for table in ("users", "borrowers", "applications", "model_versions", "credit_policies", "audit_logs")}
+    _alembic("head")
+    for table, original in before.items():
+        actual = rows(table)
+        assert actual[:len(original)] == original
+        if table != "audit_logs":
+            assert actual == original
+    audit = rows("audit_logs")
+    assert len(audit) == len(before["audit_logs"]) + 1
+    assert audit[-1]["action"] == "migration.applied"
+    assert audit[-1]["entity_id"] == "0011_score_submissions"
+    assert rows("score_submissions") == []

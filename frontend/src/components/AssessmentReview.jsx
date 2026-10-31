@@ -2,13 +2,14 @@ import { FIELD_GROUPS, assessmentDisplay, statementReview } from "../lib/assessm
 import OperatingChecks from './OperatingChecks.jsx';
 
 /** Review the same payload that will be submitted, without creating a record. */
-export default function AssessmentReview({ review, headingRef, unusedFields, onEdit, disabled }) {
+export default function AssessmentReview({ review, headingRef, unusedFields, onEdit, disabled, saveUncertain = false, onRetry, retryDisabled = false }) {
   const evidence = statementReview(review.statement, review.payload);
   return <section aria-labelledby="assessment-review-title" className="space-y-5 px-5 py-5" data-testid="assessment-review">
     <div className="rounded-xl border border-brand-200 bg-brand-50 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Review before saving</p>
-      <h3 ref={headingRef} id="assessment-review-title" tabIndex={-1} className="mt-1 scroll-mt-28 text-lg font-bold text-slate-900">Check the credit file</h3>
-      <p className="mt-2 text-sm leading-relaxed text-slate-700">Nothing has been saved from this review. Confirming below creates a new assessment with these figures and a model recommendation. A credit officer decides separately.</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">{saveUncertain ? 'Save recovery' : 'Review before saving'}</p>
+      <h3 ref={headingRef} id="assessment-review-title" tabIndex={-1} className="mt-1 scroll-mt-28 text-lg font-bold text-slate-900">{saveUncertain ? 'Recover this assessment save' : 'Check the credit file'}</h3>
+      <p className="mt-2 text-sm leading-relaxed text-slate-700">{saveUncertain ? 'The save result was not verified. The server may already have saved this assessment. Keep these reviewed figures unchanged and retry the same assessment below to recover or complete that save.' : 'Nothing has been saved from this review. Confirming below creates a new assessment with these figures and a model recommendation. A credit officer decides separately.'}</p>
+      {saveUncertain ? <><p role="alert" className="mt-3 text-sm font-medium text-brand-900">Retry uses the original submission reference and returns the same saved case. Editing is locked until its result is verified.</p><button type="button" className="btn-primary mt-4" disabled={retryDisabled} onClick={onRetry}>Recover assessment result</button></> : null}
     </div>
     <div className={`rounded-xl border p-4 ${evidence.status === "edited" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
       <div className="flex items-start justify-between gap-3">
