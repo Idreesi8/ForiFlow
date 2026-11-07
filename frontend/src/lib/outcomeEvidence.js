@@ -6,6 +6,16 @@ export const EVIDENCE_STATUSES = {
   covered: 'Window covered',
 };
 
+/** Navigation carries only bounded view controls, never case facts or URLs. */
+export function evidenceReturnState(state) {
+  const query = state?.evidenceQuery;
+  if (!query || Array.isArray(query) || ![3, 6, 12].includes(query.horizon) ||
+      query.limit !== 10 || !Number.isSafeInteger(query.offset) || query.offset < 0 ||
+      query.offset > 1_000_000 || query.offset % 10 !== 0 ||
+      !(query.status_filter === '' || Object.hasOwn(EVIDENCE_STATUSES, query.status_filter))) return null;
+  return { evidenceQuery: { horizon: query.horizon, limit: 10, offset: query.offset, status_filter: query.status_filter } };
+}
+
 /** Withhold impossible totals rather than turn missing evidence into success. */
 export function validOutcomeEvidence(data, expected) {
   if (!data || data.training_ready !== false || data.horizon_months !== expected.horizon ||

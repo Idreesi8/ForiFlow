@@ -75,6 +75,7 @@ def test_later_month_does_not_fill_an_earlier_gap(db_session_factory):
     ({'observation_date': date(2027, 1, 1)}, 'in the future'),
     ({'created_at': datetime(2027, 1, 1, tzinfo=timezone.utc)}, 'timestamp is in the future'),
     ({'created_by': None}, 'provenance incomplete'),
+    ({'created_at': datetime(2026, 1, 1, tzinfo=timezone.utc)}, 'predates its observation'),
     ({'score_source': 'legacy_unknown'}, 'provenance incomplete'),
 ])
 def test_incomplete_month_is_unknown_not_a_negative_label(db_session_factory, changes, reason):
@@ -137,6 +138,17 @@ def test_window_matures_on_pakistan_day_with_end_of_month_clamping(db_session_fa
         assert before.rows[0].status == 'collecting'
         assert after.rows[0].status == 'needs_evidence'
         assert after.rows[0].window_end == date(2026, 4, 30)
+
+
+@pytest.mark.parametrize('change', ['unnamed', 'future_instant'])
+def test_future_or_unnamed_approval_is_not_an_evidence_anchor(db_session_factory, change):
+    from datetime import timedelta
+    with db_session_factory() as db:
+        app = facility(db)
+        if change == 'unnamed': app.reviewed_by = ' '
+        else: app.reviewed_at = NOW + timedelta(seconds=1)
+        db.flush()
+        assert report(db).rows[0].status == 'needs_approval_record'
 
 
 def test_repeated_facilities_are_one_real_borrower_and_counts_are_not_page_counts(db_session_factory):

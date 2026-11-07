@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { apiErrorMessage, fetchOutcomeEvidence } from '../api/client.js';
-import { EVIDENCE_STATUSES, validOutcomeEvidence } from '../lib/outcomeEvidence.js';
+import { EVIDENCE_STATUSES, evidenceReturnState, validOutcomeEvidence } from '../lib/outcomeEvidence.js';
 import { formatCount, formatDate, formatDateTime } from '../lib/format.js';
 
 const PAGE_SIZE = 10;
 
 export default function OutcomeEvidence() {
-  const [query, setQuery] = useState({ horizon: 3, limit: PAGE_SIZE, offset: 0, status_filter: '' });
+  const location = useLocation();
+  const [query, setQuery] = useState(() => evidenceReturnState(location.state)?.evidenceQuery ?? { horizon: 3, limit: PAGE_SIZE, offset: 0, status_filter: '' });
   const [attempt, setAttempt] = useState(0);
   const [view, setView] = useState({ loading: true, data: null, error: null });
   const heading = useRef(null);
+  const title = useRef(null);
+  const returned = useRef(false);
   const paging = useRef(false);
   useEffect(() => {
     const controller = new AbortController();
@@ -18,11 +21,11 @@ export default function OutcomeEvidence() {
     setView({ loading: true, data: null, error: null, query });
     fetchOutcomeEvidence({ ...query, status_filter: query.status_filter || undefined }, { signal: controller.signal })
       .then(data => {
-        if (!validOutcomeEvidence(data, query)) throw new Error('The evidence totals could not be verified.');
+        if (!validOutcomeEvidence(data, query)) throw Object.assign(new Error('The evidence totals could not be verified. No readiness conclusion is shown.'), { code: 'UNVERIFIED_EVIDENCE' });
         if (alive) setView({ loading: false, data, error: null, query });
       }).catch(error => {
         if (alive && !controller.signal.aborted) setView({ loading: false, data: null, query,
-          error: apiErrorMessage(error, 'Repayment evidence could not be verified. Please retry.') });
+          error: error.code === 'UNVERIFIED_EVIDENCE' ? error.message : apiErrorMessage(error, 'Repayment evidence could not be verified. Please retry.') });
       });
     return () => { alive = false; controller.abort(); };
   }, [query, attempt]);
@@ -37,12 +40,18 @@ export default function OutcomeEvidence() {
   const data = current ? view.data : null;
   const error = current ? view.error : null;
   const loading = !current || view.loading;
+  useEffect(() => {
+    if (!loading && location.hash === '#repayment-evidence' && !returned.current) {
+      title.current?.scrollIntoView({ block: 'start' }); title.current?.focus({ preventScroll: true });
+      returned.current = true;
+    }
+  }, [loading, location.hash]);
   const change = update => { paging.current = false; setQuery(previous => ({ ...previous, ...update, offset: 0 })); };
   const page = offset => { paging.current = true; setQuery(previous => ({ ...previous, offset })); };
   return <section className="card min-w-0" aria-labelledby="outcome-evidence-title" id="repayment-evidence">
     <div className="card-header">
       <div><p className="text-xs font-semibold uppercase tracking-wide text-brand-700">From monitoring to better evidence</p>
-        <h3 id="outcome-evidence-title" className="mt-1 text-lg font-bold text-slate-900">Repayment evidence for learning</h3>
+        <h3 ref={title} tabIndex={-1} id="outcome-evidence-title" className="mt-1 scroll-mt-28 text-lg font-bold text-slate-900">Repayment evidence for learning</h3>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">See which approved facilities have complete records for a selected reporting window, and where to collect missing evidence. This does not measure model accuracy.</p></div>
       <span className="badge bg-amber-50 text-amber-900">Evidence collection only</span>
     </div>
@@ -76,16 +85,16 @@ export default function OutcomeEvidence() {
         </div>
         <div>
           <h4 ref={heading} tabIndex={-1} className="scroll-mt-28 text-sm font-semibold text-slate-900">Facility evidence</h4>
-          <p className="mt-1 text-xs text-slate-500">{data.total ? `${formatCount(query.offset + 1)}–${formatCount(Math.min(query.offset + PAGE_SIZE, data.total))} of ${formatCount(data.total)}` : 'No facilities match this view.'}</p>
+          <p className="mt-1 text-xs text-slate-500">{data.total === 0 ? 'No facilities match this view.' : query.offset >= data.total ? 'This page is no longer in range. Return to the first page for current records.' : `${formatCount(query.offset + 1)}–${formatCount(Math.min(query.offset + PAGE_SIZE, data.total))} of ${formatCount(data.total)}`}</p>
           <ul className="mt-3 space-y-3" aria-label="Facility evidence list">
             {data.rows.map(row => <li key={row.application_id} className="min-w-0 rounded-xl border border-slate-200 p-4">
               <div className="flex flex-wrap justify-between gap-2"><p className="min-w-0 break-words text-sm font-semibold text-slate-900">#{row.application_id} · {row.business_name}</p><span className={`text-xs font-semibold ${row.status === 'covered' ? 'text-brand-800' : 'text-slate-600'}`}>{EVIDENCE_STATUSES[row.status]}</span></div>
               <p className="mt-2 text-xs text-slate-600">Usable months: {row.usable_months}/{query.horizon} · Active records: {row.recorded_months}{row.window_end ? ` · Window anniversary: ${formatDate(row.window_end)}` : ''}</p>
               <details className="mt-3"><summary className="text-xs font-semibold text-brand-800">Evidence and model details</summary><ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed text-slate-600">{row.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul><p className="mt-2 break-words text-xs text-slate-500">Borrower: {row.borrower_public_id || 'Public reference not recorded'} · Model: {row.model_version || 'Not recorded'} · Engine: {row.scoring_engine || 'Not recorded'}</p></details>
-              <Link className="mt-3 inline-block text-xs font-semibold text-brand-800 underline underline-offset-2" to={`/alerts?facility=${row.application_id}#monitoring`}>Review monitoring records →</Link>
+              <Link className="mt-3 inline-block text-xs font-semibold text-brand-800 underline underline-offset-2" to={`/alerts?facility=${row.application_id}#facility-history`} state={{ evidenceQuery: query }}>Review monitoring records →</Link>
             </li>)}
           </ul>
-          {data.total > PAGE_SIZE ? <div className="mt-4 flex flex-wrap gap-2" aria-label="Evidence pages"><button className="btn-secondary text-xs" disabled={query.offset === 0} onClick={() => page(Math.max(0, query.offset - PAGE_SIZE))}>Previous facilities</button><button className="btn-secondary text-xs" disabled={query.offset + PAGE_SIZE >= data.total} onClick={() => page(query.offset + PAGE_SIZE)}>Next facilities</button></div> : null}
+          {query.offset > 0 || data.total > PAGE_SIZE ? <div className="mt-4 flex flex-wrap gap-2" aria-label="Evidence pages">{query.offset >= data.total ? <button className="btn-secondary text-xs" onClick={() => page(0)}>First facilities</button> : null}<button className="btn-secondary text-xs" disabled={query.offset === 0} onClick={() => page(Math.max(0, query.offset - PAGE_SIZE))}>Previous facilities</button><button className="btn-secondary text-xs" disabled={query.offset + PAGE_SIZE >= data.total} onClick={() => page(query.offset + PAGE_SIZE)}>Next facilities</button></div> : null}
         </div>
         <details><summary className="text-sm font-semibold text-slate-700">What this evidence can and cannot establish</summary><ul className="mt-3 list-disc space-y-2 pl-4 text-xs leading-relaxed text-slate-600">{data.limits.map(note => <li key={note}>{note}</li>)}</ul><p className="mt-3 text-xs text-slate-500">Snapshot: {formatDateTime(data.captured_at)}. No model, case or decision was changed.</p></details>
       </>}

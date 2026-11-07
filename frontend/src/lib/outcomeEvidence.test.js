@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validOutcomeEvidence } from './outcomeEvidence.js';
+import { evidenceReturnState, validOutcomeEvidence } from './outcomeEvidence.js';
 
 const query = { horizon: 3, limit: 10, offset: 0, status_filter: '' };
 const fixture = () => ({
@@ -12,6 +12,18 @@ const fixture = () => ({
   rows: [1, 2, 3].map(id => ({ application_id: id, business_name: 'Fictional workshop',
     status: id === 1 ? 'covered' : 'needs_evidence', recorded_months: id === 1 ? 3 : 1,
     usable_months: id === 1 ? 3 : 0, reasons: ['Inspect source records.'], recorded_30_plus: id === 1 })),
+});
+
+test('return navigation preserves view controls without carrying case facts or redirect targets', () => {
+  const view = { ...query, horizon: 6, offset: 20, status_filter: 'needs_evidence' };
+  assert.deepEqual(evidenceReturnState({ evidenceQuery: { ...view, borrower_name: 'Private', redirect: 'https://example.com' }, case: 'Private' }),
+    { evidenceQuery: view });
+  for (const update of [{ horizon: 4 }, { offset: -10 }, { offset: 1.5 }, { offset: 11 },
+      { offset: 1_000_010 }, { limit: 100 }, { status_filter: 'defaulted' }]) {
+    assert.equal(evidenceReturnState({ evidenceQuery: { ...view, ...update } }), null);
+  }
+  assert.equal(evidenceReturnState(null), null);
+  assert.equal(evidenceReturnState({ evidenceQuery: [] }), null);
 });
 
 test('coherent evidence counts and empty pages are displayed without inventing outcomes', () => {

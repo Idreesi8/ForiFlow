@@ -17,7 +17,7 @@ The report uses today's Pakistan calendar date and UTC recording timestamps.
 
 Every approved facility belongs to exactly one status:
 
-- **Approval record needed:** officer approval or its date is missing, is in
+- **Approval record needed:** named officer approval or its date is missing, is in
   the future, or is a legacy automatic decision. A recommendation is not an
   approval anchor.
 - **Shorter than window:** the facility's tenure is shorter than the selected
@@ -29,7 +29,7 @@ Every approved facility belongs to exactly one status:
 
 A usable month is an active observation dated on or after its approval-based
 anniversary and no later than today, with a named recorder, a non-future
-recording timestamp, non-legacy provenance, a finite nonnegative payment amount
+recording timestamp no earlier than the observation date, non-legacy provenance, a finite nonnegative payment amount
 and exact days late consistent with its installment-status bucket. Zero is a
 known payment amount; NULL is unknown. Superseded corrections and months outside
 the selected window are excluded. A later month cannot fill an earlier gap.
@@ -60,6 +60,11 @@ not change a case, decision, audit, model, policy or schema. No model inference
 is needed. Changing filters cancels outdated requests and hides old-query data;
 inconsistent counts are withheld. Failures offer an explicit retry. Evidence
 remains available if the separate static evaluation fails to load.
+Monitoring links open the selected facility history and provide a return link
+that preserves the reporting window, filter and page. Navigation carries only
+validated view controls, not case facts or arbitrary redirect URLs. If a refresh
+leaves a saved page beyond the current result range, a first-page action remains
+available.
 
 ## Next development steps
 

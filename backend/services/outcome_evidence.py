@@ -47,6 +47,8 @@ def record_issues(row, due, captured):
         issues.append('Recording provenance incomplete')
     elif as_utc(row.created_at) > captured:
         issues.append('Record timestamp is in the future')
+    elif row.observation_date is not None and business_date(row.created_at) < row.observation_date:
+        issues.append('Record timestamp predates its observation date')
     amount = row.amount_paid_pkr
     if amount is None:
         issues.append('Payment amount unknown')
@@ -73,7 +75,7 @@ def build_outcome_evidence(db, *, horizon=3, limit=10, offset=0, status_filter=N
     # per-facility queries, CSV reconstruction, model calls or database writes.
     cases = db.execute(select(Application.id, Application.business_name,
         Application.borrower_id, Borrower.id.label('linked_borrower_id'), Borrower.public_id, Application.model_version,
-        Application.scoring_engine, Application.reviewed_at, Application.decision_source,
+        Application.scoring_engine, Application.reviewed_at, Application.reviewed_by, Application.decision_source,
         Application.tenure_months).outerjoin(Borrower, Borrower.id == Application.borrower_id)
         .where(Application.decision_status == 'Approved').order_by(Application.id)).all()
     observations = defaultdict(dict)
@@ -100,7 +102,7 @@ def build_outcome_evidence(db, *, horizon=3, limit=10, offset=0, status_filter=N
             else:
                 usable += 1
                 late = late or row.days_late >= 30
-        if anchor is None or as_utc(case.reviewed_at) > captured or case.decision_source != 'officer':
+        if anchor is None or as_utc(case.reviewed_at) > captured or case.decision_source != 'officer' or not (case.reviewed_by or '').strip():
             state = 'needs_approval_record'
             reasons.insert(0, 'A dated officer approval is required; a recommendation or legacy automatic decision is not a verified approval anchor.')
         elif case.tenure_months < horizon:
