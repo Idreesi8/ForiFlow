@@ -181,8 +181,9 @@ def test_an_application_keeps_the_model_it_was_scored_with(
     assert early_row.model_version_id != late_row.model_version_id
     assert early_row.risk_score == early["risk_score"]
 
-    # Recomputing the explanation with the newer model does not touch the record.
-    ml_client.post(f"/explain/{early['application_id']}?refresh=true")
+    # A newer model cannot explain a different model's historical assessment.
+    assert ml_client.post(f"/explain/{early['application_id']}?refresh=true").status_code == 409
+    assert ml_client.get(f"/explain/{early['application_id']}").json() == early["explanation"]
     again = _stored(db_session_factory, early["application_id"])
     assert (again.model_version, again.scoring_engine, again.risk_score) == (
         "surrogate-linear-v1",
