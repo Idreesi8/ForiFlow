@@ -47,7 +47,8 @@ import { ErrorState, LoadingState } from "../components/common/States.jsx";
 const MODEL_COLOR = "#2d8560";
 const RAW_COLOR = "#7c3aed";
 const AXIS_TICK = { fontSize: 11, fill: "#64748b" };
-const TOOLTIP_STYLE = { fontSize: 12, borderRadius: 8 };
+const TOOLTIP_STYLE = { fontSize: 12, borderRadius: 8,
+  maxWidth: 'min(18rem, calc(100vw - 8rem))', whiteSpace: 'normal', overflowWrap: 'anywhere' };
 
 /**
  * The demonstration model: status, final-test performance, baselines,
