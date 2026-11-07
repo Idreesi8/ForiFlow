@@ -36,6 +36,7 @@ import {
 import { ApplicabilityModelCard } from "../components/ModelDiagnostics.jsx";
 import SMEFieldResearch from "../components/SMEFieldResearch.jsx";
 import FeatureEngineering from "../components/FeatureEngineering.jsx";
+import OutcomeEvidence from '../components/OutcomeEvidence.jsx';
 import { useActivePolicy } from "../lib/useActivePolicy.js";
 import { bandForDecision } from "../lib/decisions.js";
 import { formatCount, formatPercent, formatSigned } from "../lib/format.js";
@@ -104,7 +105,7 @@ export default function ModelPage() {
   }, [load]);
 
   if (isLoading) return <LoadingState label="Loading model evaluation…" />;
-  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (error) return <div className="space-y-6"><ErrorState message={error} onRetry={load} /><OutcomeEvidence /></div>;
 
   const hold = evaluation.final_test ?? evaluation.holdout;
   const matrix = hold.confusion_at_half;
@@ -122,6 +123,7 @@ export default function ModelPage() {
         </p>
       </div>
 
+      <OutcomeEvidence />
       <DemoModelNotice card={card} />
       <ApplicabilityModelCard data={applicability} />
       <FeatureEngineering />
