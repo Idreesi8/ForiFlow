@@ -9,6 +9,7 @@ import FacilitySwitchDialog from "../components/FacilitySwitchDialog.jsx";
 import MonitoringPanel from "../components/MonitoringPanel.jsx";
 import MonitoringWorkspaceNav from "../components/MonitoringWorkspaceNav.jsx";
 import WorklistReturn from "../components/WorklistReturn.jsx";
+import { evidenceReturnState } from '../lib/outcomeEvidence.js';
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
 import { positiveInteger, worklistReturnState } from "../lib/actionDesk.js";
 import { reminderReturnState } from '../lib/reminderReview.js';
@@ -21,7 +22,7 @@ import { MONITORING_SECTIONS, revealMonitoringSection } from '../lib/monitoringW
 export default function AlertsPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const returnState = worklistReturnState(location.state) ?? reminderReturnState(location.state);
+  const returnState = worklistReturnState(location.state) ?? reminderReturnState(location.state) ?? evidenceReturnState(location.state);
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedFacility = positiveInteger(searchParams.get("facility"));
   const requestedMonth = positiveInteger(searchParams.get("month"));

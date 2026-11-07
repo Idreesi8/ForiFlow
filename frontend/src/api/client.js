@@ -220,6 +220,9 @@ export const fetchModelEvaluation = () =>
 
 export const fetchDrift = () => client.get("/model/drift").then((response) => response.data);
 
+export const fetchOutcomeEvidence = (params = {}, { signal } = {}) =>
+  client.get('/model/outcome-evidence', { params, signal }).then(response => response.data);
+
 export const fetchFairness = () =>
   client.get("/model/fairness").then((response) => response.data);
 

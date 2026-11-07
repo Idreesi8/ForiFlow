@@ -6,7 +6,7 @@ from typing import Annotated, Any
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -26,12 +26,28 @@ from services.statement_service import parse_statement, StatementError
 from services.feature_study import StudySummary, load_study
 from cashflow_schemas import CashflowRequest, CashflowReport
 from services.cashflow_intelligence import analyse_csv as analyse_cashflow
+from outcome_schemas import EvidenceStatus, OutcomeEvidence
+from services.outcome_evidence import build_outcome_evidence
 
 router = APIRouter(
     prefix="/model",
     tags=["Model"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+@router.get('/outcome-evidence', response_model=OutcomeEvidence,
+            summary='Read-only coverage of repayment evidence for future validation')
+def outcome_evidence(response: Response, db: Annotated[Session, Depends(get_db)],
+                     horizon: Annotated[int, Query(ge=3, le=12)] = 3,
+                     limit: Annotated[int, Query(ge=1, le=100)] = 10,
+                     offset: Annotated[int, Query(ge=0)] = 0,
+                     status_filter: EvidenceStatus | None = None) -> OutcomeEvidence:
+    response.headers['Cache-Control'] = 'no-store'
+    if horizon not in (3, 6, 12):
+        raise HTTPException(status_code=422, detail='Select a 3, 6 or 12 month reporting window.')
+    return build_outcome_evidence(db, horizon=horizon, limit=limit, offset=offset,
+                                 status_filter=status_filter)
 
 
 @router.post('/cashflow-intelligence', response_model=CashflowReport,
