@@ -11,7 +11,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
-from models.database import Application, AuditLog, Base, RepaymentReceipt, RepaymentSchedule, User
+from models.database import Application, AuditLog, Base, Borrower, RepaymentReceipt, RepaymentSchedule, User
 from repayment_schemas import ReceiptCreate, ScheduleCreate
 from services import repayments
 from services.audit_service import AuditContext
@@ -35,7 +35,9 @@ def ledger_pg(monkeypatch):
     monkeypatch.setattr(repayments, 'utc_now', lambda: datetime(2026, 11, 8, 10, tzinfo=timezone.utc))
     with factory() as db:
         db.add(User(id=1, username='ledger.qa', hashed_password=TEST_ADMIN_HASH, role='admin'))
-        db.add(Application(id=1, **MID_APPLICANT, risk_score=60, decision='Manual Review',
+        db.add(Borrower(id=1, public_id='BRW-LEDGER-QA', business_name='Fictional ledger workshop', owner_name='Fictional owner'))
+        db.flush()
+        db.add(Application(id=1, borrower_id=1, **MID_APPLICANT, risk_score=60, decision='Manual Review',
             decision_status='Approved', decision_source='officer', reviewed_by='ledger.qa',
             reviewed_at=datetime(2026, 9, 30, tzinfo=timezone.utc)))
         db.commit()

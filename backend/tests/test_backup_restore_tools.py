@@ -238,11 +238,14 @@ def test_backup_preserves_recorded_repayment_history_and_detects_edits(pg_backup
     from datetime import date
     from sqlalchemy import text
     from sqlalchemy.orm import Session
-    from models.database import Application, RepaymentSchedule, RepaymentReceipt
+    from models.database import Application, Borrower, RepaymentSchedule, RepaymentReceipt
     from tests.conftest import MID_APPLICANT
     env, engine, dump, run, _ = pg_backup
     with Session(engine) as db:
-        case = Application(**MID_APPLICANT, risk_score=60, decision='Manual Review', decision_status='Approved')
+        borrower = Borrower(public_id='BRW-BACKUP-QA', business_name='Fictional backup workshop', owner_name='Fictional owner')
+        db.add(borrower)
+        db.flush()
+        case = Application(borrower_id=borrower.id, **MID_APPLICANT, risk_score=60, decision='Manual Review', decision_status='Approved')
         db.add(case)
         db.flush()
         schedule = RepaymentSchedule(application_id=case.id, version=1, submission_key=str(uuid.uuid4()),

@@ -14,6 +14,7 @@ const blankAllocation = () => ({ installment: '', amount_pkr: '' });
 export default function RepaymentCalendar({ applicationId, onDirtyChange, onBusyChange }) {
   const [data, setData] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [writeError, setWriteError] = useState('');
+  const [retryHint, setRetryHint] = useState(false);
   const [editing, setEditing] = useState(false), [disbursed, setDisbursed] = useState(''), [firstDue, setFirstDue] = useState('');
   const [count, setCount] = useState('12'), [agreed, setAgreed] = useState(''), [items, setItems] = useState([]), [source, setSource] = useState('');
   const [paidOn, setPaidOn] = useState(''), [reference, setReference] = useState(''), [allocations, setAllocations] = useState([blankAllocation()]);
@@ -49,14 +50,17 @@ export default function RepaymentCalendar({ applicationId, onDirtyChange, onBusy
 
   const write = async (operation, success, clear) => {
     if (saving.current) return;
-    saving.current = true; setBusy(true); setWriteError(''); setMessage('');
+    saving.current = true; setBusy(true); setWriteError(''); setMessage(''); setRetryHint(false);
     ++sequence.current; controller.current?.abort();
     try {
       const report = await operation();
       if (!mounted.current) return;
       accept(report); clear(); setMessage(success); setReceiptOffset(0); setScheduleId(null);
     } catch (e) {
-      if (mounted.current) setWriteError(apiErrorMessage(e, e.message || 'Save could not be confirmed. Retry the same details to recover the original save.'));
+      if (mounted.current) {
+        setWriteError(apiErrorMessage(e, e.message || 'Save could not be confirmed. Retry the same details to recover the original save.'));
+        const status = e.response?.status; setRetryHint(!status || status === 408 || status >= 500);
+      }
     } finally { saving.current = false; if (mounted.current) setBusy(false); }
   };
   const saveSchedule = event => {
@@ -93,7 +97,7 @@ export default function RepaymentCalendar({ applicationId, onDirtyChange, onBusy
     </div>
     <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Officer-recorded evidence. Payments are not verified against a bank feed. Overdue amounts do not change the credit score, EWS alerts or regulatory loan classification.</p>
     {message && <p role="status" className="mt-3 text-sm text-emerald-800">{message}</p>}
-    {writeError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{writeError} If the response was lost, retry unchanged details before starting another entry.</p>}
+    {writeError && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{writeError}{retryHint ? ' If the response was lost, retry unchanged details before starting another entry.' : ' Review the entries below. Discard the relevant draft before reloading a changed schedule.'}</p>}
     {data.schedule ? <>
       <Field label="Contract schedule version"><select className="field-input sm:max-w-sm" disabled={busy || dirty} value={data.schedule.id} onChange={e => { setScheduleId(Number(e.target.value)); setReceiptOffset(0); setWriteError(''); setMessage(''); }}>
         {data.schedule_versions.map(v => <option value={v.id} key={v.id}>Version {v.version}{v.id === data.current_schedule_id ? ' · current' : ' · superseded'} · {v.created_by}</option>)}
@@ -128,7 +132,7 @@ export default function RepaymentCalendar({ applicationId, onDirtyChange, onBusy
         </div>
         <button type="button" className="btn-secondary mt-3" onClick={() => {
           try { setItems(monthlyItems(firstDue, Number(count), agreed)); setWriteError(''); }
-          catch (e) { setWriteError(e.message); }
+          catch (e) { setWriteError(e.message); setRetryHint(false); }
         }}>Prepare monthly dates</button>
         <div className="mt-3 max-h-72 space-y-2 overflow-auto" aria-label="Review draft instalments">{items.map((item, index) => <div className="grid grid-cols-[2rem_1fr_1fr] items-end gap-2" key={index}>
           <span className="pb-2 text-xs">#{index + 1}</span><Field label={`Due date ${index + 1}`}><input className="field-input min-w-0" type="date" required min={disbursed || undefined} value={item.due_on} onChange={e => setItems(rows => rows.map((r, i) => i === index ? { ...r, due_on: e.target.value } : r))} /></Field>
