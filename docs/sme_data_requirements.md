@@ -29,12 +29,13 @@ uses three features (see [model_card.md](model_card.md), section 7).
 | Default / outcome label | Whether the facility reached a defined default (e.g. 90+ days past due, restructuring, write-off) within a fixed window, and when | The target. Without it nothing can be trained or validated. |
 | Decision record | Approved / rejected, by whom, policy in force | Measures reject-inference bias: outcomes exist only for approved loans. |
 
-## Minimum for a first credible pilot model
+## Planning requirements for a first credible pilot model
 
-- Several thousand SME facilities with outcomes, including enough defaults
-  (hundreds, not dozens) to estimate discrimination and calibration.
-- At least two years of originations, so the final test set can be
-  later in time than the training data.
+- Sufficient mature SME facilities, default/non-default events and subgroup
+  coverage for the intended model complexity and statistical precision. Determine
+  counts from an evaluation design; no fixed count certifies readiness.
+- Originations and follow-up spanning the agreed outcome window and a later-time
+  evaluation period. Duration depends on the product and event definition.
 - A written default definition and observation window agreed with the lender.
 - A data-sharing agreement covering privacy, retention and permitted use.
 

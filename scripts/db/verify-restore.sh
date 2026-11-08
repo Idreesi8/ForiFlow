@@ -49,14 +49,23 @@ copy_receipts=$(q "$SCRATCH" "SELECT to_regclass('public.score_submissions') IS 
 [ "$live_receipts" = "$copy_receipts" ] || fail 'assessment receipt table presence differs'
 if [ "$live_receipts" = t ]; then TABLES="$TABLES score_submissions"; fi
 
-# Repayment history is durable financial state. A restored backup must have
-# the same table presence and contents, including voided receipts.
-for optional_table in repayment_schedules repayment_receipts; do
+# Repayment and source-evidence histories are durable state. A restored backup
+# must preserve table presence and contents, including voids and withdrawals.
+for optional_table in repayment_schedules repayment_receipts case_data_records; do
     live_has=$(q "$LIVE" "SELECT to_regclass('public.$optional_table') IS NOT NULL") || fail 'cannot inspect repayment tables'
     copy_has=$(q "$SCRATCH" "SELECT to_regclass('public.$optional_table') IS NOT NULL") || fail 'cannot inspect restored repayment tables'
     [ "$live_has" = "$copy_has" ] || fail "$optional_table presence differs"
     if [ "$live_has" = t ]; then TABLES="$TABLES $optional_table"; fi
 done
+
+if [ "$live_has" = t ]; then
+    evidence_triggers=$(q "$SCRATCH" "SELECT count(*) FROM pg_trigger WHERE tgrelid='public.case_data_records'::regclass AND tgname IN ('case_data_records_no_change','case_data_records_no_truncate') AND tgenabled='O'") || fail 'cannot inspect evidence guards'
+    [ "$evidence_triggers" = 2 ] || fail 'source evidence append-only triggers missing or disabled'
+    if q "$SCRATCH" 'TRUNCATE case_data_records' >/dev/null 2>&1; then
+        fail 'restored source evidence permits truncation'
+    fi
+    echo 'source evidence append-only guard: enforced'
+fi
 
 for table in $TABLES; do
     # Hash every row, sort row hashes (including duplicates), then hash the

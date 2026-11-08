@@ -150,10 +150,10 @@ def test_bad_tokens_are_refused(anonymous_client: TestClient, make_token) -> Non
 
 
 def _protected_routes() -> list[APIRoute]:
-    from routers import audit, auth, borrowers, ews, explain, model, policy, portfolio, repayments, score
+    from routers import audit, auth, borrowers, case_data, ews, explain, model, policy, portfolio, repayments, score
 
     routes = []
-    for module in (audit, auth, borrowers, ews, explain, model, policy, portfolio, repayments, score):
+    for module in (audit, auth, borrowers, case_data, ews, explain, model, policy, portfolio, repayments, score):
         for route in module.router.routes:
             if isinstance(route, APIRoute) and route.path != "/auth/login":
                 routes.append(route)
@@ -191,6 +191,8 @@ def _url(route: APIRoute) -> str:
         .replace("{policy_id}", "1")
         .replace("{user_id}", "1")
         .replace("{receipt_id}", "1")
+        .replace("{record_id}", "1")
+        .replace("{stream_key}", "00000000-0000-0000-0000-000000000001")
     )
 
 

@@ -214,6 +214,7 @@ TABLE_ORDER = (
     "score_submissions",
     "repayment_schedules",
     "repayment_receipts",
+    "case_data_records",
     # Since 0008 an alert points at the observations it rests on.
     "ews_tracking",
     "alerts",
@@ -222,6 +223,7 @@ TABLE_ORDER = (
 
 # Present on SQLite after Step 2 create_all; absent on a pre-auth file.
 OPTIONAL: dict[str, tuple[str, ...]] = {
+    "case_data_records": ('id', 'application_id', 'stream_key', 'revision', 'supersedes_id', 'submission_key', 'payload_hash', 'event_kind', 'payload', 'input_snapshot', 'note', 'created_by', 'created_at'),
     "repayment_schedules": ('id', 'application_id', 'version', 'submission_key', 'replaces_id', 'disbursed_on', 'items', 'source_note', 'created_by', 'created_at'),
     "repayment_receipts": ('id', 'application_id', 'schedule_id', 'submission_key', 'paid_on', 'reference', 'allocations', 'created_by', 'created_at', 'voided_at', 'voided_by', 'void_reason'),
     "score_submissions": ('id', 'user_id', 'submission_key', 'payload_hash', 'application_id', 'response_json', 'created_at'),

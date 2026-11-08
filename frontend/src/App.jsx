@@ -18,6 +18,7 @@ import { UnsavedWorkProvider, useGuardedExit } from "./components/UnsavedWork.js
 const AlertsPage = lazy(() => import("./pages/AlertsPage.jsx"));
 const ActionDeskPage = lazy(() => import("./pages/ActionDeskPage.jsx"));
 const ApplicationsPage = lazy(() => import("./pages/ApplicationsPage.jsx"));
+const CaseDataPage = lazy(() => import('./pages/CaseDataPage.jsx'));
 const DashboardPage = lazy(() => import("./pages/DashboardPage.jsx"));
 const LoginPage = lazy(() => import("./pages/LoginPage.jsx"));
 const MemoPage = lazy(() => import("./pages/MemoPage.jsx"));
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/shap/:applicationId" element={<ShapReportsPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/applications" element={<ApplicationsPage />} />
+        <Route path="/applications/:applicationId/data-evidence" element={<CaseDataPage />} />
         <Route path="/memo/:applicationId" element={<MemoPage />} />
         <Route path="/model" element={<ModelPage />} />
         <Route path="/reminders" element={<RemindersPage />} />

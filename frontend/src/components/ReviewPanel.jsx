@@ -123,12 +123,12 @@ export default function ReviewPanel({ applicationId, onDecided, onWorkChange }) 
         <h3 id="review-panel-title" className="card-title">
           Assessment, recommendation and decision
         </h3>
-        <Link
+        <div className="flex flex-wrap gap-4"><Link to={`/applications/${application.id}/data-evidence`} className="text-xs font-semibold text-brand-700 hover:underline">Source &amp; permission evidence</Link><Link
           to={`/memo/${application.id}`}
           className="text-xs font-semibold text-brand-700 hover:underline"
         >
           Credit memo
-        </Link>
+        </Link></div>
       </div>
 
       <div className="px-5 py-4"><OperatingChecks values={application} applicationId={application.id} /></div>

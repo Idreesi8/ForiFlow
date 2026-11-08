@@ -906,6 +906,12 @@ async def overview(db: DbSession) -> EWSOverview:
 # --- timeline -------------------------------------------------------------------------
 
 _EVENT_TITLES = {
+    'case_data.record': 'Source and permission evidence recorded',
+    'case_data.replace': 'Source evidence corrected with a new revision',
+    'case_data.withdraw': 'Source permission withdrawal recorded',
+    'repayment.schedule_recorded': 'Repayment schedule recorded',
+    'repayment.receipt_recorded': 'Payment receipt recorded',
+    'repayment.receipt_voided': 'Payment receipt voided with history retained',
     Action.APPLICATION_CREATED: "Application created",
     Action.APPLICATION_SCORED: "Application scored",
     Action.RECOMMENDATION_GENERATED: "Recommendation generated",
