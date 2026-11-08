@@ -228,6 +228,8 @@ def test_real_backup_verifies_all_content_and_removes_only_its_scratch(pg_backup
     assert 'content score_submissions: identical' in result.stdout
     assert 'content repayment_schedules: identical' in result.stdout
     assert 'content repayment_receipts: identical' in result.stdout
+    assert 'content case_data_records: identical' in result.stdout
+    assert 'source evidence append-only guard: enforced' in result.stdout
     assert 'scratch database dropped:' in result.stdout
     assert 'RESULT: PASS' in result.stdout
 
@@ -269,6 +271,40 @@ def test_backup_preserves_recorded_repayment_history_and_detects_edits(pg_backup
     result = run('scripts/db/verify-restore.sh')
     assert result.returncode != 0
     assert f'content differs for {table}' in result.stdout + result.stderr
+
+
+@pytest.mark.postgres
+def test_backup_preserves_source_evidence_and_withdrawal_history(pg_backup):
+    from sqlalchemy.orm import Session
+    from models.database import Application, Borrower, CaseDataRecord
+    from case_data_schemas import RecordCreate
+    from tests.conftest import MID_APPLICANT
+    from tests.test_case_data import documented
+    env, engine, dump, run, _ = pg_backup
+    with Session(engine) as db:
+        borrower = Borrower(public_id='BRW-EVIDENCE-QA', business_name='Fictional evidence workshop', owner_name='Fictional owner')
+        db.add(borrower)
+        db.flush()
+        case = Application(borrower_id=borrower.id, **MID_APPLICANT, risk_score=60, decision='Manual Review')
+        db.add(case)
+        db.flush()
+        payload = RecordCreate.model_validate(documented()).model_dump(mode='json', exclude={'submission_key', 'note'})
+        stream = str(uuid.uuid4())
+        first = CaseDataRecord(application_id=case.id, stream_key=stream, revision=1, submission_key=str(uuid.uuid4()),
+            payload_hash='a' * 64, event_kind='recorded', payload=payload,
+            input_snapshot={'monthly_digital_payments': case.monthly_digital_payments, 'cash_flow_proxy': case.cash_flow_proxy},
+            note='Fictional original evidence record', created_by='synthetic')
+        db.add(first)
+        db.flush()
+        db.add(CaseDataRecord(application_id=case.id, stream_key=stream, revision=2, supersedes_id=first.id,
+            submission_key=str(uuid.uuid4()), payload_hash='b' * 64, event_kind='withdrawn', payload=payload,
+            input_snapshot=first.input_snapshot, note='Fictional recorded withdrawal evidence', created_by='synthetic'))
+        db.commit()
+    subprocess.run(['pg_dump', '-Fc', '-d', env['POSTGRES_DB'], '-f', str(dump)], env=env, check=True, capture_output=True)
+    result = run('scripts/db/verify-restore.sh')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'content case_data_records: identical (2:' in result.stdout
+    assert 'source evidence append-only guard: enforced' in result.stdout
 
 
 @pytest.mark.postgres

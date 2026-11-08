@@ -90,6 +90,7 @@ def postgres_session_factory_fixture() -> Generator[sessionmaker[Session], None,
     engine = create_engine(POSTGRES_URL, future=True, pool_pre_ping=True)
     with engine.begin() as connection:
         connection.execute(text("DROP TABLE IF EXISTS alembic_version CASCADE"))
+        connection.execute(text("DROP TABLE IF EXISTS case_data_records CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS repayment_receipts CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS repayment_schedules CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS score_submissions CASCADE"))

@@ -281,6 +281,12 @@ export const fetchUserAccessHistory = (userId, { signal } = {}) =>
 
 export default client;
 
+export const fetchCaseData = (id, { signal, offset = 0 } = {}) => client.get(`/case-data/${id}`, { signal, params: { offset } }).then(r => r.data);
+export const fetchCaseDataHistory = (id, streamKey, offset = 0) => client.get(`/case-data/${id}/history/${streamKey}`, { params: { offset } }).then(r => r.data);
+export const recordCaseData = (id, body) => client.post(`/case-data/${id}/records`, body).then(r => r.data);
+export const replaceCaseData = (id, recordId, body) => client.post(`/case-data/${id}/records/${recordId}/replace`, body).then(r => r.data);
+export const withdrawCaseData = (id, recordId, body) => client.post(`/case-data/${id}/records/${recordId}/withdraw`, body).then(r => r.data);
+
 export const fetchRepaymentCalendar = (id, { signal, scheduleId, receiptOffset = 0 } = {}) => client.get(`/repayments/${id}`, { signal, params: { schedule_id: scheduleId || undefined, receipt_offset: receiptOffset } }).then(r => r.data);
 export const recordRepaymentSchedule = (id, body) => client.post(`/repayments/${id}/schedule`, body).then(r => r.data);
 export const recordRepaymentReceipt = (id, body) => client.post(`/repayments/${id}/receipts`, body).then(r => r.data);

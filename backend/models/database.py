@@ -849,6 +849,40 @@ class ScoreSubmission(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class CaseDataRecord(Base):
+    """Append-only officer evidence notes; they do not grant data access."""
+    __tablename__ = 'case_data_records'
+    __table_args__ = (UniqueConstraint('application_id', 'stream_key', 'revision', name='uq_case_data_revision'),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey('applications.id', ondelete='RESTRICT'), nullable=False, index=True)
+    stream_key: Mapped[str] = mapped_column(String(36), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    supersedes_id: Mapped[int | None] = mapped_column(ForeignKey('case_data_records.id', ondelete='RESTRICT'))
+    submission_key: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload: Mapped[dict] = mapped_column(JsonColumn, nullable=False)
+    input_snapshot: Mapped[dict] = mapped_column(JsonColumn, nullable=False)
+    note: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+CASE_DATA_APPEND_ONLY_POSTGRES = (
+    "CREATE OR REPLACE FUNCTION case_data_records_append_only() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'case_data_records is append-only'; END; $$ LANGUAGE plpgsql",
+    'CREATE TRIGGER case_data_records_no_change BEFORE UPDATE OR DELETE ON case_data_records FOR EACH ROW EXECUTE FUNCTION case_data_records_append_only()',
+    'CREATE TRIGGER case_data_records_no_truncate BEFORE TRUNCATE ON case_data_records FOR EACH STATEMENT EXECUTE FUNCTION case_data_records_append_only()',
+)
+CASE_DATA_APPEND_ONLY_SQLITE = (
+    "CREATE TRIGGER case_data_records_no_update BEFORE UPDATE ON case_data_records BEGIN SELECT RAISE(ABORT, 'case_data_records is append-only'); END",
+    "CREATE TRIGGER case_data_records_no_delete BEFORE DELETE ON case_data_records BEGIN SELECT RAISE(ABORT, 'case_data_records is append-only'); END",
+)
+for _statement in CASE_DATA_APPEND_ONLY_POSTGRES:
+    event.listen(CaseDataRecord.__table__, 'after_create', DDL(_statement).execute_if(dialect='postgresql'))
+for _statement in CASE_DATA_APPEND_ONLY_SQLITE:
+    event.listen(CaseDataRecord.__table__, 'after_create', DDL(_statement).execute_if(dialect='sqlite'))
+
+
 class RepaymentSchedule(Base):
     """Officer-recorded contract dates; replacement adds a version, never edits items."""
     __tablename__ = 'repayment_schedules'
