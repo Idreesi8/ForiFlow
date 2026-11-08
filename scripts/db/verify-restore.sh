@@ -49,6 +49,15 @@ copy_receipts=$(q "$SCRATCH" "SELECT to_regclass('public.score_submissions') IS 
 [ "$live_receipts" = "$copy_receipts" ] || fail 'assessment receipt table presence differs'
 if [ "$live_receipts" = t ]; then TABLES="$TABLES score_submissions"; fi
 
+# Repayment history is durable financial state. A restored backup must have
+# the same table presence and contents, including voided receipts.
+for optional_table in repayment_schedules repayment_receipts; do
+    live_has=$(q "$LIVE" "SELECT to_regclass('public.$optional_table') IS NOT NULL") || fail 'cannot inspect repayment tables'
+    copy_has=$(q "$SCRATCH" "SELECT to_regclass('public.$optional_table') IS NOT NULL") || fail 'cannot inspect restored repayment tables'
+    [ "$live_has" = "$copy_has" ] || fail "$optional_table presence differs"
+    if [ "$live_has" = t ]; then TABLES="$TABLES $optional_table"; fi
+done
+
 for table in $TABLES; do
     # Hash every row, sort row hashes (including duplicates), then hash the
     # sequence. Counts alone cannot detect edited balances or earlier audits.

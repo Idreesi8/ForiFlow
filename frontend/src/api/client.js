@@ -280,3 +280,8 @@ export const fetchUserAccessHistory = (userId, { signal } = {}) =>
   client.get(`/auth/users/${userId}/access-history`, { signal }).then(response => response.data);
 
 export default client;
+
+export const fetchRepaymentCalendar = (id, { signal, scheduleId, receiptOffset = 0 } = {}) => client.get(`/repayments/${id}`, { signal, params: { schedule_id: scheduleId || undefined, receipt_offset: receiptOffset } }).then(r => r.data);
+export const recordRepaymentSchedule = (id, body) => client.post(`/repayments/${id}/schedule`, body).then(r => r.data);
+export const recordRepaymentReceipt = (id, body) => client.post(`/repayments/${id}/receipts`, body).then(r => r.data);
+export const voidRepaymentReceipt = (id, receiptId, reason) => client.post(`/repayments/${id}/receipts/${receiptId}/void`, { reason }).then(r => r.data);

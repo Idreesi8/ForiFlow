@@ -849,6 +849,43 @@ class ScoreSubmission(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class RepaymentSchedule(Base):
+    """Officer-recorded contract dates; replacement adds a version, never edits items."""
+    __tablename__ = 'repayment_schedules'
+    __table_args__ = (UniqueConstraint('application_id', 'version', name='uq_repayment_schedule_version'),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey('applications.id', ondelete='RESTRICT'), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    submission_key: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    replaces_id: Mapped[int | None] = mapped_column(ForeignKey('repayment_schedules.id', ondelete='RESTRICT'))
+    disbursed_on: Mapped[date] = mapped_column(Date, nullable=False)
+    items: Mapped[list] = mapped_column(JsonColumn, nullable=False)
+    source_note: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class RepaymentReceipt(Base):
+    """A recorded receipt with explicit instalment allocations; voiding retains history."""
+    __tablename__ = 'repayment_receipts'
+    __table_args__ = (
+        Index('uq_repayment_active_reference', 'application_id', 'reference', unique=True,
+              postgresql_where=text('voided_at IS NULL'), sqlite_where=text('voided_at IS NULL')),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey('applications.id', ondelete='RESTRICT'), nullable=False)
+    schedule_id: Mapped[int] = mapped_column(ForeignKey('repayment_schedules.id', ondelete='RESTRICT'), nullable=False, index=True)
+    submission_key: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    paid_on: Mapped[date] = mapped_column(Date, nullable=False)
+    reference: Mapped[str] = mapped_column(String(80), nullable=False)
+    allocations: Mapped[list] = mapped_column(JsonColumn, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    voided_by: Mapped[str | None] = mapped_column(String(64))
+    void_reason: Mapped[str | None] = mapped_column(String(500))
+
+
 class LoginAttempt(Base):
     """Recent failed sign-ins for one typed username (2.3).
 

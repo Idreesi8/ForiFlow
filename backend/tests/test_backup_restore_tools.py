@@ -226,8 +226,46 @@ def test_real_backup_verifies_all_content_and_removes_only_its_scratch(pg_backup
     assert 'content applications: identical' in result.stdout
     assert 'content revoked_tokens: identical' in result.stdout
     assert 'content score_submissions: identical' in result.stdout
+    assert 'content repayment_schedules: identical' in result.stdout
+    assert 'content repayment_receipts: identical' in result.stdout
     assert 'scratch database dropped:' in result.stdout
     assert 'RESULT: PASS' in result.stdout
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize('table', ['repayment_schedules', 'repayment_receipts'])
+def test_backup_preserves_recorded_repayment_history_and_detects_edits(pg_backup, table):
+    from datetime import date
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+    from models.database import Application, RepaymentSchedule, RepaymentReceipt
+    from tests.conftest import MID_APPLICANT
+    env, engine, dump, run, _ = pg_backup
+    with Session(engine) as db:
+        case = Application(**MID_APPLICANT, risk_score=60, decision='Manual Review', decision_status='Approved')
+        db.add(case)
+        db.flush()
+        schedule = RepaymentSchedule(application_id=case.id, version=1, submission_key=str(uuid.uuid4()),
+            disbursed_on=date(2026, 1, 1), items=[{'due_on': '2026-02-01', 'amount_minor': 10001}],
+            source_note='Fictional backup contract reference', created_by='synthetic')
+        db.add(schedule)
+        db.flush()
+        db.add(RepaymentReceipt(application_id=case.id, schedule_id=schedule.id, submission_key=str(uuid.uuid4()),
+            paid_on=date(2026, 2, 3), reference='BACKUP-QA-01', allocations=[{'installment': 1, 'amount_minor': 10001}],
+            created_by='synthetic'))
+        db.commit()
+    subprocess.run(['pg_dump', '-Fc', '-d', env['POSTGRES_DB'], '-f', str(dump)], env=env, check=True, capture_output=True)
+    result = run('scripts/db/verify-restore.sh')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f'content {table}: identical (1:' in result.stdout
+    with engine.begin() as db:
+        if table == 'repayment_schedules':
+            db.execute(text("UPDATE repayment_schedules SET source_note='Changed fictional contract reference'"))
+        else:
+            db.execute(text("UPDATE repayment_receipts SET reference='CHANGED-QA-01'"))
+    result = run('scripts/db/verify-restore.sh')
+    assert result.returncode != 0
+    assert f'content differs for {table}' in result.stdout + result.stderr
 
 
 @pytest.mark.postgres

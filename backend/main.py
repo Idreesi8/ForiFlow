@@ -30,7 +30,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 import config
 from models.database import SessionLocal, engine, init_db
-from routers import audit, auth, borrowers, ews, explain, model, policy, portfolio, score
+from routers import audit, auth, borrowers, ews, explain, model, policy, portfolio, repayments, score
 from schemas import HealthResponse, ReadinessCheck, ReadinessResponse
 from services import model_registry, policy_service
 from services.audit_service import new_request_id
@@ -277,7 +277,7 @@ def create_app() -> FastAPI:
         response.headers["X-Request-ID"] = request.state.request_id
         return response
 
-    for router in (auth, score, explain, ews, model, portfolio, borrowers, audit, policy):
+    for router in (auth, score, explain, ews, model, portfolio, borrowers, audit, policy, repayments):
         application.include_router(router.router)
 
     application.add_exception_handler(RequestValidationError, validation_exception_handler)
