@@ -29,6 +29,8 @@ POSTGRES_URL = os.getenv("FORIFLOW_TEST_POSTGRES_URL", "").strip()
 ENSEMBLE = "ensemble-xgb-rf-credit_risk_shared-2026-09-25T10:38:26"
 TABLES = (
     "alembic_version",
+    "repayment_receipts",
+    "repayment_schedules",
     "score_submissions",
     # 0010 security state.
     "login_attempts",
@@ -597,7 +599,9 @@ def test_save_receipt_migration_preserves_existing_cases_and_audit(pg_engine):
         if table != "audit_logs":
             assert actual == original
     audit = rows("audit_logs")
-    assert len(audit) == len(before["audit_logs"]) + 1
+    assert len(audit) == len(before["audit_logs"]) + 2
     assert audit[-1]["action"] == "migration.applied"
-    assert audit[-1]["entity_id"] == "0011_score_submissions"
+    assert audit[-1]["entity_id"] == "0012_repayment_calendar"
     assert rows("score_submissions") == []
+    assert rows("repayment_schedules") == []
+    assert rows("repayment_receipts") == []

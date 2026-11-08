@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { apiErrorMessage, fetchEwsOverview } from "../api/client.js";
 import EWSAlertFeed from "../components/EWSAlertFeed.jsx";
 import EWSFacilityDetail from "../components/EWSFacilityDetail.jsx";
+import RepaymentCalendar from '../components/RepaymentCalendar.jsx';
 import EWSOverview from "../components/EWSOverview.jsx";
 import FacilitySwitchDialog from "../components/FacilitySwitchDialog.jsx";
 import MonitoringPanel from "../components/MonitoringPanel.jsx";
@@ -32,6 +33,8 @@ export default function AlertsPage() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [monitoringDirty, setMonitoringDirty] = useState(false);
   const [monitoringBusy, setMonitoringBusy] = useState(false);
+  const [calendarDirty, setCalendarDirty] = useState(false);
+  const [calendarBusy, setCalendarBusy] = useState(false);
   const [pendingFacility, setPendingFacility] = useState(null);
   const overviewRequestSequence = useRef(0);
   const pendingSection = useRef(null);
@@ -41,6 +44,7 @@ export default function AlertsPage() {
 
   const commitFacility = id => {
     setMonitoringDirty(false);
+    setCalendarDirty(false);
     setPendingFacility(null);
     setHistoryReadyId(undefined);
     setMonitoringReadyId(undefined);
@@ -53,7 +57,7 @@ export default function AlertsPage() {
     pendingSection.current = null;
   };
   const requestFacility = (id, section = null) => {
-    if (monitoringBusy) return;
+    if (monitoringBusy || calendarBusy) return;
     if (id === selectedId) {
       if (section) {
         navigate({ pathname: location.pathname, search: location.search, hash: `#${section}` },
@@ -63,13 +67,13 @@ export default function AlertsPage() {
       return;
     }
     pendingSection.current = section;
-    if (monitoringDirty) setPendingFacility(id);
+    if (monitoringDirty || calendarDirty) setPendingFacility(id);
     else commitFacility(id);
   };
 
   useEffect(() => {
     if (!requestedFacility || requestedFacility === selectedId) return;
-    if ((monitoringDirty || monitoringBusy) && selectedId) {
+    if ((monitoringDirty || monitoringBusy || calendarDirty || calendarBusy) && selectedId) {
       pendingSection.current = MONITORING_SECTIONS.some(section => `#${section.id}` === location.hash) ? location.hash.slice(1) : null;
       setPendingFacility(requestedFacility);
       setSearchParams({ facility: String(selectedId) }, { replace: true, state: returnState });
@@ -78,7 +82,7 @@ export default function AlertsPage() {
       setMonitoringReadyId(undefined);
       setSelectedId(requestedFacility);
     }
-  }, [requestedFacility, selectedId, monitoringDirty, monitoringBusy, setSearchParams]);
+  }, [requestedFacility, selectedId, monitoringDirty, monitoringBusy, calendarDirty, calendarBusy, setSearchParams]);
 
   useEffect(() => {
     const anchor = location.hash.slice(1);
@@ -126,10 +130,10 @@ export default function AlertsPage() {
         </p>
       </header>
 
-      <MonitoringWorkspaceNav selectedId={selectedId} overview={overview} dirty={monitoringDirty} busy={monitoringBusy} />
+      <MonitoringWorkspaceNav selectedId={selectedId} overview={overview} dirty={monitoringDirty || calendarDirty} busy={monitoringBusy || calendarBusy} />
 
       {requestedFacility ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900"><span>Focused on case #{selectedId}. {!returnState ? <Link className="font-semibold underline" to="/action-desk">Back to action desk</Link> : null}</span><button type="button" className="btn-secondary" onClick={() => { setSearchParams({}, { state: returnState }); setPendingFacility(null); }}>Show all alerts</button></div> : null}
-      {pendingFacility ? <FacilitySwitchDialog fromId={selectedId} toId={pendingFacility} busy={monitoringBusy}
+      {pendingFacility ? <FacilitySwitchDialog fromId={selectedId} toId={pendingFacility} busy={monitoringBusy || calendarBusy}
         onCancel={() => { setPendingFacility(null); pendingSection.current = null; }}
         onConfirm={() => commitFacility(pendingFacility)} /> : null}
 
@@ -139,7 +143,7 @@ export default function AlertsPage() {
       ) : !overview ? (
         <LoadingState label="Loading the EWS overview…" />
       ) : (
-        <EWSOverview overview={overview} selectedId={selectedId} disabled={monitoringBusy}
+        <EWSOverview overview={overview} selectedId={selectedId} disabled={monitoringBusy || calendarBusy}
           onSelect={id => requestFacility(id, 'facility-history')}
           onRecord={id => requestFacility(id, 'monitoring')} />
       )}
@@ -147,6 +151,7 @@ export default function AlertsPage() {
 
       <div id="facility-history" role="region" aria-label="Selected facility history" tabIndex={-1} className="monitoring-section">
         {selectedId ? <EWSFacilityDetail facilityId={selectedId} refreshToken={refreshToken} onReady={setHistoryReadyId} /> : <div className="card p-5 text-sm text-slate-500"><h2 className="card-title">Choose a facility to review</h2><p className="mt-2">Select a monitored facility above, or find an approved facility under Record a month.</p></div>}
+        {selectedId && <div className="card mt-4"><RepaymentCalendar key={selectedId} applicationId={selectedId} onDirtyChange={setCalendarDirty} onBusyChange={setCalendarBusy} /></div>}
       </div>
 
       <div id="monitoring" role="region" aria-label="Monitoring month editor" tabIndex={-1} className="monitoring-section"><MonitoringPanel

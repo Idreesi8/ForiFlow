@@ -22,7 +22,7 @@ export default function FacilitySwitchDialog({ fromId, toId, busy, onCancel, onC
     <div className="max-h-[80dvh] overflow-y-auto p-5 sm:p-6">
       <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Unsaved monitoring figures</p>
       <h2 id="facility-switch-title" className="mt-2 text-xl font-bold text-slate-900">Switch to case #{toId}?</h2>
-      <p id="facility-switch-description" className="mt-3 text-sm leading-relaxed text-slate-600">Case #{fromId} has unsubmitted figures. Switching clears those entries. Keep editing to finish this month first.</p>
+      <p id="facility-switch-description" className="mt-3 text-sm leading-relaxed text-slate-600">Case #{fromId} has unsubmitted figures. Switching clears those entries. Keep editing to finish the current entry first.</p>
       {busy ? <p role="status" className="mt-3 text-sm text-amber-800">A save is in progress. Wait for its result before switching.</p> : null}
       <div className="mt-5 flex flex-wrap gap-3">
         <button ref={stay} type="button" className="btn-primary" onClick={onCancel}>Keep editing this facility</button>

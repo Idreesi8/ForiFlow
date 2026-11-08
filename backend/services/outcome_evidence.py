@@ -1,7 +1,8 @@
 """Read-only repayment evidence inventory, separate from predictive performance.
 
-The window uses the application's recorded officer-approval date because this
-schema has no disbursement date. Complete evidence is not a validated target,
+The window keeps the application's recorded officer-approval anchor. The separate
+repayment calendar's officer-entered dates are not silently substituted for
+existing reporting-month definitions. Complete evidence is not a validated target,
 default, causal effect, accuracy result, or permission to retrain.
 """
 import calendar

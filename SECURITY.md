@@ -64,6 +64,8 @@ so a new route without its check fails the suite.
 | Approve / reject / escalate a credit decision; review | ✗ | ✓ (up to the policy's manager limit; not against a Decline recommendation if the policy says admin-only) | ✓ |
 | Override an EWS score; correct an observation | ✗ | ✓ | ✓ |
 | Acknowledge / assign / set due date / action required / resolve / dismiss an alert | ✗ | ✓ | ✓ |
+| Read repayment calendars and record explicitly allocated payment evidence | ✓ | ✓ | ✓ |
+| Create/replace a contractual repayment schedule or void an erroneous receipt with a reason | ✗ | ✓ | ✓ |
 | Correct a borrower record (`PATCH /borrowers/{ref}`) | ✗ | ✓ | ✓ |
 | Create or activate a credit policy version | ✗ | ✗ | ✓ |
 | Read the audit trail | ✗ | ✗ | ✓ |
