@@ -32,7 +32,7 @@ function EvidenceWorkspace({ applicationId }) {
   useEffect(() => { if (withdrawing !== null) withdrawalInput.current?.focus(); }, [withdrawing]);
   useEffect(() => { if (history) historyStart.current?.focus(); }, [history]);
   const accept = useCallback(report => {
-    if (!validEvidenceReport(report, applicationId)) throw new Error('The evidence response does not match this case or its expected records. Reload before recording anything.');
+    if (!validEvidenceReport(report, applicationId)) throw Object.assign(new Error('The evidence response does not match this case or its expected records. Reload before recording anything.'), { code: 'EVIDENCE_MISMATCH' });
     setData(report);
   }, [applicationId]);
   const load = useCallback(async () => {
@@ -41,7 +41,7 @@ function EvidenceWorkspace({ applicationId }) {
     readController.current?.abort(); const controller = new AbortController(); readController.current = controller;
     setLoading(true); setError(''); setData(null); setHistoryBusy(false); setHistory(null); setHistoryError('');
     try { const report = await fetchCaseData(applicationId, { offset, signal: controller.signal }); if (request === sequence.current) accept(report); }
-    catch (e) { if (request === sequence.current && !controller.signal.aborted) setError(apiErrorMessage(e, e.message || 'Could not load case evidence.')); }
+    catch (e) { if (request === sequence.current && !controller.signal.aborted) setError(evidenceError(e, 'Could not load case evidence.')); }
     finally { if (request === sequence.current) setLoading(false); }
   }, [applicationId, offset, accept]);
   useEffect(() => { alive.current = true; load(); return () => { alive.current = false; ++sequence.current; ++historySequence.current; readController.current?.abort(); }; }, [load, today]);
@@ -61,7 +61,7 @@ function EvidenceWorkspace({ applicationId }) {
       if (!alive.current) return;
       accept(report); clear(); setHistory(null); setOffset(0);
       setMessage(operation === 'withdraw' ? 'Withdrawal recorded as a new history entry. Earlier evidence is retained.' : 'Evidence reference recorded. It does not grant data access or authorise model training.');
-    } catch (e) { if (alive.current) { setWriteError(apiErrorMessage(e, e.message || 'The save could not be confirmed.')); const status = e.response?.status; setRetryHint(!status || status === 408 || status >= 500); } }
+    } catch (e) { if (alive.current) { setWriteError(evidenceError(e, 'The save could not be confirmed.')); const status = e.response?.status; setRetryHint(!status || status === 408 || status >= 500); } }
     finally { saving.current = false; if (alive.current) setBusy(false); }
   };
   const openHistory = async (streamKey, page = 0) => {
@@ -69,9 +69,9 @@ function EvidenceWorkspace({ applicationId }) {
     try {
       const result = await fetchCaseDataHistory(applicationId, streamKey, page);
       if (request !== historySequence.current || !alive.current) return;
-      if (!validEvidenceHistory(result, applicationId, streamKey)) throw new Error('The returned history does not match this source.');
+      if (!validEvidenceHistory(result, applicationId, streamKey)) throw Object.assign(new Error('The returned history does not match this source.'), { code: 'EVIDENCE_MISMATCH' });
       setHistory(result);
-    } catch (e) { if (request === historySequence.current && alive.current) setHistoryError(apiErrorMessage(e, e.message || 'Could not load source history.')); }
+    } catch (e) { if (request === historySequence.current && alive.current) setHistoryError(evidenceError(e, 'Could not load source history.')); }
     finally { if (request === historySequence.current && alive.current) setHistoryBusy(false); }
   };
 
@@ -122,3 +122,4 @@ function EvidenceWorkspace({ applicationId }) {
 function Field({ label, children }) { return <label className="mt-2 block min-w-0 text-xs font-medium text-slate-700"><span className="mb-1 block">{label}</span>{children}</label>; }
 function Fact({ label, children }) { return <div className="min-w-0"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 break-words text-slate-800">{children}</dd></div>; }
 function Metric({ label, value }) { return <div className="card p-4"><p className="text-xs text-slate-600">{label}</p><p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p></div>; }
+function evidenceError(error, fallback) { return error.code === 'EVIDENCE_MISMATCH' ? error.message : apiErrorMessage(error, fallback); }
