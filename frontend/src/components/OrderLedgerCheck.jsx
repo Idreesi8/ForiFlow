@@ -14,6 +14,7 @@ export default function OrderLedgerCheck() {
   const [error, setError] = useState(null);
   const [report, setReport] = useState(null);
   const readVersion = useRef(0);
+  const fileInput = useRef(null);
   const resultHeading = useRef(null);
 
   useEffect(() => () => { readVersion.current += 1; }, []);
@@ -106,10 +107,10 @@ EX-002,2025-01-05,cancelled`}</pre>
         </details>
         <form onSubmit={check} className="space-y-3">
           <div>
-            <label htmlFor="ledger-file" className="block text-sm font-medium text-slate-800">Order ledger CSV</label>
-            <input id="ledger-file" type="file" accept=".csv,text/csv"
-              className="mt-1 block w-full min-w-0 text-sm text-slate-600 file:mr-3 file:rounded-md file:border file:border-slate-200 file:bg-slate-50 file:px-3 file:py-2 file:text-sm file:font-medium"
-              onChange={pickFile} />
+            <input ref={fileInput} type="file" accept=".csv,text/csv" hidden onChange={pickFile} />
+            <button type="button" className="btn-secondary text-xs" onClick={() => fileInput.current?.click()}>
+              {ledger ? 'Replace order ledger CSV' : 'Choose order ledger CSV'}
+            </button>
             {reading ? <p role="status" className="mt-2 text-xs text-slate-600">Reading the ledger…</p> : null}
             {ledger ? <p className="mt-2 break-all text-xs text-slate-700" role="status">
               {fileName} · {formatCount(ledger.rows)} data rows
