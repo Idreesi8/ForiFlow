@@ -90,6 +90,13 @@ pinned SBA and retail mirrors, and writes
 `backend/ml/sme_dataset_benchmarks.json`. The raw files stay in
 `.local/datasets/sme-field-research`.
 
+In **Credit Scoring → Check order consistency from a CSV**, an officer can
+count unique placed or completed orders and see cancellations separately.
+The CSV uses `order_id,order_date,status`. Confirm coverage for the entire
+selected period before interpreting an empty month as zero. Stability is
+available after three confirmed months with a positive total. This check
+runs in the browser and shows temporary results for review.
+
 ## Planning requirements for a first credible pilot model
 
 - Sufficient mature SME facilities, default/non-default events and subgroup

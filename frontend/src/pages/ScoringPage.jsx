@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import ApplicationForm from "../components/ApplicationForm.jsx";
+import OrderLedgerCheck from "../components/OrderLedgerCheck.jsx";
 import ReviewPanel from "../components/ReviewPanel.jsx";
 import ShapWaterfall from "../components/ShapWaterfall.jsx";
 
@@ -19,6 +20,8 @@ export default function ScoringPage() {
           Decline); a manager or admin makes the decision, with a written reason.
         </p>
       </header>
+
+      <OrderLedgerCheck />
 
       <ApplicationForm onScored={setLastScored} reviewLocked={reviewWork.dirty || reviewWork.busy}
         onReviewFocus={() => {
