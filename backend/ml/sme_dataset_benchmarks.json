@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "completed_at": "2026-11-09T13:03:43.741203+00:00",
+  "software": {
+    "numpy": "2.4.1",
+    "pandas": "2.3.3",
+    "scikit_learn": "1.8.0"
+  },
+  "sources": {
+    "polish": {
+      "page": "https://archive.ics.uci.edu/dataset/365/polish+companies+bankruptcy+data",
+      "url": "https://archive.ics.uci.edu/static/public/365/polish%2Bcompanies%2Bbankruptcy%2Bdata.zip",
+      "sha256": "17377929aa0b204bbf957e56462cf827c19fe4e2ce89f27dfbc77f9ea2bb16c9",
+      "license": "CC BY 4.0"
+    },
+    "sba_loans": {
+      "page": "https://doi.org/10.1080/10691898.2018.1434342",
+      "url": "https://raw.githubusercontent.com/stelladeecoder/sba_dataset/30555800a5cc1e37f02d7684c7dbd4796c87812d/SBAcase.11.13.17.csv",
+      "sha256": "3fc1a6519ae8450cbf6721c9f37797224d77c755b5b52baf58ee046478f8932b",
+      "license": "Public SBA records in Li, Mickel and Taylor (2018) teaching supplement"
+    },
+    "retail_orders": {
+      "page": "https://archive.ics.uci.edu/dataset/352/online+retail",
+      "url": "https://raw.githubusercontent.com/rwh950/xiaoshan/c0716210a0ba1114a028b0afa55194fe1cc50b1c/week03_ecommerce/data/sample/online_retail_sample.csv",
+      "sha256": "4701bec69b5773dd1377623223bdd43253d91c3ee695a128b2177cb215709115",
+      "license": "CC BY 4.0 (Daqing Chen, 2015)"
+    },
+    "ssbf": {
+      "page": "https://www.federalreserve.gov/PUBS/oss/oss3/ssbf03/ssbf03home.html",
+      "url": "https://www.federalreserve.gov/PUBS/oss/oss3/ssbf03/ssbf03.dat.Z",
+      "sha256": "ccb93e161ddb455b625ae94b3f00564848f532b162151f5736b1a53e370fdc9a",
+      "license": "Federal Reserve public-use survey data"
+    },
+    "ssbf_layout": {
+      "page": "https://www.federalreserve.gov/PUBS/oss/oss3/ssbf03/ssbf03home.html",
+      "url": "https://www.federalreserve.gov/PUBS/oss/oss3/ssbf03/ascii_instruct03.txt",
+      "sha256": "49fe106711bd0930331567db1c250cac9d172e0164422bd8c3459cdf55a673c7",
+      "license": "Federal Reserve public-use survey documentation"
+    }
+  },
+  "polish": {
+    "source_rows": 5910,
+    "usable_rows": 5605,
+    "conflicting_rows_excluded": 2,
+    "duplicate_rows_excluded": 65,
+    "train_rows": 4153,
+    "test_rows": 1385,
+    "test_events": 92,
+    "models": [
+      {
+        "label": "Financial ratios baseline",
+        "roc_auc": 0.814696,
+        "average_precision": 0.351351
+      },
+      {
+        "label": "Baseline + inventory days",
+        "roc_auc": 0.814999,
+        "average_precision": 0.352698
+      },
+      {
+        "label": "Baseline + liabilities/assets",
+        "roc_auc": 0.813982,
+        "average_precision": 0.348347
+      }
+    ]
+  },
+  "sba_loans": {
+    "source_rows": 2102,
+    "eligible_rows": 2096,
+    "train_rows": 1148,
+    "test_rows": 948,
+    "test_events": 486,
+    "test_median_term_months": 81.0,
+    "dated_charge_offs": 686,
+    "terms_within_one_month_of_charge_off": 17,
+    "models": [
+      {
+        "label": "Approved amount baseline",
+        "roc_auc": 0.655181,
+        "average_precision": 0.598942
+      },
+      {
+        "label": "Baseline + loan term",
+        "roc_auc": 0.850371,
+        "average_precision": 0.821117
+      },
+      {
+        "label": "Baseline + recorded employees",
+        "roc_auc": 0.652588,
+        "average_precision": 0.599408
+      }
+    ]
+  },
+  "retail_orders": {
+    "source_rows": 1000,
+    "eligible_lines": 989,
+    "unique_invoices": 61,
+    "window_start": "2010-12-01T08:26:00",
+    "window_end": "2010-12-01T12:43:00",
+    "complete_months": 0
+  },
+  "ssbf": {
+    "source_rows": 21200,
+    "firms": 4240,
+    "reported_debt_firms": 4202,
+    "positive_debt_firms": 2643,
+    "median_positive_debt_usd": 150000.0,
+    "reported_headcount_firms": 4207,
+    "median_reported_headcount": 6.0
+  }
+}
