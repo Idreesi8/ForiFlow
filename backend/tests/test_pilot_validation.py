@@ -142,3 +142,13 @@ def test_rejects_arrears_that_predate_a_new_disbursement(pilot):
     observations[0]['days_past_due'] = 30
     with pytest.raises(ExportError, match='arrears predate disbursement'):
         verify()
+
+
+def test_later_disbursement_cannot_hide_an_assessment_before_the_split(pilot):
+    facilities, _, verify = pilot
+    facilities[-1]['assessed_at'] = '2025-02-28T21:00:00+05:00'
+    facilities[-1]['evidence_available_at'] = '2025-02-28T20:00:00+05:00'
+    report = verify(fit=True)
+    assert report['status'] == 'blocked'
+    assert report['excluded_facilities'] == {'assessment_before_cohort_start': 1}
+    assert 'test_metrics' not in report

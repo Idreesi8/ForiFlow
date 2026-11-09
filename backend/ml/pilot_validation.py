@@ -181,6 +181,9 @@ def link(protocol, facilities, observations):
         if split is None:
             exclusions['outside_cohort_windows'] += 1
             continue
+        if business_date(facility.assessed_at) < getattr(protocol, split).first:
+            exclusions['assessment_before_cohort_start'] += 1
+            continue
         missing = [name for name in BASE + ADDITIONAL if getattr(facility, name) is None]
         missing_features.update(missing)
         if missing or facility.evidence_available_at is None or facility.source_review_ref is None:

@@ -152,7 +152,10 @@ row. A genuine observed zero requires a reconciled row. To receive a label,
 a facility needs every calendar day in the target window reconciled and
 available by its cutoff. That applies even if an early event was recorded.
 Training labels must be available before calibration starts, and calibration
-labels before test starts. Test outcomes use the snapshot cutoff. Exports with
+labels before test starts. An assessment must also fall on or after the start
+of its disbursement cohort so an earlier application cannot benefit from labels
+that were only available when the later cohort opened. Test outcomes use the
+snapshot cutoff. Exports with
 early closure or missing days need a lender-agreed coverage treatment before
 they can be counted. Review the effect of those exclusions separately.
 
