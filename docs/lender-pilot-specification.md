@@ -92,3 +92,92 @@ These are completion criteria, not a calendar promise. Outcome maturation and
 external reviews may dominate engineering time. FastAPI, React, PostgreSQL and
 the existing model registry remain the current stack; additional orchestration,
 identity or deployment platforms need a specific operational justification.
+
+## Offline linkage and evaluation
+
+Use `python -m ml.pilot_validation` from `backend` for a lender-approved export
+of **one Pakistani SME product**. The tool reads local files and prints
+aggregate counts. With `--fit` it also prints candidate evaluation metrics.
+Its scope is offline validation. A lender must confirm the product, authority,
+data definitions and extraction before files are used. Keep the pseudonym
+mapping and source documents with the lender.
+
+### Protocol file
+
+Provide a JSON object with these keys:
+
+| Keys | Value |
+| --- | --- |
+| `schema_version`, `country`, `product_code` | Version `1`, country `"PK"`, and the one approved lender product code. |
+| `target_definition_ref`, `training_authority_ref` | Opaque references to the approved definition and documented scope. These references need human review. |
+| `snapshot_at` | Exclusive freeze timestamp for the data and outcomes. |
+| `horizon_days`, `event_dpd` | Positive integers selected by the lender. The event is any reconciled end-of-day DPD at or above the threshold on days 1 through the horizon after disbursement. |
+| `minimum_per_class` | Pre-agreed minimum number of distinct borrowers with each outcome in **each** cohort, with a software floor of 2. Choose the actual minimum from the evaluation's precision and risk requirements. |
+| `train`, `calibration`, `test` | Objects with `first` and `last` calendar dates in `YYYY-MM-DD`. The disbursement-date windows are inclusive, ordered and disjoint. Leave enough time for each earlier cohort's labels to mature before the next starts. |
+
+Timestamps use an ISO time including seconds and an offset, for example
+`2025-01-03T09:00:00+05:00`. Calendar comparisons use Pakistan time.
+Choose the product, target, cutoffs, required precision and review criteria
+before inspecting later cohort metrics.
+
+### Facility export
+
+One row per actually disbursed facility. The CSV requires these columns:
+
+```text
+facility_id,borrower_id,country,product_code,assessed_at,disbursed_at,evidence_available_at,source_review_ref,requested_amount_pkr,annual_turnover_pkr,payment_history_score,years_in_operation,tenure_months,existing_debt_pkr,inventory_turnover,order_consistency,num_employees
+```
+
+- Use stable, lender-issued pseudonyms. Facility IDs use `fac_` followed by 32 lowercase hex characters. Borrower IDs use `brw_` and the same format. Keep all repeats for a borrower under one pseudonym. Omit names, contact details, government identifiers and other direct identifiers.
+- `evidence_available_at` is the latest time any input and its verification were available. It must be at or before `assessed_at`, which must precede or equal the actual `disbursed_at`. The `source_review_ref` points to an evidence record supporting all inputs.
+- Use verified requested principal and annual turnover, a consistent 0–100 repayment-history definition, and years in operation as of assessment. The baseline uses requested amount divided by turnover, repayment history, and business age. It is fitted on this dataset.
+- The additional fields use requested term in months, outstanding principal in PKR at application, annual cost of goods sold divided by average inventory, the defined 0–100 order count stability from complete order-ledger months, and headcount including working owners. Align definitions and periods with the approved protocol. Enter a blank for unavailable or inapplicable values.
+
+### Daily DPD export
+
+The lender derives this export from reconciled repayment and schedule records
+for newly disbursed facilities. The tool rejects DPD that predates
+disbursement. Keep rebooked or restructured balances with inherited arrears
+outside this protocol.
+Provide one row per facility and Pakistan calendar day, sorted by
+`facility_id` and `observation_date` ascending.
+
+```text
+facility_id,observation_date,available_at,days_past_due,reconciled
+```
+
+Use the timestamp when the value was actually available, including corrections,
+and `yes` or `no` for reconciliation. Blank DPD is allowed for an unreconciled
+row. A genuine observed zero requires a reconciled row. To receive a label,
+a facility needs every calendar day in the target window reconciled and
+available by its cutoff. That applies even if an early event was recorded.
+Training labels must be available before calibration starts, and calibration
+labels before test starts. An assessment must also fall on or after the start
+of its disbursement cohort so an earlier application cannot benefit from labels
+that were only available when the later cohort opened. Test outcomes use the
+snapshot cutoff. Exports with
+early closure or missing days need a lender-agreed coverage treatment before
+they can be counted. Review the effect of those exclusions separately.
+
+### Run
+
+```text
+python -m ml.pilot_validation --protocol protocol.json --facilities facilities.csv --daily-dpd daily-dpd.csv
+python -m ml.pilot_validation --protocol protocol.json --facilities facilities.csv --daily-dpd daily-dpd.csv --fit
+```
+
+The first command checks linkage, missing evidence, mature windows, outcome
+balance and borrower overlap. Exit status `3` means cohort blockers, and
+`2` means invalid input or a processing error. Fit only after the authorised
+protocol and input snapshots are frozen. Keep any local reports within the
+approved environment.
+
+The second command evaluates a logistic baseline, one candidate per additional
+field, and one using all five. Every candidate uses the same complete-case
+rows. Preprocessing and fitting use only training data. Sigmoid calibration
+uses the separate calibration cohort. Results include test ROC AUC and average
+precision on model scores, calibrated Brier score, a calibration direction
+check, and a paired borrower-resampled ROC AUC interval for the full candidate.
+The interval measures sampling variation in that test cohort. Check excluded
+populations, subgroup performance, stability, operating thresholds and shadow
+outcomes in the independent review before any decision about live scoring.
