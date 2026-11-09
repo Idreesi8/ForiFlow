@@ -13,8 +13,23 @@ from tests.conftest import MID_APPLICANT, STRONG_APPLICANT, WEAK_APPLICANT
 
 
 def test_evaluation_needs_a_login(client: TestClient) -> None:
-    for path in ("/model/evaluation", "/model/comparison"):
+    for path in ("/model/evaluation", "/model/comparison", "/model/sme-field-research"):
         assert client.get(path, headers={"Authorization": ""}).status_code == 401
+
+
+def test_sme_research_serves_the_public_benchmarks(client: TestClient) -> None:
+    response = client.get("/model/sme-field-research")
+
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    body = response.json()
+    assert body["training_ready"] is False
+    benchmarks = body["benchmarks"]
+    assert benchmarks["polish"]["test_events"] > 0
+    assert benchmarks["sba_loans"]["test_events"] > 0
+    assert benchmarks["retail_orders"]["unique_invoices"] < benchmarks["retail_orders"]["eligible_lines"]
+    assert benchmarks["retail_orders"]["complete_months"] == 0
+    assert benchmarks["ssbf"]["reported_headcount_firms"] <= benchmarks["ssbf"]["firms"]
 
 
 @pytest.mark.skipif(load_model_evaluation() is None, reason="ml.evaluate_model not run")

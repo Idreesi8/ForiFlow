@@ -101,12 +101,22 @@ def saved_operating_checks(application_id: int, response: Response,
 
 
 @router.get('/sme-field-research', summary='Verified acquisition and fit of candidate SME datasets')
-def sme_field_research() -> dict:
-    path = Path(__file__).resolve().parents[1] / 'ml' / 'sme_field_research.json'
+def sme_field_research(response: Response) -> dict:
+    response.headers['Cache-Control'] = 'no-store'
+    directory = Path(__file__).resolve().parents[1] / 'ml'
     try:
-        return json.loads(path.read_text(encoding='utf-8'))
+        research = json.loads((directory / 'sme_field_research.json').read_text(encoding='utf-8'))
     except (OSError, ValueError):
         raise HTTPException(status_code=404, detail='SME dataset research has not been recorded.') from None
+    try:
+        benchmarks = json.loads((directory / 'sme_dataset_benchmarks.json').read_text(encoding='utf-8'))
+    except FileNotFoundError:
+        return research
+    except (OSError, ValueError):
+        raise HTTPException(status_code=503, detail='The SME dataset results could not be read.') from None
+    if not isinstance(benchmarks, dict) or benchmarks.get('schema_version') != 1:
+        raise HTTPException(status_code=503, detail='The SME dataset results have an unsupported format.')
+    return {**research, 'benchmarks': benchmarks}
 
 
 @router.get('/applicability', summary='The trained input-anomaly reference and its provenance')

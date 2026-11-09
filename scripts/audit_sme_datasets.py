@@ -20,7 +20,9 @@ OUTPUT = ROOT / 'backend/ml/sme_field_research.json'
 def verified_sources() -> dict:
     manifest = json.loads((RAW / 'manifest.json').read_text())
     for source in manifest.values():
-        assert hashlib.sha256((RAW / source['file']).read_bytes()).hexdigest() == source['sha256'], source['file']
+        with (RAW / source['file']).open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() != source['sha256']:
+                raise ValueError(f"Cached source has changed: {source['file']}")
     return manifest
 
 
@@ -138,7 +140,7 @@ def main() -> None:
     report = {'schema_version': 1, 'checked_at': datetime.now(timezone.utc).isoformat(),
               'training_ready': False, 'serving_model_changed': False,
               'gate': 'No source establishes all five exact intake measures paired with a time-bounded prospective Pakistani SME default outcome.',
-              'sources': [{**sources[name], 'id': name, **profiles[name]} for name in sources],
+              'sources': [{**sources[name], 'id': name, **profile} for name, profile in profiles.items()],
               'field_coverage': field_coverage,
               'next_data': ['Owner-inclusive headcount and consistently defined inventory measures at application time.',
                             'Monthly order/receipt history and actual existing-debt instalments.',
