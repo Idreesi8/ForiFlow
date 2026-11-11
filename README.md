@@ -1,6 +1,6 @@
-# ForiFlow 🏦🤖
+# ForiFlow — Explainable SME Credit Scoring & Early Warning System
 
-> AI-Powered SME Credit Scoring & Early Warning System for Pakistani Banks
+> A working prototype for credit officers assessing and monitoring SME loans in Pakistan.
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)](https://react.dev)

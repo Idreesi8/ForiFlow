@@ -8,4 +8,4 @@ def test_docs_available_when_enabled(client: TestClient) -> None:
     assert response.status_code == 200
     spec = client.get("/openapi.json")
     assert spec.status_code == 200
-    assert spec.json()["info"]["title"] == "ForiFlow API"
+    assert spec.json()["info"]["title"] == "ForiFlow — Explainable SME Credit Scoring & Early Warning System"

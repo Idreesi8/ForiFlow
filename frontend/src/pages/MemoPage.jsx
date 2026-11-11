@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiErrorMessage, fetchExplanation, fetchApplication } from "../api/client.js";
+import { productTitle } from "../brand.js";
 import { ErrorState, LoadingState } from "../components/common/States.jsx";
 import { finalDecisionOf } from "../lib/decisions.js";
 import { formatDateTime, formatPKR, formatPKRExact, formatPercent, formatSigned } from "../lib/format.js";
@@ -72,8 +73,9 @@ export default function MemoPage() {
       <article className="card min-w-0 space-y-6 px-5 py-6 text-sm sm:px-8 sm:py-8 text-slate-800 print:border-0 print:shadow-none">
         <header className="border-b border-slate-200 pb-4">
           <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-            ForiFlow credit memo · Application #{application.id}
+            Credit memo · Application #{application.id}
           </p>
+          <p className="mt-1 text-xs text-slate-600">{productTitle}</p>
           <h2 className="mt-1 text-2xl font-bold text-slate-900">{application.business_name}</h2>
           <p className="text-slate-600">
             {application.applicant_name}

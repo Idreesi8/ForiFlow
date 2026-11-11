@@ -1,4 +1,4 @@
-"""ForiFlow API — SME credit scoring and Early Warning System for Pakistani banks.
+"""API for ForiFlow — Explainable SME Credit Scoring & Early Warning System.
 
 Run locally from the ``backend`` directory:
 
@@ -235,9 +235,9 @@ def create_app() -> FastAPI:
     """
     docs = config.docs_enabled()
     application = FastAPI(
-        title="ForiFlow API",
+        title="ForiFlow — Explainable SME Credit Scoring & Early Warning System",
         description=(
-            "Alternative-data credit scoring and Early Warning System for Pakistani SMEs. "
+            "Credit assessment and repayment monitoring for SME lending in Pakistan. "
             "All amounts are in PKR. Bureau-style fields are officer-entered (no live "
             "ECIB connector). Built with SBP-oriented explainability in mind; not SBP-certified."
         ),
