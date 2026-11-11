@@ -1,8 +1,8 @@
 # ForiFlow Frontend
 
-React 18 + Vite + Tailwind CSS dashboard for **ForiFlow** — the credit officer
-workspace for SME scoring and Early Warning System (EWS) surveillance at
-Pakistani banks. All amounts are shown in PKR (with crore/lakh shorthand).
+React 18 + Vite + Tailwind CSS dashboard for **ForiFlow — Explainable SME
+Credit Scoring & Early Warning System**. Credit officers can assess and
+monitor SME loans. All amounts are shown in PKR (with crore/lakh shorthand).
 Bureau-style fields are officer-entered (no live ECIB connector). SHAP
 explanations are stored on-premise to support an SBP-oriented review; ForiFlow
 is not SBP-certified.

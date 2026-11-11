@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { storeSession, isLoggedIn } from "../api/auth.js";
 import { apiErrorMessage, login } from "../api/client.js";
+import { productName, productSubtitle, productTitle } from "../brand.js";
 
 /** Minimal on-premise sign-in. The dashboard is unusable without a JWT. */
 export default function LoginPage() {
@@ -20,7 +21,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
 
-  useEffect(() => { document.title = "Sign in · ForiFlow"; }, []);
+  useEffect(() => { document.title = `Sign in · ${productTitle}`; }, []);
 
   if (isLoggedIn()) {
     return <Navigate to={from} replace />;
@@ -45,7 +46,13 @@ export default function LoginPage() {
     <div className="min-h-screen bg-white lg:grid lg:grid-cols-2">
       <aside className="relative hidden overflow-hidden bg-brand-950 px-12 py-12 text-white lg:flex lg:flex-col xl:px-20">
         <div aria-hidden="true" className="pointer-events-none absolute -right-40 top-28 h-[600px] w-[600px] rounded-full border border-brand-800/50 shadow-[0_0_0_80px_rgba(45,133,96,0.06),0_0_0_160px_rgba(45,133,96,0.04)]" />
-        <div className="relative flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-500 text-xl font-black">F</span><div><p className="text-lg font-bold">ForiFlow</p><p className="text-xs text-brand-200">SME Credit Intelligence</p></div></div>
+        <div className="relative flex items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-xl font-black">F</span>
+          <div>
+            <p className="text-lg font-bold">{productName}</p>
+            <p className="text-xs leading-snug text-brand-200">{productSubtitle}</p>
+          </div>
+        </div>
         <div className="relative my-auto max-w-lg py-16">
           <p className="mb-5 text-xs font-semibold tracking-[0.2em] text-brand-300 uppercase">Clarity at every step</p>
           <h2 className="text-4xl leading-tight font-semibold tracking-tight xl:text-5xl">A clearer view.<br /><span className="text-brand-300">A better next step.</span></h2>
@@ -63,12 +70,12 @@ export default function LoginPage() {
       <main className="flex min-h-screen items-center justify-center px-6 py-10 sm:px-10">
       <div className="w-full max-w-sm">
         <div className="mb-10 flex items-center gap-3 lg:hidden">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-xl font-black text-white">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-xl font-black text-white">
             F
           </span>
           <div>
-            <p className="text-lg font-bold text-slate-900">ForiFlow</p>
-            <p className="text-xs text-slate-500">SME Credit Intelligence</p>
+            <p className="text-lg font-bold text-slate-900">{productName}</p>
+            <p className="text-xs leading-snug text-slate-500">{productSubtitle}</p>
           </div>
         </div>
 

@@ -12,6 +12,7 @@ import {
 import { LoadingState } from "./components/common/States.jsx";
 import PageBoundary from "./components/common/PageBoundary.jsx";
 import WorkspaceFinder from "./components/WorkspaceFinder.jsx";
+import { productName, productSubtitle, productTitle } from "./brand.js";
 import { containDialogFocus } from "./lib/dialogFocus.js";
 import { UnsavedWorkProvider, useGuardedExit } from "./components/UnsavedWork.jsx";
 
@@ -135,7 +136,7 @@ function OfficerShell() {
   }, []);
 
   useEffect(() => {
-    document.title = `${currentPage?.label ?? "Credit memo"} · ForiFlow`;
+    document.title = `${currentPage?.label ?? "Credit memo"} · ${productTitle}`;
     main.current?.focus({ preventScroll: true });
   }, [location.pathname]);
 
@@ -207,7 +208,13 @@ function OfficerShell() {
       <dialog ref={menu} className="mobile-navigation" aria-label="Navigation" onCancel={() => setIsSidebarOpen(false)}
         onKeyDown={containDialogFocus}
         onClick={event => { if (event.target === menu.current) setIsSidebarOpen(false); }}>
-        <div className="flex items-center justify-between border-b border-brand-800 p-5"><span className="text-lg font-bold">ForiFlow</span><button type="button" className="rounded-lg px-3 py-2 text-sm hover:bg-brand-800" onClick={() => setIsSidebarOpen(false)} aria-label="Close navigation">Close ×</button></div>
+        <div className="flex items-start justify-between gap-4 border-b border-brand-800 p-5">
+          <div>
+            <p className="text-lg font-bold">{productName}</p>
+            <p className="text-xs leading-snug text-brand-200">{productSubtitle}</p>
+          </div>
+          <button type="button" className="shrink-0 rounded-lg px-3 py-2 text-sm hover:bg-brand-800" onClick={() => setIsSidebarOpen(false)} aria-label="Close navigation">Close ×</button>
+        </div>
         <WorkspaceNavigation onSelect={() => setIsSidebarOpen(false)} />
         <div className="border-t border-brand-800 p-5 text-sm"><p className="font-semibold">{username || "Officer"}</p><p className="mt-1 text-brand-200 capitalize">{role || "Signed in"}</p></div>
       </dialog>
@@ -216,12 +223,12 @@ function OfficerShell() {
         className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col overflow-y-auto bg-brand-900 text-brand-50 lg:flex print:hidden"
       >
         <div className="flex items-center gap-3 border-b border-brand-800 px-5 py-5">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 text-lg font-black text-white">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-500 text-lg font-black text-white">
             F
           </span>
           <div>
-            <p className="text-base leading-tight font-bold text-white">ForiFlow</p>
-            <p className="text-xs text-brand-200">SME Credit Intelligence</p>
+            <p className="text-base leading-tight font-bold text-white">{productName}</p>
+            <p className="mt-1 text-xs leading-snug text-brand-200">{productSubtitle}</p>
           </div>
         </div>
 

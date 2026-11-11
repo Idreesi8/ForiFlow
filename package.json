@@ -1,7 +1,7 @@
 {
   "name": "foriflow",
   "private": true,
-  "description": "ForiFlow SME credit intelligence — screenshot capture and repo scripts",
+  "description": "ForiFlow — Explainable SME Credit Scoring & Early Warning System",
   "scripts": {
     "capture": "node scripts/capture-screenshots.js"
   },

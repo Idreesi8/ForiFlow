@@ -1,7 +1,7 @@
 # ForiFlow Backend
 
-FastAPI service powering **ForiFlow** — alternative-data SME credit scoring and an
-Early Warning System (EWS) for Pakistani banks. All amounts are in PKR.
+FastAPI service powering **ForiFlow — Explainable SME Credit Scoring & Early Warning System**.
+All amounts are in PKR.
 Bureau-style fields are officer-entered (there is no live **ECIB** connector).
 SHAP explanations are stored to support an **SBP**-oriented review; ForiFlow
 is not SBP-certified.
